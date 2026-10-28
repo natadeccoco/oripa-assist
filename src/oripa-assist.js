@@ -72,7 +72,7 @@
   document.body.appendChild(host);
   var root = host.attachShadow({ mode: 'open' });
   root.innerHTML = '<style>' + CSS() + '</style><div class="wrap"><div class="win">' +
-    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-10-29 版Z</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
+    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-10-29 版AA</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
     (ALL ? '' : '<div class="tabs"><button data-tab="make" class="on">新しく作る</button><button data-tab="refill">補充する</button></div>') +
     '<button class="x" id="close" title="閉じる">×</button></div>' +
     '<div class="bd" id="body"><div class="msg">読み込み中…</div></div></div></div>';
@@ -191,7 +191,7 @@
   function geo(a, b, t) { return a * Math.pow(b / a, t); }
   /* ---------- セット当たり（関連する2枚を1つの当たりに。3,000円・1万円・2.5万円のTOP・大当たり） ---------- */
   var SET_PRICES = [3000, 10000, 25000];
-  function setsOK(price) { return SET_PRICES.indexOf(Number(price)) >= 0; }
+  function setsOK(price) { return Number(price) > 0; } // セットは全部の価格帯で使える（スタッフが手で組む：2026/10/29）
   var FAMS = [
     ['イーブイ', 'シャワーズ', 'サンダース', 'ブースター', 'エーフィ', 'ブラッキー', 'リーフィア', 'グレイシア', 'ニンフィア'],
     ['ヒトカゲ', 'リザード', 'リザードン'], ['ゼニガメ', 'カメール', 'カメックス'], ['フシギダネ', 'フシギソウ', 'フシギバナ'], ['ピチュー', 'ピカチュウ', 'ライチュウ'],
