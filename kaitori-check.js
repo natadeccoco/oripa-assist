@@ -208,7 +208,7 @@
     m.flags = f; return m;
   }
 
-  window.__ndkKaitoriDebug = { S: S, judge: judge, match: match };
+  window.__ndkKaitoriDebug = { S: S, judge: judge, match: match, open: function (id) { return openTx(id); } };
 
   /* ---------- 一覧 ---------- */
   async function loadList() {
