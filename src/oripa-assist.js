@@ -72,7 +72,7 @@
   document.body.appendChild(host);
   var root = host.attachShadow({ mode: 'open' });
   root.innerHTML = '<style>' + CSS() + '</style><div class="wrap"><div class="win">' +
-    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-10-29 版U</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
+    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-10-29 版W</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
     (ALL ? '' : '<div class="tabs"><button data-tab="make" class="on">新しく作る</button><button data-tab="refill">補充する</button></div>') +
     '<button class="x" id="close" title="閉じる">×</button></div>' +
     '<div class="bd" id="body"><div class="msg">読み込み中…</div></div></div></div>';
@@ -305,7 +305,7 @@
     function nOf(roles) { return hits.reduce(function (s, h) { return s + (roles.indexOf(h.role) >= 0 ? h.n : 0); }, 0); }
 
     // セット当たり（3,000円・1万円・2.5万円）：TOP・大当たりにちょうどいい1枚が無いとき、関連する2枚のセットを使う
-    var setOn = setsOK(price) && !L.free;
+    var setOn = false; // セットはスタッフが手で組む（自動では入れない：2026/10/29）
     function useSet(sp, role) { sp.set.forEach(function (m) { left[m.id]--; usedIds[m.id] = 1; }); usedIds[sp.id] = 1; hits.push({ p: sp, n: 1, role: role }); }
     var setGroups = L.dupFirst || L.kinds[0].indexOf('box') >= 0 && L.kinds[0].indexOf('card') < 0 ? [['box'], ['card', 'psa']] : [['card', 'psa'], ['box']]; // 2.5万円などBOX優先の値段はBOX同士を先に
     function bestSet(lo, hi, ws, wantCost) {
@@ -483,7 +483,8 @@
     if (fillTotal < fillN) warn.push('下枠が ' + (fillN - fillTotal) + '口分 足りません');
     var nameRule = (L.free ? '任意の金額（' + L.label + '）：原価率' : 'ルール：原価率') + (L.costMin ? pct(L.costMin) + '〜' : '上限') + pct(L.costMax) + '・TOP ' + L.top + '倍・大当たり' + L.big[0] + '〜' + L.big[1] + '倍' + (L.free ? '・中当たり' + L.mid[0] + '〜' + L.mid[1] + '倍・小当たり' + L.small[0] + '〜' + L.small[1] + '倍' : '') + '・ラストワン ' + L.last + '倍・当たり' + L.nTotal[0] + (L.nTotal[1] !== L.nTotal[0] ? '〜' + L.nTotal[1] : '') + '枚';
     var need = { 'TOP': top ? 0 : 1, '大当たり': Math.max(0, short['大当たり'] - (top ? 0 : 1)), '中当たり': Math.max(0, short['中当たり']), '小当たり': Math.max(0, short['小当たり']), 'ラストワン': last ? 0 : 1 };
-    return { need: need, key: '', name: 'おすすめ構成', note: nameRule, price: price, init: init, rev: rev, hits: hits, filler: filler, cost: cost, costr: cost / rev,
+    var cnt0 = { '大当たり': nOf(['TOP', '大当たり']), '中当たり': nOf(['中当たり', '当たり']), '小当たり': nOf(['小当たり']) };
+    return { need: need, miss0: { '大当たり': need['TOP'] + need['大当たり'], '中当たり': need['中当たり'], '小当たり': need['小当たり'] }, cnt0: cnt0, key: '', name: 'おすすめ構成', note: nameRule, price: price, init: init, rev: rev, hits: hits, filler: filler, cost: cost, costr: cost / rev,
       value: hits.reduce(function (s, h) { return s + h.p.sell * h.n; }, 0), L: L, warn: warn };
 
     function fillUnitEst() {
@@ -553,7 +554,6 @@
       '<input id="pfree" type="number" placeholder="その他" value="' + (prices.indexOf(cur.price) < 0 ? cur.price : '') + '"></div></div>' +
       '<div class="f"><div class="lb">口数</div><input id="init" type="number" value="' + init + '"> 口</div>' +
       '<div class="f"><div class="lb">最初の原価率（上限）</div><input id="costr" type="number" step="1" value="' + Math.round(costr * 100) + '"> %<div class="hint">ルール：' + pct(L.costMin) + '〜' + pct(L.costMax) + '（' + L.base.toLocaleString() + '円帯）</div></div>' +
-      (setsOK(cur.price) ? '<div class="f"><div class="lb">セット当たり</div><label class="ck"><input type="checkbox" id="useset"' + (cur.useSet ? ' checked' : '') + '> TOP・大当たりにセットを入れる</label><div class="hint">関連する2枚（同じポケモン・仲間・トレーナーとそのポケモン・伝説のペア／BOXは同じ弾・対になる弾）' + (L.dupFirst ? '。BOX同士を優先します' : '') + '</div></div>' : '') +
       '<div class="f go"><button class="primary" id="go">提案する</button></div>' +
       '</div>' + afterForm();
     bindModeTabs(); bindStoreChips();
@@ -561,8 +561,8 @@
     $('#pfree').onchange = function () { var v = Number(this.value); if (v > 0) { S.form = { price: v }; S.patterns = []; renderMake(); } };
     $('#go').onclick = function () {
       var p = cur.price, n = Number($('#init').value) || L.init, c = Math.min((Number($('#costr').value) || Math.round(L.costr * 100)) / 100, 1.5);
-      var us = $('#useset'); S.form = { price: p, init: n, costr: c, useSet: !!(us && us.checked) };
-      S.forceSet = S.form.useSet; S.patterns = propose(p, n, c, null); S.forceSet = false; renderMake();
+      S.form = { price: p, init: n, costr: c };
+      S.patterns = propose(p, n, c, null); renderMake();
       var r = $('#res'); if (r) r.scrollIntoView({ behavior: 'smooth' });
     };
     bindPatternButtons();
@@ -739,36 +739,33 @@
   // 入れ替え画面のセット当たり：セットを外す／関連カードとセットにする／セットの候補
   function setSwapHTML(pt, h) {
     if (!setsOK(pt.price) || (h.role !== 'TOP' && h.role !== '大当たり')) return '';
-    var out = '<div class="mh2">セット当たり（関連する2枚で1つの当たり）</div>';
-    if (h.p.set) out += '<div class="setbar">' + h.p.set.map(function (m, k) { return '<button class="ghost" data-unset="' + k + '">セットを外して「' + esc(m.name) + '」だけ残す</button>'; }).join('') + '</div>';
-    else if (h.p.kind === 'card' || h.p.kind === 'psa' || h.p.kind === 'box') out += '<div class="setbar"><button class="ghost" data-mkset>このカードと関連するカードでセットにする</button></div><div id="relr"></div>';
-    return out + '<div class="setbar"><button class="ghost" data-setc>' + esc(h.role) + 'の金額に合うセットの候補を見る</button></div><div id="setr"></div>';
+    var out = '<div class="mh2">セット当たり（2枚で1つの当たり）</div>';
+    if (h.p.set) return out + '<div class="setbar">' + h.p.set.map(function (m, k) { return '<button class="ghost" data-unset="' + k + '">セットを外して「' + esc(m.name) + '」だけ残す</button>'; }).join('') + '</div>';
+    return out + '<div class="setbar"><button class="ghost" data-mkset>この当たりともう1枚をセットにする</button></div><div id="relr"></div>';
   }
   function bindSetSwap(m, pt, hi) {
     var h = pt.hits[hi]; if (!h) return;
-    var L = pt.L, price = pt.price, lo = h.role === 'TOP' ? L.big[0] * price : L.big[0] * price, hi2 = h.role === 'TOP' ? L.top * 1.35 * price : Math.max(L.big[1], L.top) * price;
-    var free = function (p) { return p.stock - usedIn(pt, p.id) > 0; };
+    var free = function (p) { return p.kind !== 'filler' && !p.mis && p.id !== h.p.id && p.stock - usedIn(pt, p.id) > 0; };
     var put = function (np) {
       if (h.n > 1) { h.n--; pt.hits.splice(hi + 1, 0, { p: np, n: 1, role: h.role }); } else h.p = np;
       recalc(pt); m.remove(); renderMake();
     };
     m.querySelectorAll('[data-unset]').forEach(function (b) { b.onclick = function () { put(h.p.set[Number(b.dataset.unset)]); }; });
-    var showSets = function (el, list) {
-      var arr = list.slice(0, 30);
-      el.innerHTML = arr.length ? '<div class="cards">' + arr.map(function (sp, k) { return '<div class="cwrap">' + card({ p: sp, n: 1, role: 'セット' }, false, 'data-ps="' + k + '"') + '</div>'; }).join('') + '</div>' : '<div class="msg sub">候補がありません</div>';
-      el.querySelectorAll('[data-ps]').forEach(function (b) { b.onclick = function () { put(arr[Number(b.dataset.ps)]); }; });
-    };
-    var t = Math.max(h.p.cost, 1);
     var mk = m.querySelector('[data-mkset]');
-    if (mk) mk.onclick = function () {
-      var base = h.p, list = S.inv.filter(function (q) { return (base.kind === 'box' ? q.kind === 'box' : (q.kind === 'card' || q.kind === 'psa')) && !q.mis && free(q) && related(base, q); })
-        .map(function (q) { return mkSet(base, q); }).sort(function (a, b) { return (a.sell >= lo && a.sell < hi2 ? 0 : 1) - (b.sell >= lo && b.sell < hi2 ? 0 : 1) || b.sell - a.sell; });
-      showSets(m.querySelector('#relr'), list);
-    };
-    var sc = m.querySelector('[data-setc]');
-    if (sc) sc.onclick = function () {
-      var list = setPool(S.inv, lo, hi2, free).sort(function (a, b) { return Math.abs(Math.log(a.cost / t)) - Math.abs(Math.log(b.cost / t)); });
-      showSets(m.querySelector('#setr'), list);
+    if (!mk) return;
+    mk.onclick = function () {
+      var box = m.querySelector('#relr'), base = h.p;
+      box.innerHTML = '<div class="sm">「' + esc(base.name) + '」と一緒にするもう1枚を選んでください（関連しそうなものを先に出しています）</div>' +
+        '<div class="srch"><input id="sq" placeholder="カード名・BOX名で探す"><button class="ghost" id="sqs">探す</button></div><div id="sqr"></div>';
+      var draw = function (list) {
+        var arr = list.slice(0, 36), el = box.querySelector('#sqr');
+        el.innerHTML = arr.length ? '<div class="cards">' + arr.map(function (q, k) { return '<div class="cwrap">' + card({ p: q, n: 1, role: q.kind === 'box' ? 'BOX' : q.kind === 'psa' ? 'PSA' : (q.cond || '').replace('状態', '') || 'カード' }, false, 'data-sp="' + k + '"') + '<div class="stocktag">セットにすると マスタ ' + yen(base.sell + q.sell) + '・原価 ' + yen(base.cost + q.cost) + '</div></div>'; }).join('') + '</div>' : '<div class="msg sub">見つかりません</div>';
+        el.querySelectorAll('[data-sp]').forEach(function (b) { b.onclick = function () { put(mkSet(base, arr[Number(b.dataset.sp)])); }; });
+      };
+      var all = S.inv.filter(free);
+      draw(all.filter(function (q) { return related(base, q); }).sort(function (a, b) { return b.sell - a.sell; }).concat(all.filter(function (q) { return !related(base, q); }).sort(function (a, b) { return b.sell - a.sell; }).slice(0, 12)));
+      var go = function () { var q = box.querySelector('#sq').value.trim(); if (q) draw(all.filter(function (x) { return x.name.indexOf(q) >= 0; }).sort(function (a, b) { return b.sell - a.sell; })); };
+      box.querySelector('#sqs').onclick = go; box.querySelector('#sq').onkeydown = function (e) { if (e.key === 'Enter') go(); };
     };
   }
   // 下枠（シングル）の入れ替え
@@ -897,6 +894,9 @@
       var sec = function (label, roles, addRole) {
         var hs = pt.hits.filter(function (h) { return roles.indexOf(h.role) >= 0; });
         var addBtn = addRole === 'ラストワン' ? (hs.length ? '' : '<button class="addc" data-add="' + i + '" data-role="ラストワン">＋<br>ラストワン賞を<br>選ぶ</button>') : '';
+        // 足りない枚数ぶん、空のカード枠を出す（押すとその枠に足せる）
+        var have = hs.reduce(function (s, h) { return s + h.n; }, 0), miss = pt.miss0 && pt.miss0[label] ? Math.max(0, pt.miss0[label] - Math.max(0, have - (pt.cnt0[label] || 0))) : 0;
+        for (var b = 0; b < miss; b++) addBtn += '<button class="blankc" data-add="' + i + '" data-role="' + esc(label) + '"><span class="bk">在庫が<br>足りません</span><span class="bs">押して足す</span></button>';
         if (!hs.length && !addBtn) return '';
         return '<div class="sec"><div class="sech">' + label + '<span>' + hs.reduce(function (s, h) { return s + h.n; }, 0) + '枚</span></div><div class="cards">' + hs.map(function (h) { return card(h, false, idx(h)); }).join('') + addBtn + '</div></div>';
       };
@@ -1320,6 +1320,7 @@
       '.cd .im{position:relative;aspect-ratio:5/7;background:#eee;border-radius:6px;overflow:hidden;display:flex;align-items:center;justify-content:center}',
       '.cd .im.duo{gap:2px}.cd .im.duo img{width:50%;height:auto;object-fit:contain}.settag{position:absolute;right:4px;bottom:4px;background:#2952a3;color:#fff;font-size:11px;font-weight:800;padding:2px 6px;border-radius:5px}',
       '.setbar{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0}',
+      '.blankc{aspect-ratio:5/7;border:2.5px dashed #d9534f;background:#fff5f5;border-radius:8px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;color:#c0392b;font-family:inherit;font-weight:800;font-size:13px;cursor:pointer;text-align:center;align-self:start}.blankc .bs{font-size:11px;font-weight:700;color:#999}.blankc:hover{background:#ffeaea}',
       '.cd img{width:100%;height:100%;object-fit:contain;background:#fff}',
       '.cd.big{width:150px}.cd.big .nm{font-size:12px;font-weight:700}',
       '.noimg{font-size:10px;color:#666;padding:4px;text-align:center}',
