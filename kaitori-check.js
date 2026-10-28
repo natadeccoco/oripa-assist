@@ -6,7 +6,7 @@
   if (location.hostname !== 'pos.mycalinks.com') { alert('マイカ（pos.mycalinks.com）を開いてから押してください'); return; }
   var old = document.getElementById('ndk-kaitori-host'); if (old) old.remove();
 
-  var VERSION = '2026-10-29 版E';
+  var VERSION = '2026-10-29 版F';
   var GAS = 'https://script.google.com/macros/s/AKfycbwXHuu-X3L0qzJhvaszEIm-1xdeNIqJACQ0uM7mz5Q0hvwfdF9IuQiTKr3qmscNVmnhcQ/exec';
   var FB_URL = 'https://script.google.com/macros/s/AKfycbwl-ZCZ1LyefvSzEGkBEpTFTuFyvW0p-AYye6jBWaLP9t7-bC9_Owfeh4jKScNkFys6Fw/exec';
   var SHORT = { 322: '柏', 323: '津田沼', 324: '松戸', 325: '横浜', 326: '中野', 327: '町田', 328: '千葉中央', 390: '通販', 409: 'お台場' };
@@ -70,6 +70,7 @@
     'td.cnt{font-size:20px;font-weight:900}td.cnt.many{color:#c8102e}' +
     'td.th{width:58px;padding:5px 4px 5px 8px}td.th img{width:48px;height:66px;object-fit:contain;border-radius:4px;background:#f2f0ea;display:block}td.th .noimg{display:block;width:48px;height:66px;border-radius:4px;background:#f2f0ea}' +
     '.pill.cond{background:#1d1d22;color:#fff}' +
+    '.trn{display:flex;flex-direction:column;align-items:center;justify-content:center;width:48px;height:66px;border-radius:5px;background:linear-gradient(160deg,#2e7d4f,#14532d);color:#fff;border:2px solid #e8c23a;line-height:1.1}.trn small{font-size:7.5px;font-weight:700;letter-spacing:.02em}.trn b{font-size:15px;font-weight:900;margin-top:3px}' +
     'tr.red td{background:#fff0f2}tr.yel td{background:#fffbe6}' +
     'td .f{display:block;font-size:12px;font-weight:700;white-space:normal;text-align:left;margin-top:3px}td .f.red{color:#c8102e}td .f.yel{color:#8a6100}' +
     '.ratio{font-weight:800}.ratio.red{color:#c8102e}' +
@@ -290,7 +291,7 @@
     var rows = S.lines.map(function (m) {
       var lv = m.flags.some(function (f) { return f.lv === 'red'; }) ? 'red' : m.flags.length ? 'yel' : '';
       var ref = m.ref ? yen(m.ref) + '<div class="sub">' + esc((m.refs[0] || {}).r ? m.refs[0].r.t : '') + '</div>' : '<span class="sub">' + esc(m.note || (m.hanyo ? '汎用' : '買取表になし')) + '</span>';
-      return '<tr class="' + lv + '"><td class="th">' + (m.img ? '<img src="' + esc(m.img) + '" loading="lazy">' : '<span class="noimg"></span>') + '</td><td class="l nm"><b>' + esc(m.dn) + '</b>' + (m.cond ? ' <span class="pill cond">' + esc(m.cond) + '</span>' : '') +
+      return '<tr class="' + lv + '"><td class="th">' + thumb(m) + '</td><td class="l nm"><b>' + esc(m.dn) + '</b>' + (m.cond ? ' <span class="pill cond">' + esc(m.cond) + '</span>' : '') +
         m.flags.map(function (f) { return '<span class="f ' + f.lv + '">' + (f.lv === 'red' ? '🚨 ' : '⚠️ ') + esc(f.t) + '</span>'; }).join('') + '</td>' +
         '<td class="cnt' + (m.cnt >= 2 ? ' many' : '') + '">×' + m.cnt + '</td><td><b>' + yen(m.unit) + '</b></td><td>' + ref + '</td>' +
         '<td><span class="ratio' + (m.ratio && m.ratio >= RULE.high ? ' red' : '') + '">' + (m.ratio ? Math.round(m.ratio * 100) + '%' : '-') + '</span></td><td><b>' + yen(m.unit * m.cnt) + '</b></td></tr>';
@@ -319,11 +320,18 @@
     if (!list.length) { next(); return; }
     var m = document.createElement('div'); m.className = 'md';
     m.innerHTML = '<div class="mbox"><div class="mh">枚数はあっていますか？</div><div class="sub" style="margin-bottom:8px">2枚（2個）以上の商品です。実物の枚数とマイカの数をもう一度数えてください。</div>' +
-      '<table>' + list.map(function (q) { return '<tr><td class="th">' + (q.img ? '<img src="' + esc(q.img) + '">' : '<span class="noimg"></span>') + '</td><td class="l nm"><b>' + esc(q.dn) + '</b>' + (q.cond ? ' <span class="pill cond">' + esc(q.cond) + '</span>' : '') + '<div class="sub">' + yen(q.unit) + ' × ' + q.cnt + ' ＝ ' + yen(q.unit * q.cnt) + '</div></td><td class="cnt many" style="font-size:30px">×' + q.cnt + '</td></tr>'; }).join('') + '</table>' +
+      '<table>' + list.map(function (q) { return '<tr><td class="th">' + thumb(q) + '</td><td class="l nm"><b>' + esc(q.dn) + '</b>' + (q.cond ? ' <span class="pill cond">' + esc(q.cond) + '</span>' : '') + '<div class="sub">' + yen(q.unit) + ' × ' + q.cnt + ' ＝ ' + yen(q.unit * q.cnt) + '</div></td><td class="cnt many" style="font-size:30px">×' + q.cnt + '</td></tr>'; }).join('') + '</table>' +
       '<div class="acts" style="justify-content:flex-end"><button class="b g" id="x">ちがう（マイカを直す）</button><button class="b r" id="ok">枚数はあっています</button></div></div>';
     R.querySelector('.win').appendChild(m);
     m.querySelector('#x').onclick = function () { m.remove(); };
     m.querySelector('#ok').onclick = function () { m.remove(); S.countOk = S.tx && S.tx.id; next(); };
+  }
+
+  // 画像のない汎用（トレーナーズ）は、カードの形に「@20」を描いた代わりの画像
+  function thumb(m) {
+    if (m.img) return '<img src="' + esc(m.img) + '" loading="lazy">';
+    if (m.hanyo) return '<span class="trn"><small>トレーナーズ</small><b>' + (m.at != null ? '@' + m.at : '汎用') + '</b></span>';
+    return '<span class="noimg"></span>';
   }
 
   function lineText(m) { return '・' + m.dn + (m.cond && m.dn.indexOf(m.cond) < 0 ? '《' + m.cond + '》' : '') + ' ×' + m.cnt + '　' + yen(m.unit) + (m.ref ? '（買取表 ' + yen(m.ref) + '）' : ''); }
@@ -381,7 +389,9 @@
 
   // 承認依頼用：買取の中身を1枚の画像（JPEG・base64）に描く。マイカの画像はGAS経由で受け取る
   async function sheetImage() {
-    var t = S.tx, list = S.lines.filter(function (m) { return !m.hanyo && m.unit * m.cnt >= 500; }).sort(function (a, b) { return b.unit * b.cnt - a.unit * a.cnt; });
+    var t = S.tx, sub = function (m) { return m.unit * m.cnt; };
+    var list = S.lines.filter(function (m) { return !m.hanyo && sub(m) >= 500; }).sort(function (a, b) { return sub(b) - sub(a); })
+      .concat(S.lines.filter(function (m) { return m.hanyo; }).sort(function (a, b) { return (b.at || 0) - (a.at || 0); }));
     var rest = S.lines.filter(function (m) { return list.indexOf(m) < 0; });
     var MAX = 30; if (list.length > MAX) { rest = rest.concat(list.slice(MAX)); list = list.slice(0, MAX); }
     var imgs = {}, urls = []; list.forEach(function (m) { if (m.img && urls.indexOf(m.img) < 0) urls.push(m.img); });
@@ -408,6 +418,12 @@
       c.fillStyle = '#fff'; c.fillRect(x, y, CW, CH); c.strokeStyle = '#e1ddd3'; c.lineWidth = 2; c.strokeRect(x, y, CW, CH);
       var im = imgs[m.img], ih = 200;
       if (im) { var r = Math.min((CW - 16) / im.width, ih / im.height), dw = im.width * r, dh = im.height * r; c.drawImage(im, x + (CW - dw) / 2, y + 10 + (ih - dh) / 2, dw, dh); }
+      else if (m.hanyo) {
+        var cw = 140, cx = x + (CW - cw) / 2, g = c.createLinearGradient(cx, y + 10, cx + cw, y + 10 + ih); g.addColorStop(0, '#2e7d4f'); g.addColorStop(1, '#14532d');
+        c.fillStyle = g; c.fillRect(cx, y + 10, cw, ih); c.strokeStyle = '#e8c23a'; c.lineWidth = 4; c.strokeRect(cx + 2, y + 12, cw - 4, ih - 4);
+        c.fillStyle = '#fff'; c.font = 'bold 17px ' + F; var l1 = 'トレーナーズ'; c.fillText(l1, cx + (cw - c.measureText(l1).width) / 2, y + 60);
+        c.font = 'bold 44px ' + F; var l2 = m.at != null ? '@' + m.at : '汎用'; c.fillText(l2, cx + (cw - c.measureText(l2).width) / 2, y + 100);
+      }
       else { c.fillStyle = '#eee'; c.fillRect(x + 8, y + 10, CW - 16, ih); }
       if (m.cnt > 1) { c.font = 'bold 30px ' + F; var tx = '×' + m.cnt, tw = c.measureText(tx).width + 16; c.fillStyle = '#c8102e'; c.fillRect(x + CW - tw, y, tw, 40); c.fillStyle = '#fff'; c.fillText(tx, x + CW - tw + 8, y + 4); }
       var ty = y + 220;
@@ -415,12 +431,12 @@
       c.fillStyle = '#1f1d1a'; c.font = 'bold 15px ' + F; wrap2(m.dn.replace(/《[^》]*》/g, ''), CW - 16).forEach(function (l, k) { c.fillText(l, x + 8, ty + 20 + k * 19); });
       c.fillStyle = '#1f1d1a'; c.font = 'bold 21px ' + F; c.fillText('買取 ' + yen(m.unit), x + 8, ty + 64);
       c.font = '15px ' + F; c.fillStyle = '#555';
-      c.fillText(m.ref ? '買取表 ' + yen(m.ref) + '（' + Math.round(m.unit / m.ref * 100) + '%）' : '買取表になし', x + 8, ty + 93);
+      c.fillText(m.ref ? '買取表 ' + yen(m.ref) + '（' + Math.round(m.unit / m.ref * 100) + '%）' : m.hanyo ? (m.at != null && m.unit !== m.at ? '⚠ 単価が@' + m.at + 'とちがう' : '汎用') : '買取表になし', x + 8, ty + 93);
       c.font = 'bold 15px ' + F; c.fillStyle = '#1f1d1a'; c.fillText('小計 ' + yen(m.unit * m.cnt), x + 8, ty + 116);
     });
     if (rest.length) {
       var rs = rest.reduce(function (s, m) { return s + m.unit * m.cnt; }, 0), rn = rest.reduce(function (s, m) { return s + m.cnt; }, 0);
-      c.fillStyle = '#1f1d1a'; c.font = 'bold 20px ' + F; c.fillText(fit('ほか（汎用・低額など）' + rest.length + '行・' + rn + '点　計 ' + yen(rs), W - PAD * 2), PAD, y0 + rows * (CH + GAP) + 10);
+      c.fillStyle = '#1f1d1a'; c.font = 'bold 20px ' + F; c.fillText(fit('ほか（低額など）' + rest.length + '行・' + rn + '点　計 ' + yen(rs), W - PAD * 2), PAD, y0 + rows * (CH + GAP) + 10);
     }
     return cv.toDataURL('image/jpeg', 0.86).split(',')[1];
   }
