@@ -1,4 +1,4 @@
-/* ナタデココ 在庫偏りチェック（マイカ上で動くブックマークレット本体） */
+/* ナタデココ 全店舗在庫確認（マイカ上で動くブックマークレット本体） */
 (function () {
   'use strict';
   if (location.hostname !== 'pos.mycalinks.com') { alert('マイカ（pos.mycalinks.com）を開いてから押してください'); return; }
@@ -71,7 +71,7 @@
     '.ndk-fb{all:unset;cursor:pointer;font-weight:700;font-size:12px;color:#fff;background:#2563eb;border-radius:999px;padding:6px 12px}' +
     '</style>' +
     '<div class="bg"><div class="win">' +
-    '<div class="hd"><h1>在庫偏り<b>チェック</b></h1><span class="sm" id="upd" style="color:#bbb"></span><span class="sp"></span>' +
+    '<div class="hd"><h1>全店舗<b>在庫確認</b></h1><span class="sm" id="upd" style="color:#bbb"></span><span class="sp"></span>' +
     '<button class="ndk-fb" id="fb">意見を送る</button><button id="csv">CSV</button><button id="rl">再読み込み</button><button id="x">閉じる ✕</button></div>' +
     '<div class="bar" id="bar"></div><div class="sum" id="sum"></div>' +
     '<div class="selbar" id="selbar"></div>' +
@@ -81,7 +81,7 @@
   $('#x').onclick = function () { host.remove(); };
   $('#rl').onclick = function () { load(); };
   $('#csv').onclick = csv;
-  $('#fb').onclick = function () { window.open(FB_URL + '?tool=' + encodeURIComponent('在庫偏りチェック') + '&store=' + encodeURIComponent('本部'), '_blank'); };
+  $('#fb').onclick = function () { window.open(FB_URL + '?tool=' + encodeURIComponent('全店舗在庫確認') + '&store=' + encodeURIComponent('本部'), '_blank'); };
 
   /* ---------- 共通 ---------- */
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
@@ -414,7 +414,7 @@
     var t = lines.map(function (l) { return l.map(function (v) { v = String(v == null ? '' : v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }).join(','); }).join('\r\n');
     var a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob(['﻿' + t], { type: 'text/csv' }));
-    a.download = '在庫偏りチェック_' + new Date().toISOString().slice(0, 10) + '.csv';
+    a.download = '全店舗在庫確認_' + new Date().toISOString().slice(0, 10) + '.csv';
     document.body.appendChild(a); a.click(); a.remove();
   }
 
