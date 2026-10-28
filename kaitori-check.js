@@ -167,7 +167,9 @@
     var bn = baseName(nm), model = N(c.product__item__cardnumber), pack = N(c.product__item__expansion), rar = N(c.product__item__rarity);
     var cands = model ? (S.idx.model[model] || []) : [];
     cands = cands.filter(function (r) { return isPsa ? r.k === 'psa' : r.k !== 'psa'; });
-    if (pack) { var c2 = cands.filter(function (r) { return r.k === 'kyouka' || !r.p || N(r.p) === pack; }); if (c2.length) cands = c2; else cands = []; }
+    var promoModel = /\/[A-Z]+-P$/i.test(model); // 型番にセット名が入っているプロモ（131/M-P など）はパックを見ない
+    var packOK = function (r) { if (r.k === 'kyouka' || !r.p || promoModel) return true; var q = N(r.p); if (!/^[A-Z0-9\-]+$/.test(q)) return /その他|PROMO/.test(q) || q.indexOf(pack) === 0; return q === pack || q.indexOf(pack) === 0 || pack.indexOf(q) === 0; };
+    if (pack) cands = cands.filter(packOK);
     if (rar && cands.length > 1) { var c3 = cands.filter(function (r) { return !r.r || N(r.r) === rar; }); if (c3.length) cands = c3; }
     if (cands.length > 1) { var c4 = cands.filter(function (r) { return nameHit(r.bn, bn); }); if (c4.length) cands = c4; }
     if (cands.length && !cands.some(function (r) { return nameHit(r.bn, bn); })) cands = []; // 型番が同じでも名前が違うものは使わない
