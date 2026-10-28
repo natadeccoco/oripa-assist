@@ -72,7 +72,7 @@
   document.body.appendChild(host);
   var root = host.attachShadow({ mode: 'open' });
   root.innerHTML = '<style>' + CSS() + '</style><div class="wrap"><div class="win">' +
-    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-10-29 版X</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
+    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-10-29 版Y</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
     (ALL ? '' : '<div class="tabs"><button data-tab="make" class="on">新しく作る</button><button data-tab="refill">補充する</button></div>') +
     '<button class="x" id="close" title="閉じる">×</button></div>' +
     '<div class="bd" id="body"><div class="msg">読み込み中…</div></div></div></div>';
@@ -746,7 +746,7 @@
   }
   // 入れ替え画面のセット当たり：セットを外す／関連カードとセットにする／セットの候補
   function setSwapHTML(pt, h) {
-    if (!setsOK(pt.price) || (h.role !== 'TOP' && h.role !== '大当たり')) return '';
+    if (!setsOK(pt.price) || ['TOP', '大当たり', '中当たり', '当たり', '小当たり'].indexOf(h.role) < 0) return '';
     var out = '<div class="mh2">セット当たり（2枚で1つの当たり）</div>';
     if (h.p.set) return out + '<div class="setbar">' + h.p.set.map(function (m, k) { return '<button class="ghost" data-unset="' + k + '">セットを外して「' + esc(m.name) + '」だけ残す</button>'; }).join('') + '</div>';
     return out + '<div class="setbar"><button class="ghost" data-mkset>この当たりともう1枚をセットにする</button></div><div id="relr"></div>';
