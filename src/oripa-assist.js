@@ -72,7 +72,7 @@
   document.body.appendChild(host);
   var root = host.attachShadow({ mode: 'open' });
   root.innerHTML = '<style>' + CSS() + '</style><div class="wrap"><div class="win">' +
-    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-10-28 版S</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
+    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-10-29 版T</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
     (ALL ? '' : '<div class="tabs"><button data-tab="make" class="on">新しく作る</button><button data-tab="refill">補充する</button></div>') +
     '<button class="x" id="close" title="閉じる">×</button></div>' +
     '<div class="bd" id="body"><div class="msg">読み込み中…</div></div></div></div>';
@@ -303,7 +303,8 @@
     }
     // 1) TOP と ラストワン賞
     var top = pickOne(L.top * 0.75, L.top * 1.35, L.top) || pickOne(L.big[0], 1e9, L.top);
-    var topSet = setOn && (!top || top.sell < L.top * 0.75 * price || top.sell >= L.top * 1.35 * price) ? bestSet(L.top * 0.75 * price, L.top * 1.35 * price, L.top * price) : null;
+    var forceSet = setOn && S.forceSet && !L.dupFirst, bigSetDone = false; // 2.5万円（BOX優先）はBOXがないときだけ
+    var topSet = setOn && (forceSet || !top || top.sell < L.top * 0.75 * price || top.sell >= L.top * 1.35 * price) ? bestSet(L.top * 0.75 * price, L.top * 1.35 * price, L.top * price) : null;
     if (topSet) { useSet(topSet, 'TOP'); top = topSet; }
     else if (top) { take(top, 'TOP'); if (top.sell < L.top * 0.75 * price || top.sell >= L.top * 1.35 * price) warn.push('TOPの狙いはマスタ' + yen(L.top * price) + '前後ですが、在庫にないので近いもの（' + yen(top.sell) + '）にしています'); }
     else warn.push('TOPにできる在庫がありません（狙い：マスタ' + yen(L.top * price) + '前後）');
@@ -342,6 +343,8 @@
       var restEst = slots.slice(i).reduce(function (a, s) { return a + s.e; }, 0);
       var want = Math.max(rem, 0) * slots[i].e / Math.max(restEst, 1);
       var s = slots[i];
+      var fsp = forceSet && !bigSetDone && s.role === '大当たり' ? bestSet(s.r[0] * price, s.r[1] * price, geo(s.r[0], s.r[1], 0.25 + s.t * 0.5) * price, want) : null;
+      if (fsp) { useSet(fsp, '大当たり'); bigSetDone = true; continue; }
       var p = pickOne(s.r[0], s.r[1], geo(s.r[0], s.r[1], 0.25 + s.t * 0.5), want);
       if (p) take(p, s.role);
       else if (setOn && s.role === '大当たり') { var sp = bestSet(s.r[0] * price, s.r[1] * price, geo(s.r[0], s.r[1], 0.25 + s.t * 0.5) * price, want); if (sp) useSet(sp, '大当たり'); }
@@ -535,15 +538,16 @@
       '<input id="pfree" type="number" placeholder="その他" value="' + (prices.indexOf(cur.price) < 0 ? cur.price : '') + '"></div></div>' +
       '<div class="f"><div class="lb">口数</div><input id="init" type="number" value="' + init + '"> 口</div>' +
       '<div class="f"><div class="lb">最初の原価率（上限）</div><input id="costr" type="number" step="1" value="' + Math.round(costr * 100) + '"> %<div class="hint">ルール：' + pct(L.costMin) + '〜' + pct(L.costMax) + '（' + L.base.toLocaleString() + '円帯）</div></div>' +
+      (setsOK(cur.price) && !L.dupFirst ? '<div class="f"><div class="lb">セット当たり</div><label class="ck"><input type="checkbox" id="useset"' + (cur.useSet ? ' checked' : '') + '> TOP・大当たりにセットを入れる</label><div class="hint">関連する2枚（同じポケモン・仲間・トレーナーとそのポケモン・伝説のペア）</div></div>' : '') +
       '<div class="f go"><button class="primary" id="go">提案する</button></div>' +
       '</div>' + afterForm();
     bindModeTabs(); bindStoreChips();
-    root.querySelectorAll('.chip').forEach(function (b) { b.onclick = function () { S.form = { price: Number(b.dataset.p) }; S.patterns = []; renderMake(); }; });
+    root.querySelectorAll('.chip').forEach(function (b) { b.onclick = function () { S.form = { price: Number(b.dataset.p), useSet: cur.useSet }; S.patterns = []; renderMake(); }; });
     $('#pfree').onchange = function () { var v = Number(this.value); if (v > 0) { S.form = { price: v }; S.patterns = []; renderMake(); } };
     $('#go').onclick = function () {
       var p = cur.price, n = Number($('#init').value) || L.init, c = Math.min((Number($('#costr').value) || Math.round(L.costr * 100)) / 100, 1.5);
-      S.form = { price: p, init: n, costr: c };
-      S.patterns = propose(p, n, c, null); renderMake();
+      var us = $('#useset'); S.form = { price: p, init: n, costr: c, useSet: !!(us && us.checked) };
+      S.forceSet = S.form.useSet; S.patterns = propose(p, n, c, null); S.forceSet = false; renderMake();
       var r = $('#res'); if (r) r.scrollIntoView({ behavior: 'smooth' });
     };
     bindPatternButtons();
