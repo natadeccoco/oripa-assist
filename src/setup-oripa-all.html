@@ -1,0 +1,30 @@
+<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>全店オリパ作成 設置</title><meta name="color-scheme" content="light">
+<style>
+:root{--ink:#1d1d22;--bg:#f6f5f2;--blue:#2952a3;--gold:#e8c23a;--line:#e5e2da}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:"Hiragino Sans","Noto Sans JP","Yu Gothic UI",Meiryo,sans-serif;line-height:1.7}
+.w{max-width:760px;margin:0 auto;padding:28px 16px 60px}
+h1{font-size:26px;margin:0 0 4px} .sub{color:#666;margin:0 0 24px}
+.step{background:#fff;border:1px solid var(--line);border-radius:14px;padding:18px 20px;margin:14px 0;display:flex;gap:16px}
+.n{flex:none;width:34px;height:34px;border-radius:9px;background:var(--ink);color:var(--gold);font-weight:900;display:flex;align-items:center;justify-content:center;font-size:18px}
+.step h2{font-size:17px;margin:2px 0 6px} .step p{margin:4px 0}
+kbd{background:#eee;border:1px solid #ccc;border-bottom-width:2px;border-radius:5px;padding:1px 6px;font-size:13px}
+.bm{display:inline-block;margin:10px 0 4px;background:var(--blue);color:#fff;text-decoration:none;font-weight:800;font-size:18px;padding:12px 22px;border-radius:12px;box-shadow:0 4px 0 #1b3770;cursor:grab}
+.note{font-size:13px;color:#7a5b00;background:#fdf6dc;border-radius:10px;padding:10px 14px;margin-top:18px}
+ul{margin:6px 0;padding-left:20px}
+</style></head><body><div class="w">
+<h1>全店オリパ作成（TikTok・通販）</h1>
+<p class="sub">全店舗（通販店を含む）の在庫をまとめて見て、TikTokオリパや通販オリパの中身を提案するツールです。本部のパソコンのChromeに1回だけ設置してください。</p>
+<div class="step"><div class="n">1</div><div><h2>ブックマークバーを表示する</h2><p>Chromeで <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>B</kbd> を押すと、画面の上にブックマークバーが出ます。</p></div></div>
+<div class="step"><div class="n">2</div><div><h2>下の青いボタンをブックマークバーへドラッグする</h2>
+<a class="bm" href="javascript:(function(){window.ORIPA_MODE=&#x27;all&#x27;;var r=&#x27;natadeccoco/oripa-assist&#x27;;function go(v){var s=document.createElement(&#x27;script&#x27;);s.src=&#x27;https://cdn.jsdelivr.net/gh/&#x27;+r+&#x27;@&#x27;+v+&#x27;/oripa-assist.min.js&#x27;;s.onerror=function(){alert(&#x27;全店オリパ作成を読み込めませんでした。ネット接続を確認してください&#x27;)};document.body.appendChild(s)}if(location.hostname!==&#x27;pos.mycalinks.com&#x27;){alert(&#x27;マイカ（pos.mycalinks.com）を開いてから押してください&#x27;);return}fetch(&#x27;https://api.github.com/repos/&#x27;+r+&#x27;/commits/main&#x27;).then(function(x){return x.json()}).then(function(j){go(j.sha||&#x27;main&#x27;)}).catch(function(){go(&#x27;main&#x27;)})})();" onclick="event.preventDefault();document.getElementById('hint').style.display='block';">全店オリパ作成</a>
+<p id="hint" style="display:none;color:#2952a3;font-weight:700">クリックではなく、ブックマークバーへドラッグ（引っぱって離す）してください</p><p>バーに「全店オリパ作成」が出れば設置完了です。店舗用の「オリパ作成アシスト」とは別のボタンです。</p></div></div>
+<div class="step"><div class="n">3</div><div><h2>マイカを開いて、ブックマークを押す</h2><p>マイカにログインした状態で押すと、全店舗の在庫を読み込んでツールが開きます（数秒かかります）。</p></div></div>
+<div class="step"><div class="n">4</div><div><h2>使い方</h2><ul>
+<li><b>使う店舗</b>：チェックを外した店舗の在庫は使いません</li>
+<li><b>値段のルールで作る／任意の金額で作る</b>：店舗用と同じ。任意の金額では、原価率・倍率・枚数・入れる種類・ハズレを自分で決められます</li>
+<li>カードには<b>どの店舗の在庫か</b>が表示されます。入れ替え・外す・足すも店舗用と同じです</li>
+<li><b>店舗ごとの集め先リスト</b>：どの店から何を集めるかの一覧。「文をコピー」でLINE WORKSに貼れます。「CSVを保存」もできます</li>
+<li>このツールからマイカへの一時保存はしません（在庫が複数店舗にまたがるため）</li></ul></div></div>
+<p class="note">このブックマークは、押すたびに最新版のツールを読み込みます。ツールが新しくなっても<b>入れ直しは不要</b>です。（設置ページ：2026-10-28 自動更新版）</p>
+</div></body></html>
