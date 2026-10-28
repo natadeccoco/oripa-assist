@@ -57,7 +57,7 @@
     '.pill{display:inline-block;font-size:11.5px;font-weight:800;padding:1px 8px;border-radius:999px;margin-left:6px}' +
     '.pill.red{background:#c8102e;color:#fff}.pill.yel{background:#f5c518;color:#3d2e00}.pill.ok{background:#e3f4e6;color:#15803d}.pill.gr{background:#eee;color:#555}.pill.blue{background:#e3ecff;color:#1d4ed8}' +
     '.top{display:flex;gap:12px;flex-wrap:wrap;align-items:stretch;margin-bottom:12px}' +
-    '.card{background:#fff;border:1.5px solid #e5e2da;border-radius:12px;padding:10px 14px}' +
+    '.card{background:#fff;border:1.5px solid #e5e2da;border-radius:12px;padding:10px 14px}.card.apok{background:#e3f4e6;border-color:#15803d}.card.apok .big{color:#15803d}.card.apwait{background:#fff4c2;border-color:#e8c23a}.card.apwait .big{color:#7a5b00}' +
     '.big{font-size:24px;font-weight:900}.sub{color:#777;font-size:12px}' +
     '.need{border-color:#c8102e;background:#fff5f6}.need .big{color:#c8102e}' +
     '.warns{margin:10px 0}.w{border-radius:10px;padding:9px 12px;margin:6px 0;font-weight:700}' +
@@ -285,7 +285,8 @@
     var ri = reqInfo(), ci = confInfo();
     if (ri && ri.kind === 'confirm') { ci = ri; ri = null; }
     var st = '';
-    if (ri && ri.kind === 'approval') st = ri.status === '承認' ? '<div class="st ok">✅ 本部が承認しました（' + esc(ri.by || '') + '）</div>' : ri.status === '差し戻し' ? '<div class="st ng">↩️ 差し戻されました（' + esc(ri.by || '') + '）。LINE WORKSのグループで理由を確認してください</div>' : '<div class="st wait">承認待ち（依頼番号 ' + esc(ri.id) + '）… 結果は自動で反映されます</div>';
+    var apSt = ri && ri.kind === 'approval' ? ri.status : ''; // 承認の結果は上の「本部承認」の枠に出す
+    if (ri && ri.kind === 'approval' && ri.status !== '承認') st = ri.status === '差し戻し' ? '<div class="st ng">↩️ 差し戻されました（' + esc(ri.by || '') + '）。LINE WORKSのグループで理由を確認してください</div>' : '<div class="st wait">承認待ち（依頼番号 ' + esc(ri.id) + '）… 結果は自動で反映されます</div>';
     if (ci && flags.length) st = '<div class="st ok">✅ 警告を確認しました（' + esc(ci.by || '') + '）</div>' + st;
     var mustConf = flags.length && !ci;
     var rows = S.lines.map(function (m) {
@@ -299,7 +300,10 @@
     $('#body').innerHTML =
       '<div class="acts" style="margin-top:0"><button class="b g s" id="back">← 一覧にもどる</button></div>' +
       '<div class="top"><div class="card"><div class="sub">受付 ' + esc(t.reception_number || '') + '　' + hm(t.updated_at || t.created_at) + '　' + (t.status === 'draft' ? '査定中' : '完了') + (S.cust ? '　' + esc(S.cust) + ' 様' : '') + '</div><div class="big">' + yen(t.total_price) + '</div></div>' +
-      '<div class="card' + (need ? ' need' : '') + '"><div class="sub">' + esc(ap.why) + '：' + yen(ap.line) + '以上</div><div class="big">' + (need ? '本部承認が必要です' : '承認は不要です') + '</div></div>' +
+      (apSt === '承認' ? '<div class="card apok"><div class="sub">' + esc(ap.why) + '：' + yen(ap.line) + '以上</div><div class="big">✅ 本部が承認しました</div><div class="sub">' + esc(ri.by || '') + '</div></div>'
+        : apSt === '承認待ち' ? '<div class="card apwait"><div class="sub">' + esc(ap.why) + '：' + yen(ap.line) + '以上</div><div class="big">⏳ 本部の承認待ち</div></div>'
+        : apSt === '差し戻し' ? '<div class="card need"><div class="sub">' + esc(ap.why) + '：' + yen(ap.line) + '以上</div><div class="big">↩️ 差し戻されました</div></div>'
+        : '<div class="card' + (need ? ' need' : '') + '"><div class="sub">' + esc(ap.why) + '：' + yen(ap.line) + '以上</div><div class="big">' + (need ? '本部承認が必要です' : '承認は不要です') + '</div></div>') +
       '<div class="card"><div class="sub">チェック結果</div><div class="big">' + (red.length ? '<span style="color:#c8102e">🚨 ' + red.length + '</span> ' : '') + (flags.length - red.length ? '⚠️ ' + (flags.length - red.length) : '') + (!flags.length ? '<span style="color:#15803d">問題なし</span>' : '') + '</div></div></div>' +
       st +
       (flags.length ? '<div class="warns">' + flags.map(function (f) { return '<div class="w ' + f.lv + '">' + (f.lv === 'red' ? '🚨 ' : '⚠️ ') + esc(f.t) + '<div class="d">' + esc(f.d) + '</div></div>'; }).join('') + '</div>' : '') +
