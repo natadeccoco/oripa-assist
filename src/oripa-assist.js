@@ -72,7 +72,7 @@
   document.body.appendChild(host);
   var root = host.attachShadow({ mode: 'open' });
   root.innerHTML = '<style>' + CSS() + '</style><div class="wrap"><div class="win">' +
-    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-10-29 版T</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
+    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-10-29 版U</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
     (ALL ? '' : '<div class="tabs"><button data-tab="make" class="on">新しく作る</button><button data-tab="refill">補充する</button></div>') +
     '<button class="x" id="close" title="閉じる">×</button></div>' +
     '<div class="bd" id="body"><div class="msg">読み込み中…</div></div></div></div>';
@@ -201,11 +201,20 @@
     ['グラードン', 'カイオーガ', 'レックウザ'], ['ザシアン', 'ザマゼンタ'], ['ホウオウ', 'ルギア'], ['ミュウ', 'ミュウツー'], ['コライドン', 'ミライドン'],
     ['ゼルネアス', 'イベルタル', 'ジガルデ'], ['ファイヤー', 'サンダー', 'フリーザー'], ['ライコウ', 'エンテイ', 'スイクン']
   ];
+  var BOX_PAIRS = [['スカーレットex', 'バイオレットex'], ['古代の咆哮', '未来の一閃'], ['ワイルドフォース', 'サイバージャッジ'], ['ブラックボルト', 'ホワイトフレア'],
+    ['メガブレイブ', 'メガシンフォニア'], ['スペースジャグラー', 'タイムゲイザー'], ['白銀のランス', '漆黒のガイスト'], ['一撃マスター', '連撃マスター'],
+    ['摩天パーフェクト', '蒼空ストリーム'], ['ソード', 'シールド'], ['コレクションサン', 'コレクションムーン'], ['コレクションX', 'コレクションY'], ['ブラックコレクション', 'ホワイトコレクション']];
   var FAM_OF = {}; FAMS.forEach(function (f, i) { f.forEach(function (n) { FAM_OF[n] = i; }); });
   // カード名から「関連のしるし」を作る（同じポケモン・進化系統・仲間・トレーナーとそのポケモン・伝説のペア）
   function relKeys(p) {
     if (p._rk) return p._rk;
     var keys = {}, n = String(p.name || '').replace(/[（(【\[].*$/, '').replace(/\s+/g, ' ').trim();
+    if (p.kind === 'box') { // BOXは同じ弾（名前の違う別商品）と、同じ日に出た対の弾
+      var b = n.replace(/(シュリンク|未開封|強化拡張パック|拡張パック|ハイクラスパック|スペシャルBOX|BOX|ボックス|box)/g, ' ').replace(/(付き|あり|なし)/g, ' ').replace(/\s+/g, ' ').trim();
+      if (b) keys['B:' + b] = 1;
+      BOX_PAIRS.forEach(function (pr, i) { if (pr.some(function (w) { return n.indexOf(w) >= 0; })) keys['BP:' + i] = 1; });
+      return (p._rk = Object.keys(keys));
+    }
     n.split(/[&＆]/).forEach(function (part) {
       part = part.trim(); if (!part) return;
       var poke = part, mt = part.match(/^(.+?)の(.+)$/);
@@ -227,8 +236,10 @@
   }
   function members(p) { return p.set || [p]; }
   // 在庫からセットの候補を作る（シングル・PSAのみ。lo〜hi は2枚の合計マスタ価格）
-  function setPool(list, lo, hi, ok) {
-    var cards = list.filter(function (p) { return (p.kind === 'card' || p.kind === 'psa') && !p.mis && p.sell > 0 && p.sell < hi && ok(p); })
+  function setPool(list, lo, hi, ok, kinds) {
+    kinds = kinds || ['card', 'psa', 'box'];
+    var grp = function (p) { return p.kind === 'box' ? 'b' : 'c'; };
+    var cards = list.filter(function (p) { return kinds.indexOf(p.kind) >= 0 && !p.mis && p.sell > 0 && p.sell < hi && ok(p); })
       .sort(function (a, b) { return b.sell - a.sell; }).slice(0, 800);
     var by = {}; cards.forEach(function (p) { relKeys(p).forEach(function (k) { (by[k] = by[k] || []).push(p); }); });
     var seen = {}, out = [];
@@ -236,7 +247,7 @@
       var g = by[k].slice(0, 40);
       for (var i = 0; i < g.length; i++) for (var j = i + 1; j < g.length; j++) {
         var a = g[i], b = g[j], key = a.id < b.id ? a.id + '_' + b.id : b.id + '_' + a.id;
-        if (seen[key] || a.id === b.id || a.name === b.name) continue; seen[key] = 1;
+        if (seen[key] || a.id === b.id || a.name === b.name || grp(a) !== grp(b)) continue; seen[key] = 1;
         var sm = a.sell + b.sell; if (sm >= lo && sm < hi) out.push(mkSet(a, b));
       }
     });
@@ -296,14 +307,18 @@
     // セット当たり（3,000円・1万円・2.5万円）：TOP・大当たりにちょうどいい1枚が無いとき、関連する2枚のセットを使う
     var setOn = setsOK(price) && !L.free;
     function useSet(sp, role) { sp.set.forEach(function (m) { left[m.id]--; usedIds[m.id] = 1; }); usedIds[sp.id] = 1; hits.push({ p: sp, n: 1, role: role }); }
+    var setGroups = L.dupFirst || L.kinds[0].indexOf('box') >= 0 && L.kinds[0].indexOf('card') < 0 ? [['box'], ['card', 'psa']] : [['card', 'psa'], ['box']]; // 2.5万円などBOX優先の値段はBOX同士を先に
     function bestSet(lo, hi, ws, wantCost) {
-      var c = setPool(HINV, lo, hi, function (p) { return left[p.id] > 0 && !usedIds[p.id]; });
       var sc2 = function (sp) { return Math.abs(Math.log(sp.sell / ws)) * 1.5 + (wantCost ? Math.abs(Math.log(Math.max(sp.cost, 1) / Math.max(wantCost, 1))) * 2.5 : 0); };
-      return c.sort(function (a, b) { return sc2(a) - sc2(b); })[0] || null;
+      for (var gi = 0; gi < setGroups.length; gi++) {
+        var c = setPool(HINV, lo, hi, function (p) { return left[p.id] > 0 && !usedIds[p.id]; }, setGroups[gi]);
+        if (c.length) return c.sort(function (a, b) { return sc2(a) - sc2(b); })[0];
+      }
+      return null;
     }
     // 1) TOP と ラストワン賞
     var top = pickOne(L.top * 0.75, L.top * 1.35, L.top) || pickOne(L.big[0], 1e9, L.top);
-    var forceSet = setOn && S.forceSet && !L.dupFirst, bigSetDone = false; // 2.5万円（BOX優先）はBOXがないときだけ
+    var forceSet = setOn && S.forceSet, bigSetDone = false;
     var topSet = setOn && (forceSet || !top || top.sell < L.top * 0.75 * price || top.sell >= L.top * 1.35 * price) ? bestSet(L.top * 0.75 * price, L.top * 1.35 * price, L.top * price) : null;
     if (topSet) { useSet(topSet, 'TOP'); top = topSet; }
     else if (top) { take(top, 'TOP'); if (top.sell < L.top * 0.75 * price || top.sell >= L.top * 1.35 * price) warn.push('TOPの狙いはマスタ' + yen(L.top * price) + '前後ですが、在庫にないので近いもの（' + yen(top.sell) + '）にしています'); }
@@ -538,7 +553,7 @@
       '<input id="pfree" type="number" placeholder="その他" value="' + (prices.indexOf(cur.price) < 0 ? cur.price : '') + '"></div></div>' +
       '<div class="f"><div class="lb">口数</div><input id="init" type="number" value="' + init + '"> 口</div>' +
       '<div class="f"><div class="lb">最初の原価率（上限）</div><input id="costr" type="number" step="1" value="' + Math.round(costr * 100) + '"> %<div class="hint">ルール：' + pct(L.costMin) + '〜' + pct(L.costMax) + '（' + L.base.toLocaleString() + '円帯）</div></div>' +
-      (setsOK(cur.price) && !L.dupFirst ? '<div class="f"><div class="lb">セット当たり</div><label class="ck"><input type="checkbox" id="useset"' + (cur.useSet ? ' checked' : '') + '> TOP・大当たりにセットを入れる</label><div class="hint">関連する2枚（同じポケモン・仲間・トレーナーとそのポケモン・伝説のペア）</div></div>' : '') +
+      (setsOK(cur.price) ? '<div class="f"><div class="lb">セット当たり</div><label class="ck"><input type="checkbox" id="useset"' + (cur.useSet ? ' checked' : '') + '> TOP・大当たりにセットを入れる</label><div class="hint">関連する2枚（同じポケモン・仲間・トレーナーとそのポケモン・伝説のペア／BOXは同じ弾・対になる弾）' + (L.dupFirst ? '。BOX同士を優先します' : '') + '</div></div>' : '') +
       '<div class="f go"><button class="primary" id="go">提案する</button></div>' +
       '</div>' + afterForm();
     bindModeTabs(); bindStoreChips();
@@ -726,7 +741,7 @@
     if (!setsOK(pt.price) || (h.role !== 'TOP' && h.role !== '大当たり')) return '';
     var out = '<div class="mh2">セット当たり（関連する2枚で1つの当たり）</div>';
     if (h.p.set) out += '<div class="setbar">' + h.p.set.map(function (m, k) { return '<button class="ghost" data-unset="' + k + '">セットを外して「' + esc(m.name) + '」だけ残す</button>'; }).join('') + '</div>';
-    else if (h.p.kind === 'card' || h.p.kind === 'psa') out += '<div class="setbar"><button class="ghost" data-mkset>このカードと関連するカードでセットにする</button></div><div id="relr"></div>';
+    else if (h.p.kind === 'card' || h.p.kind === 'psa' || h.p.kind === 'box') out += '<div class="setbar"><button class="ghost" data-mkset>このカードと関連するカードでセットにする</button></div><div id="relr"></div>';
     return out + '<div class="setbar"><button class="ghost" data-setc>' + esc(h.role) + 'の金額に合うセットの候補を見る</button></div><div id="setr"></div>';
   }
   function bindSetSwap(m, pt, hi) {
@@ -746,7 +761,7 @@
     var t = Math.max(h.p.cost, 1);
     var mk = m.querySelector('[data-mkset]');
     if (mk) mk.onclick = function () {
-      var base = h.p, list = S.inv.filter(function (q) { return (q.kind === 'card' || q.kind === 'psa') && !q.mis && free(q) && related(base, q); })
+      var base = h.p, list = S.inv.filter(function (q) { return (base.kind === 'box' ? q.kind === 'box' : (q.kind === 'card' || q.kind === 'psa')) && !q.mis && free(q) && related(base, q); })
         .map(function (q) { return mkSet(base, q); }).sort(function (a, b) { return (a.sell >= lo && a.sell < hi2 ? 0 : 1) - (b.sell >= lo && b.sell < hi2 ? 0 : 1) || b.sell - a.sell; });
       showSets(m.querySelector('#relr'), list);
     };
