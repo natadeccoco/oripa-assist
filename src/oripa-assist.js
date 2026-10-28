@@ -72,7 +72,7 @@
   document.body.appendChild(host);
   var root = host.attachShadow({ mode: 'open' });
   root.innerHTML = '<style>' + CSS() + '</style><div class="wrap"><div class="win">' +
-    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-10-29 版AA</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
+    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-10-29 版AB</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
     (ALL ? '' : '<div class="tabs"><button data-tab="make" class="on">新しく作る</button><button data-tab="refill">補充する</button></div>') +
     '<button class="x" id="close" title="閉じる">×</button></div>' +
     '<div class="bd" id="body"><div class="msg">読み込み中…</div></div></div></div>';
@@ -1251,17 +1251,16 @@
     var pr = await api('/api/store/' + S.sid + '/product?original_pack_item_id=' + item.id);
     var contents = (item.original_pack_products || []);
     var prods = {}; (pr.products || []).forEach(function (p) { prods[p.id] = p; });
-    var hits = [];
+    var hits = [], RL = learnFor(item.sell_price), showAll = !!(RL.fill && RL.fill.kind === 'box'); // 2.5万円など下枠もBOXのオリパは、下枠まで全部出す
     contents.forEach(function (c) {
       var p = prods[c.product_id] || {}; if (/【@\s*\d+】/.test(c.product__display_name || '')) return;
       var cost = Number(p.average_wholesale_price) || 0, sell0 = Number(p.sell_price) || 0;
-      if (Math.max(sell0, cost) < item.sell_price) return; // 下枠（口単価未満）は出さない。小当たりまで全部出す
+      if (!showAll && Math.max(sell0, cost) < item.sell_price) return; // 下枠（口単価未満）は出さない。小当たりまで全部出す
       var ex = hits.find(function (h) { return h.id === c.product_id; });
       if (ex) ex.n += c.item_count; else hits.push({ id: c.product_id, name: c.product__displayNameWithMeta || c.product__display_name, img: c.product__image_url, n: c.item_count, cost: cost, sell: p.sell_price || 0 });
     });
     hits.sort(function (a, b) { return (b.sell || b.cost) - (a.sell || a.cost) || b.cost - a.cost; });
-    var RL = learnFor(item.sell_price);
-    hits.forEach(function (h, k) { h.role = k === 0 ? 'TOP' : roleOf(RL, item.sell_price, { sell: h.sell || h.cost }); });
+    hits.forEach(function (h, k) { h.role = k === 0 ? 'TOP' : Math.max(h.sell, h.cost) < item.sell_price ? '下枠' : roleOf(RL, item.sell_price, { sell: h.sell || h.cost }); });
     if (!hits.length) { box.innerHTML = '<div class="msg sub">このオリパには、口単価より原価が高い当たりが登録されていません（パックオリパなど）</div>'; return; }
     var nAll = hits.reduce(function (s, h) { return s + h.n; }, 0);
     box.innerHTML = '<div class="mh2">「' + esc(item.display_name) + '」の当たり（' + hits.length + '種類・' + nAll + '枚）— 出た当たりを選んでください</div>' +
