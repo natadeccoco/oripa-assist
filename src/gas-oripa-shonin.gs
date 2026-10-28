@@ -142,6 +142,7 @@ function userName(userId) {
 /* ---------- ツールから ---------- */
 function doGet(e) {
   var p = (e && e.parameter) || {};
+  if (/^k/.test(p.action || '')) return kaitoriGet(p); // 買取チェック（gas-kaitori.gs）
   if (p.action === 'status') {
     var row = findRow(p.id); if (!row) return json({ ok: false, error: '依頼が見つかりません' });
     var v = row.values;
@@ -178,6 +179,7 @@ function doPost(e) {
   if (p.k) return callback(e, p.k);
   try {
     var d = JSON.parse(e.postData.contents);
+    if (d.action === 'kaitori') return kaitoriPost(d); // 買取チェック（gas-kaitori.gs）
     if (d.action === 'share') { // 足りない当たりを「在庫共有」グループで募集する
       var sc = P.getProperty('LW_SHARE_CHANNEL');
       if (!sc) return json({ ok: false, error: '在庫共有グループがまだ登録されていません（本部に連絡してください）' });
@@ -242,6 +244,7 @@ function callback(e, k) {
       return ContentService.createTextOutput('ok');
     }
     if (!data) return ContentService.createTextOutput('ok');
+    if (/^k(approve|reject):/.test(String(data))) { kaitoriCallback(ev, String(data)); return ContentService.createTextOutput('ok'); } // 買取チェック
     var sp = String(data).match(/^shipped:(.+)$/);
     if (sp) { markShipped(sp[1], userName(ev.source && ev.source.userId), 'button'); return ContentService.createTextOutput('ok'); }
     var m = String(data).match(/^(approve|reject):(.+)$/); if (!m) return ContentService.createTextOutput('ok');
