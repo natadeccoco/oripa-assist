@@ -6,7 +6,7 @@
   if (location.hostname !== 'pos.mycalinks.com') { alert('マイカ（pos.mycalinks.com）を開いてから押してください'); return; }
   var old = document.getElementById('ndk-kaitori-host'); if (old) old.remove();
 
-  var VERSION = '2026-10-29 版C';
+  var VERSION = '2026-10-29 版D';
   var GAS = 'https://script.google.com/macros/s/AKfycbwXHuu-X3L0qzJhvaszEIm-1xdeNIqJACQ0uM7mz5Q0hvwfdF9IuQiTKr3qmscNVmnhcQ/exec';
   var FB_URL = 'https://script.google.com/macros/s/AKfycbwl-ZCZ1LyefvSzEGkBEpTFTuFyvW0p-AYye6jBWaLP9t7-bC9_Owfeh4jKScNkFys6Fw/exec';
   var SHORT = { 322: '柏', 323: '津田沼', 324: '松戸', 325: '横浜', 326: '中野', 327: '町田', 328: '千葉中央', 390: '通販', 409: 'お台場' };
@@ -84,6 +84,7 @@
     '.thumbs{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}.thumbs img{width:70px;height:70px;object-fit:cover;border-radius:6px}' +
     '.st{padding:10px 14px;border-radius:10px;font-weight:800;margin:10px 0}.st.wait{background:#fff4c2}.st.ok{background:#e3f4e6;color:#15803d}.st.ng{background:#fff0f2;color:#c8102e}' +
     '.fb{position:absolute;right:18px;bottom:18px}' +
+    '.photo{margin:10px 0;padding:10px 12px;border-radius:8px;background:#e3f4e6;color:#14532d;font-weight:700;font-size:13px}' +
     '</style>' +
     '<div class="bg"><div class="win">' +
     '<div class="hd"><h1><b>買取</b>チェック</h1><span class="v">' + VERSION + '</span>' +
@@ -332,7 +333,7 @@
       '<label>あなたの名前（必須）<input id="rq" value="' + esc(S.staff) + '"></label>' +
       (approval ? '<label>お客様名（カナ）<input id="cu" value="' + esc(S.cust) + '"></label>' +
         '<label>理由<select id="rs">' + (need ? '<option>買取合計が承認ライン以上</option>' : '') + '<option>古いカードで不安</option><option>状態の判断に迷う</option><option>真贋が不安</option><option>その他</option></select></label>' +
-        '<label>写真（商品・明細画面など。何枚でも）<input id="ph" type="file" accept="image/*" multiple><div class="thumbs" id="th"></div></label>' : '') +
+        '<div class="photo">📷 写真（商品・明細画面など）は、LINE WORKSの「オリパ・買取共有」グループに直接送ってください。</div>' : '') +
       '<label>ひとこと（任意）<textarea id="cm" rows="3" placeholder="' + (approval ? '例：151のBOX、サイドの端が少し空いています' : '例：強化買取の価格なので問題ありません') + '"></textarea></label>' +
       (approval ? '<div class="sub">' + esc(SHORT[S.sid]) + '店の「オリパ・買取共有」グループ（LINE WORKS）に、下の画像と「承認する／差し戻す」ボタンが届きます。役員が押すと、この画面に結果が出ます。</div><div class="aprev"><div class="sub">送る画像を作っています…</div></div>'
         : '<div class="sub">記録だけ残ります（LINE WORKSには送りません）。</div>') +
@@ -340,7 +341,7 @@
     R.querySelector('.win').appendChild(m);
     var files = [];
     var imgP = approval ? sheetImage().then(function (b64) { var bx = m.querySelector('.aprev'); if (bx) bx.innerHTML = '<img src="data:image/jpeg;base64,' + b64 + '" style="width:100%;border-radius:8px;border:1px solid #e5e2da">'; return b64; }, function () { var bx = m.querySelector('.aprev'); if (bx) bx.innerHTML = '<div class="sub">画像を作れなかったので、文章で送ります</div>'; return ''; }) : Promise.resolve('');
-    if (approval) m.querySelector('#ph').onchange = function () { files = Array.from(this.files || []).slice(0, 10); m.querySelector('#th').innerHTML = files.map(function (f) { return '<img src="' + URL.createObjectURL(f) + '">'; }).join(''); };
+    if (approval && m.querySelector('#ph')) m.querySelector('#ph').onchange = function () { files = Array.from(this.files || []).slice(0, 10); m.querySelector('#th').innerHTML = files.map(function (f) { return '<img src="' + URL.createObjectURL(f) + '">'; }).join(''); };
     m.querySelector('#x').onclick = function () { m.remove(); };
     m.querySelector('#ok').onclick = async function () {
       var b = this, name = m.querySelector('#rq').value.trim();
