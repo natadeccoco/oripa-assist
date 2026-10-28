@@ -4,7 +4,7 @@
  *   GET  ?action=kprices  … 買取表スプレッドシートの全タブの価格（ツールが突き合わせに使う）
  *   GET  ?action=kconfig  … 承認ライン（店舗別・スタッフ別）
  *   GET  ?action=kstatus&id=… … 承認依頼の結果
- *   POST {action:'kaitori', kind:'approval'|'confirm', …} … 承認依頼／警告を確認した記録を店舗のグループへ
+ *   POST {action:'kaitori', kind:'approval'|'confirm', …} … 承認依頼は店舗のグループへ（中身は1枚の画像）／警告の確認は記録だけ
  * LINE WORKSのボタン：postback 'kapprove:ID' / 'kreject:ID'（callback() から kaitoriCallback() に回す）
  * 履歴は「オリパ承認履歴」スプレッドシート（SHEET_ID）の「買取」タブ、設定は「買取設定」タブ。
  */
@@ -106,21 +106,20 @@ function kaitoriPost(d) {
     kSheet().appendRow([id, new Date(), approval ? '承認依頼' : '警告の確認', d.store, d.requester, d.customer || '', Number(d.total) || 0, Number(d.line) || '', Number(d.warnCount) || 0,
       String(d.text || '').slice(0, 45000), String(d.warnText || '').slice(0, 45000), d.comment || '', approval ? '承認待ち' : '確認済み', approval ? '' : d.requester, approval ? '' : new Date(), d.txId || '', d.staff || '']);
   } finally { lock.releaseLock(); }
+  if (!approval) return json({ ok: true, id: id }); // 警告の確認は査定者向け：記録だけ残し、グループには送らない
   var yen = function (n) { return Number(n || 0).toLocaleString() + '円'; };
-  var head = approval
-    ? '【買取承認依頼】' + d.store + '店　依頼者：' + d.requester + '\n' + (d.customer ? d.customer + ' 様　' : '') + yen(d.total) + (d.reason ? '（' + d.reason + '）' : '') + '\n依頼番号：' + id
-    : '【買取チェック】' + d.store + '店　' + (d.customer ? d.customer + ' 様　' : '') + yen(d.total) + '\n警告' + (d.warnCount || 0) + '件を ' + d.requester + ' さんが確認しました（' + id + '）';
-  var body = head + (d.warnText ? '\n\n' + d.warnText : '') + (approval && d.text ? '\n\n［明細］\n' + d.text : '') + (d.comment ? '\n\nコメント：' + d.comment : '');
-  kSplit(body).forEach(function (x) { send(ch, { type: 'text', text: x }); });
+  var head = '【買取承認依頼】' + d.store + '店　依頼者：' + d.requester + '\n' + (d.customer ? d.customer + ' 様　' : '') + yen(d.total) + (d.reason ? '（' + d.reason + '）' : '') + '\n依頼番号：' + id;
   var imgErr = '';
+  send(ch, { type: 'text', text: (head + (d.comment ? '\nコメント：' + d.comment : '')).slice(0, 1990) });
+  var sentSheet = false;
+  if (d.image) { try { send(ch, { type: 'image', fileId: uploadImage(d.image, 'kaitori_' + id + '.jpg') }); sentSheet = true; } catch (e) { imgErr = String(e.message || e); console.error(imgErr); } }
+  if (!sentSheet && d.text) kSplit('［明細］\n' + d.text).forEach(function (x) { send(ch, { type: 'text', text: x }); });
   (d.images || []).slice(0, 10).forEach(function (b64, i) {
-    try { send(ch, { type: 'image', fileId: uploadImage(b64, 'kaitori_' + id + '_' + (i + 1) + '.jpg') }); } catch (e) { imgErr = String(e.message || e); console.error(imgErr); }
+    try { send(ch, { type: 'image', fileId: uploadImage(b64, 'kaitori_' + id + '_photo' + (i + 1) + '.jpg') }); } catch (e) { imgErr = String(e.message || e); console.error(imgErr); }
   });
-  if (approval) {
-    send(ch, { type: 'button_template', contentText: '依頼番号 ' + id + '（' + d.store + '店・' + yen(d.total) + '）の買取を承認しますか？',
-      actions: [{ type: 'message', label: '承認する', text: '承認する（' + id + '）', postback: 'kapprove:' + id },
-                { type: 'message', label: '差し戻す', text: '差し戻す（' + id + '）', postback: 'kreject:' + id }] });
-  }
+  send(ch, { type: 'button_template', contentText: '依頼番号 ' + id + '（' + d.store + '店・' + yen(d.total) + '）の買取を承認しますか？',
+    actions: [{ type: 'message', label: '承認する', text: '承認する（' + id + '）', postback: 'kapprove:' + id },
+              { type: 'message', label: '差し戻す', text: '差し戻す（' + id + '）', postback: 'kreject:' + id }] });
   return json({ ok: true, id: id, imageErr: imgErr });
 }
 
