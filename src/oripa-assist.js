@@ -72,7 +72,7 @@
   document.body.appendChild(host);
   var root = host.attachShadow({ mode: 'open' });
   root.innerHTML = '<style>' + CSS() + '</style><div class="wrap"><div class="win">' +
-    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-10-29 版Y</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
+    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-10-29 版Z</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
     (ALL ? '' : '<div class="tabs"><button data-tab="make" class="on">新しく作る</button><button data-tab="refill">補充する</button></div>') +
     '<button class="x" id="close" title="閉じる">×</button></div>' +
     '<div class="bd" id="body"><div class="msg">読み込み中…</div></div></div></div>';
@@ -1254,17 +1254,20 @@
     var hits = [];
     contents.forEach(function (c) {
       var p = prods[c.product_id] || {}; if (/【@\s*\d+】/.test(c.product__display_name || '')) return;
-      var cost = Number(p.average_wholesale_price) || 0;
-      if (cost < item.sell_price) return;
+      var cost = Number(p.average_wholesale_price) || 0, sell0 = Number(p.sell_price) || 0;
+      if (Math.max(sell0, cost) < item.sell_price) return; // 下枠（口単価未満）は出さない。小当たりまで全部出す
       var ex = hits.find(function (h) { return h.id === c.product_id; });
       if (ex) ex.n += c.item_count; else hits.push({ id: c.product_id, name: c.product__displayNameWithMeta || c.product__display_name, img: c.product__image_url, n: c.item_count, cost: cost, sell: p.sell_price || 0 });
     });
-    hits.sort(function (a, b) { return b.cost - a.cost; });
+    hits.sort(function (a, b) { return (b.sell || b.cost) - (a.sell || a.cost) || b.cost - a.cost; });
+    var RL = learnFor(item.sell_price);
+    hits.forEach(function (h, k) { h.role = k === 0 ? 'TOP' : roleOf(RL, item.sell_price, { sell: h.sell || h.cost }); });
     if (!hits.length) { box.innerHTML = '<div class="msg sub">このオリパには、口単価より原価が高い当たりが登録されていません（パックオリパなど）</div>'; return; }
-    box.innerHTML = '<div class="mh2">「' + esc(item.display_name) + '」で出た当たりを選んでください</div>' +
+    var nAll = hits.reduce(function (s, h) { return s + h.n; }, 0);
+    box.innerHTML = '<div class="mh2">「' + esc(item.display_name) + '」の当たり（' + hits.length + '種類・' + nAll + '枚）— 出た当たりを選んでください</div>' +
       '<div class="cards sel">' + hits.map(function (h, k) {
-        return '<button class="cd pickable" data-k="' + k + '"><div class="im">' + (h.img ? '<img src="' + esc(h.img) + '">' : '<div class="noimg">' + esc(h.name.slice(0, 14)) + '</div>') + '</div><div class="nm">' + esc(h.name) + '</div><div class="cs">原価 ' + yen(h.cost) + '</div></button>';
-      }).join('') + '</div><div id="rsug"></div>';
+        return '<button class="cd pickable" data-k="' + k + '"><div class="im">' + (h.img ? '<img src="' + esc(h.img) + '">' : '<div class="noimg">' + esc(h.name.slice(0, 14)) + '</div>') + (h.n > 1 ? '<span class="cnt">×' + h.n + '</span>' : '') + '<span class="role r-' + esc(h.role) + '">' + esc(h.role) + '</span></div><div class="nm">' + esc(h.name) + '</div>' + (h.sell ? '<div class="pr">マスタ ' + yen(h.sell) + '</div>' : '') + '<div class="cs">原価 ' + yen(h.cost) + '</div></button>';
+      }).join('') + '</div><div class="sm">封入時の中身です（すでに出た当たりも含みます）。</div><div id="rsug"></div>';
     root.querySelectorAll('.pickable').forEach(function (b) { b.onclick = function () { root.querySelectorAll('.pickable').forEach(function (x) { x.classList.remove('on'); }); b.classList.add('on'); suggestRefill(item, hits[Number(b.dataset.k)]); }; });
   }
 
