@@ -159,7 +159,7 @@
     if (isBox) {
       var k = boxKey(dn), noShrink = /シュリンク(無|なし)/.test(dn);
       var hit = S.idx.box.filter(function (r) { return r.bk === k; });
-      if (!hit.length) hit = S.idx.box.filter(function (r) { return r.bk.length >= 3 && k.length >= 3 && (r.bk.indexOf(k) >= 0 || k.indexOf(r.bk) >= 0); });
+      if (!hit.length) hit = S.idx.box.filter(function (r) { var a = r.bk, b = k; return a.length >= 3 && b.length >= 3 && Math.min(a.length, b.length) / Math.max(a.length, b.length) >= 0.7 && (a.indexOf(b) >= 0 || b.indexOf(a) >= 0); });
       o.refs = hit.map(function (r) { return { r: r, y: noShrink && r.y2 != null ? r.y2 : r.y }; }).filter(function (x) { return x.y; });
       return o;
     }
@@ -205,6 +205,8 @@
     if (!m.isBox && !m.hanyo && cnt >= RULE.sameCard && unit >= RULE.sameCardMin) f.push({ lv: 'yel', t: '同じカードが' + cnt + '枚です。枚数をご確認ください', d: label + ' × ' + cnt + '（' + yen(unit) + ' × ' + cnt + ' ＝ ' + yen(unit * cnt) + '）' });
     m.flags = f; return m;
   }
+
+  window.__ndkKaitoriDebug = { S: S, judge: judge, match: match };
 
   /* ---------- 一覧 ---------- */
   async function loadList() {
