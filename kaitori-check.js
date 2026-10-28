@@ -6,7 +6,7 @@
   if (location.hostname !== 'pos.mycalinks.com') { alert('マイカ（pos.mycalinks.com）を開いてから押してください'); return; }
   var old = document.getElementById('ndk-kaitori-host'); if (old) old.remove();
 
-  var VERSION = '2026-10-29 版B';
+  var VERSION = '2026-10-29 版C';
   var GAS = 'https://script.google.com/macros/s/AKfycbwXHuu-X3L0qzJhvaszEIm-1xdeNIqJACQ0uM7mz5Q0hvwfdF9IuQiTKr3qmscNVmnhcQ/exec';
   var FB_URL = 'https://script.google.com/macros/s/AKfycbwl-ZCZ1LyefvSzEGkBEpTFTuFyvW0p-AYye6jBWaLP9t7-bC9_Owfeh4jKScNkFys6Fw/exec';
   var SHORT = { 322: '柏', 323: '津田沼', 324: '松戸', 325: '横浜', 326: '中野', 327: '町田', 328: '千葉中央', 390: '通販', 409: 'お台場' };
@@ -68,6 +68,8 @@
     'td{padding:7px 8px;border-top:1px solid #eceae4;text-align:right;white-space:nowrap;vertical-align:top}' +
     'td.nm{white-space:normal;min-width:260px}td.nm .m{color:#888;font-size:11.5px}' +
     'td.cnt{font-size:20px;font-weight:900}td.cnt.many{color:#c8102e}' +
+    'td.th{width:58px;padding:5px 4px 5px 8px}td.th img{width:48px;height:66px;object-fit:contain;border-radius:4px;background:#f2f0ea;display:block}td.th .noimg{display:block;width:48px;height:66px;border-radius:4px;background:#f2f0ea}' +
+    '.pill.cond{background:#1d1d22;color:#fff}' +
     'tr.red td{background:#fff0f2}tr.yel td{background:#fffbe6}' +
     'td .f{display:block;font-size:12px;font-weight:700;white-space:normal;text-align:left;margin-top:3px}td .f.red{color:#c8102e}td .f.yel{color:#8a6100}' +
     '.ratio{font-weight:800}.ratio.red{color:#c8102e}' +
@@ -259,10 +261,11 @@
     var ids = []; (t.transaction_carts || []).forEach(function (c) { if (ids.indexOf(c.product_id) < 0) ids.push(c.product_id); });
     var map = {};
     await Promise.all(ids.slice(0, 80).map(function (id) {
-      return api('/api/store/' + S.sid + '/product?id=' + id).then(function (j) { var p = ((j && j.products) || [])[0]; if (p) map[id] = p.image_url || ''; }).catch(function () { });
+      return api('/api/store/' + S.sid + '/product?id=' + id).then(function (j) { var p = ((j && j.products) || [])[0]; if (p) map[id] = { img: p.image_url || '', cond: p.condition_option_display_name || '' }; }).catch(function () { });
     }));
     if (S.tx !== t) return;
-    S.lines.forEach(function (m, i) { m.img = map[(t.transaction_carts[i] || {}).product_id] || ''; });
+    S.lines.forEach(function (m, i) { var x = map[(t.transaction_carts[i] || {}).product_id] || {}; m.img = x.img || ''; if (!m.cond && x.cond) m.cond = x.cond; });
+    renderDetail();
   }
   function stKey() { return 'ndk_kaitori_req_' + S.tx.id; }
   function reqInfo() { try { return JSON.parse(localStorage.getItem(stKey()) || 'null'); } catch (e) { return null; } }
@@ -284,7 +287,7 @@
     var rows = S.lines.map(function (m) {
       var lv = m.flags.some(function (f) { return f.lv === 'red'; }) ? 'red' : m.flags.length ? 'yel' : '';
       var ref = m.ref ? yen(m.ref) + '<div class="sub">' + esc((m.refs[0] || {}).r ? m.refs[0].r.t : '') + '</div>' : '<span class="sub">' + esc(m.note || (m.hanyo ? '汎用' : '買取表になし')) + '</span>';
-      return '<tr class="' + lv + '"><td class="l nm"><b>' + esc(m.dn) + '</b>' + (m.cond ? ' <span class="pill gr">' + esc(m.cond) + '</span>' : '') +
+      return '<tr class="' + lv + '"><td class="th">' + (m.img ? '<img src="' + esc(m.img) + '" loading="lazy">' : '<span class="noimg"></span>') + '</td><td class="l nm"><b>' + esc(m.dn) + '</b>' + (m.cond ? ' <span class="pill cond">' + esc(m.cond) + '</span>' : '') +
         m.flags.map(function (f) { return '<span class="f ' + f.lv + '">' + (f.lv === 'red' ? '🚨 ' : '⚠️ ') + esc(f.t) + '</span>'; }).join('') + '</td>' +
         '<td class="cnt' + (m.cnt >= 2 ? ' many' : '') + '">×' + m.cnt + '</td><td><b>' + yen(m.unit) + '</b></td><td>' + ref + '</td>' +
         '<td><span class="ratio' + (m.ratio && m.ratio >= RULE.high ? ' red' : '') + '">' + (m.ratio ? Math.round(m.ratio * 100) + '%' : '-') + '</span></td><td><b>' + yen(m.unit * m.cnt) + '</b></td></tr>';
@@ -300,7 +303,7 @@
       (mustConf ? '<button class="b" id="conf">警告を見直しました</button>' : '') +
       (ri && ri.status !== '差し戻し' ? '' : need ? '<button class="b r" id="req"' + (mustConf ? ' disabled title="先に警告を見直してください"' : '') + '>本部に承認を依頼する</button>' : '<button class="b g" id="req"' + (mustConf ? ' disabled' : '') + '>本部に承認を依頼（任意：古いカードで不安な時など）</button>') + '</div>' +
       (mustConf ? '<div class="sub" style="margin:-6px 0 10px">警告はあなた（査定した人）への確認です。マイカの明細を見直して、直したら「更新」、問題なければ「警告を見直しました」を押してください。' + (need ? 'そのあと本部に承認を依頼できます。' : '') + '</div>' : '') +
-      '<table><tr><th class="l">商品</th><th>数</th><th>入力単価</th><th>買取表</th><th>買取表比</th><th>小計</th></tr>' + rows + '</table>' +
+      '<table><tr><th></th><th class="l">商品</th><th>数</th><th>入力単価</th><th>買取表</th><th>買取表比</th><th>小計</th></tr>' + rows + '</table>' +
       '<div class="sub" style="margin-top:8px">買取表：シングルはA 100%／A- 90〜60%／B 50〜20%／C 20〜5%／D 5%以下（Aでも傷・センタリングで80%程度あり）、PSAは85%まで、BOXは60%まで。買取表の1.5倍以上は🚨になります。</div>';
     $('#back').onclick = function () { loadList(); };
     if ($('#req')) $('#req').onclick = function () { if (!this.disabled) openSend('approval'); };
