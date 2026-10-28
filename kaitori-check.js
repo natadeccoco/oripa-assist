@@ -6,7 +6,7 @@
   if (location.hostname !== 'pos.mycalinks.com') { alert('マイカ（pos.mycalinks.com）を開いてから押してください'); return; }
   var old = document.getElementById('ndk-kaitori-host'); if (old) old.remove();
 
-  var VERSION = '2026-10-29 版D';
+  var VERSION = '2026-10-29 版E';
   var GAS = 'https://script.google.com/macros/s/AKfycbwXHuu-X3L0qzJhvaszEIm-1xdeNIqJACQ0uM7mz5Q0hvwfdF9IuQiTKr3qmscNVmnhcQ/exec';
   var FB_URL = 'https://script.google.com/macros/s/AKfycbwl-ZCZ1LyefvSzEGkBEpTFTuFyvW0p-AYye6jBWaLP9t7-bC9_Owfeh4jKScNkFys6Fw/exec';
   var SHORT = { 322: '柏', 323: '津田沼', 324: '松戸', 325: '横浜', 326: '中野', 327: '町田', 328: '千葉中央', 390: '通販', 409: 'お台場' };
@@ -157,7 +157,8 @@
     var dn = c.product__displayNameWithMeta || c.product_name || '', nm = c.product_name || dn;
     var isBox = c.product_category_name === 'ボックス' || /BOX|ボックス/i.test(dn);
     var psaM = dn.match(/PSA\s*(\d+)/i), isPsa = !!psaM, hanyo = /【@|ポケモン\/トレーナーズ/.test(dn);
-    var o = { dn: dn, isBox: isBox, isPsa: isPsa, hanyo: hanyo, refs: [], sibs: [], cond: ((dn.match(/《([^》]*)》/) || [])[1] || '') };
+    var at = dn.normalize('NFKC').match(/【@\s*(\d+)\s*】/);
+    var o = { dn: dn, cat: c.product_category_name || '', isBox: isBox, isPsa: isPsa, hanyo: hanyo, at: at ? Number(at[1]) : null, refs: [], sibs: [], cond: ((dn.match(/《([^》]*)》/) || [])[1] || '') };
     if (hanyo) return o;
     if (isBox) {
       var k = boxKey(dn), noShrink = /シュリンク(無|なし)/.test(dn);
@@ -196,7 +197,8 @@
     m.ref = main ? main.y : null; m.refMax = refMax || null; m.unit = unit; m.cnt = cnt;
     m.ratio = m.ref ? unit / m.ref : null;
     var label = m.dn + (m.cond && m.dn.indexOf(m.cond) < 0 ? '《' + m.cond + '》' : '');
-    if (m.hanyo && unit >= RULE.hanyo) f.push({ lv: 'red', t: '汎用商品に' + yen(unit) + 'が入っています。商品の選び間違いではありませんか？', d: label + '　入力 ' + yen(unit) + ' × ' + cnt });
+    if (m.hanyo && m.at != null && unit !== m.at) f.push({ lv: 'red', t: 'トレーナーズ【@' + m.at + '】なのに単価が' + yen(unit) + 'です。単価をご確認ください', d: label + '　単価は ' + yen(m.at) + ' のはず → 入力 ' + yen(unit) + ' × ' + cnt });
+    else if (m.hanyo && m.at == null && unit >= RULE.hanyo) f.push({ lv: 'red', t: '汎用商品に' + yen(unit) + 'が入っています。商品の選び間違いではありませんか？', d: label + '　入力 ' + yen(unit) + ' × ' + cnt });
     if (m.refMax && unit >= m.refMax * RULE.high) {
       var x = unit / m.ref, xs = x >= 10 ? Math.round(x) : Math.round(x * 10) / 10;
       f.push({ lv: 'red', t: '買取表の' + xs + '倍の金額です。ご確認ください' + (x >= 5 ? '（桁の打ち間違いではありませんか？）' : ''), d: label + '　買取表 ' + yen(m.ref) + (refMax > m.ref ? '（強化買取 ' + yen(refMax) + '）' : '') + ' → 入力 ' + yen(unit) });
@@ -307,8 +309,21 @@
       '<table><tr><th></th><th class="l">商品</th><th>数</th><th>入力単価</th><th>買取表</th><th>買取表比</th><th>小計</th></tr>' + rows + '</table>' +
       '<div class="sub" style="margin-top:8px">買取表：シングルはA 100%／A- 90〜60%／B 50〜20%／C 20〜5%／D 5%以下（Aでも傷・センタリングで80%程度あり）、PSAは85%まで、BOXは60%まで。買取表の1.5倍以上は🚨になります。</div>';
     $('#back').onclick = function () { loadList(); };
-    if ($('#req')) $('#req').onclick = function () { if (!this.disabled) openSend('approval'); };
+    if ($('#req')) $('#req').onclick = function () { if (!this.disabled) countCheck(function () { openSend('approval'); }); };
     if ($('#conf')) $('#conf').onclick = function () { openSend('confirm'); };
+  }
+
+  // 本部承認の前に：同じカード・BOXが2枚以上ある行の枚数を確認（トレーナーズ・サプライは除く）
+  function countCheck(next) {
+    var list = S.lines.filter(function (m) { return !m.hanyo && m.cat !== 'サプライ' && m.cnt >= 2; });
+    if (!list.length) { next(); return; }
+    var m = document.createElement('div'); m.className = 'md';
+    m.innerHTML = '<div class="mbox"><div class="mh">枚数はあっていますか？</div><div class="sub" style="margin-bottom:8px">2枚（2個）以上の商品です。実物の枚数とマイカの数をもう一度数えてください。</div>' +
+      '<table>' + list.map(function (q) { return '<tr><td class="th">' + (q.img ? '<img src="' + esc(q.img) + '">' : '<span class="noimg"></span>') + '</td><td class="l nm"><b>' + esc(q.dn) + '</b>' + (q.cond ? ' <span class="pill cond">' + esc(q.cond) + '</span>' : '') + '<div class="sub">' + yen(q.unit) + ' × ' + q.cnt + ' ＝ ' + yen(q.unit * q.cnt) + '</div></td><td class="cnt many" style="font-size:30px">×' + q.cnt + '</td></tr>'; }).join('') + '</table>' +
+      '<div class="acts" style="justify-content:flex-end"><button class="b g" id="x">ちがう（マイカを直す）</button><button class="b r" id="ok">枚数はあっています</button></div></div>';
+    R.querySelector('.win').appendChild(m);
+    m.querySelector('#x').onclick = function () { m.remove(); };
+    m.querySelector('#ok').onclick = function () { m.remove(); S.countOk = S.tx && S.tx.id; next(); };
   }
 
   function lineText(m) { return '・' + m.dn + (m.cond && m.dn.indexOf(m.cond) < 0 ? '《' + m.cond + '》' : '') + ' ×' + m.cnt + '　' + yen(m.unit) + (m.ref ? '（買取表 ' + yen(m.ref) + '）' : ''); }
@@ -355,7 +370,7 @@
         var body = { action: 'kaitori', kind: kind, store: SHORT[S.sid], requester: name, customer: approval ? m.querySelector('#cu').value.trim() : S.cust,
           total: t.total_price, line: ap.line, reason: approval ? m.querySelector('#rs').value : '', warnCount: flags.length, warnText: warnText(),
           text: S.lines.slice(0, 60).map(lineText).join('\n') + (S.lines.length > 60 ? '\nほか' + (S.lines.length - 60) + '行' : ''),
-          comment: m.querySelector('#cm').value.trim(), image: sheet, images: images, txId: t.id, staff: S.staff };
+          comment: m.querySelector('#cm').value.trim(), countChecked: S.countOk === t.id, image: sheet, images: images, txId: t.id, staff: S.staff };
         var j = await fetch(GAS, { method: 'POST', body: JSON.stringify(body) }).then(function (r) { return r.json(); });
         if (!j.ok) throw new Error(j.error || '送信できませんでした');
         if (approval) saveReq({ kind: kind, id: j.id, status: '承認待ち', by: '' }); else saveConf({ id: j.id, by: name });
