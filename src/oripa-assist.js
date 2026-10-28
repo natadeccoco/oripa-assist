@@ -72,7 +72,7 @@
   document.body.appendChild(host);
   var root = host.attachShadow({ mode: 'open' });
   root.innerHTML = '<style>' + CSS() + '</style><div class="wrap"><div class="win">' +
-    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-10-29 版W</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
+    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-10-29 版X</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
     (ALL ? '' : '<div class="tabs"><button data-tab="make" class="on">新しく作る</button><button data-tab="refill">補充する</button></div>') +
     '<button class="x" id="close" title="閉じる">×</button></div>' +
     '<div class="bd" id="body"><div class="msg">読み込み中…</div></div></div></div>';
@@ -164,9 +164,14 @@
   }
 
   /* ---------- 提案ロジック（ルールどおりに1パターン作る） ---------- */
-  function propose(price, init, costr, free) {
+  function propose(price, init, costr, free, kinds) {
     var L = learnFor(price);
     if (free) L = applyFree(L, free, price);
+    else if (kinds && kinds.length && kinds.slice().sort().join() !== L.kinds[0].slice().sort().join()) { // 本部ルール：当たりの種類をスタッフが変えたとき
+      L = Object.assign({}, L);
+      L.kinds = [kinds.slice()]; L.dupFirst = kinds.length === 1 && kinds[0] === 'box'; L.allowMis = kinds.indexOf('pack') >= 0;
+      L.label = kinds.map(function (k) { return KIND_NAMES[k]; }).join('・') + '（種類を変更）';
+    }
     return [build(price, init, costr, L)];
   }
   // 本部ルールを使わない「自由設定」：原価率の上限・下限、当たりの種類、下枠の入れ方を自分で決める
@@ -547,13 +552,14 @@
     var prices = [500, 1000, 2000, 3000, 10000, 25000];
     var cur = S.form || { price: 1000 };
     var L = learnFor(cur.price);
-    var init = cur.init || L.init, costr = cur.costr || L.costr;
+    var init = cur.init || L.init, costr = cur.costr || L.costr, kinds = cur.kinds || L.kinds[0];
     $('#body').innerHTML = modeTabs(false) +
       '<div class="form">' +
       '<div class="f"><div class="lb">1回の値段</div><div class="chips">' + prices.map(function (p) { return '<button class="chip' + (p === cur.price ? ' on' : '') + '" data-p="' + p + '">' + p.toLocaleString() + '円</button>'; }).join('') +
       '<input id="pfree" type="number" placeholder="その他" value="' + (prices.indexOf(cur.price) < 0 ? cur.price : '') + '"></div></div>' +
       '<div class="f"><div class="lb">口数</div><input id="init" type="number" value="' + init + '"> 口</div>' +
       '<div class="f"><div class="lb">最初の原価率（上限）</div><input id="costr" type="number" step="1" value="' + Math.round(costr * 100) + '"> %<div class="hint">ルール：' + pct(L.costMin) + '〜' + pct(L.costMax) + '（' + L.base.toLocaleString() + '円帯）</div></div>' +
+      '<div class="f"><div class="lb">当たりに入れる種類</div><div class="kchk">' + ['box', 'card', 'psa', 'pack', 'supply'].map(function (k) { return '<label><input type="checkbox" data-k="' + k + '"' + (kinds.indexOf(k) >= 0 ? ' checked' : '') + '>' + KIND_NAMES[k] + '</label>'; }).join('') + '</div><div class="hint">最初は本部ルールの種類（' + esc(L.label) + '）</div></div>' +
       '<div class="f go"><button class="primary" id="go">提案する</button></div>' +
       '</div>' + afterForm();
     bindModeTabs(); bindStoreChips();
@@ -561,8 +567,10 @@
     $('#pfree').onchange = function () { var v = Number(this.value); if (v > 0) { S.form = { price: v }; S.patterns = []; renderMake(); } };
     $('#go').onclick = function () {
       var p = cur.price, n = Number($('#init').value) || L.init, c = Math.min((Number($('#costr').value) || Math.round(L.costr * 100)) / 100, 1.5);
-      S.form = { price: p, init: n, costr: c };
-      S.patterns = propose(p, n, c, null); renderMake();
+      var ks = [].slice.call(root.querySelectorAll('.kchk input:checked')).map(function (x) { return x.dataset.k; });
+      if (!ks.length) { alert('当たりに入れる種類を1つ以上選んでください'); return; }
+      S.form = { price: p, init: n, costr: c, kinds: ks };
+      S.patterns = propose(p, n, c, null, ks); renderMake();
       var r = $('#res'); if (r) r.scrollIntoView({ behavior: 'smooth' });
     };
     bindPatternButtons();
