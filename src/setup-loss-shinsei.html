@@ -1,0 +1,66 @@
+<title>ロス申請 設置ページ</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* Layout: 1カラムの手順書。番号は実際の手順順なので意味のある番号 */
+:root{
+  --ink:#1d1d22; --bg:#f6f5f2; --card:#ffffff; --line:#e5e2da; --muted:#6b6862;
+  --red:#c8102e; --red-shadow:#8e0b20; --gold:#e8c23a; --note-bg:#fdf6dc; --note-fg:#7a5b00;
+  --kbd-bg:#eeece6; --ok:#15803d; --ok-bg:#e3f4e6;
+  --font:"Hiragino Sans","Noto Sans JP","Yu Gothic UI",Meiryo,sans-serif;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --ink:#f1efe9; --bg:#17171a; --card:#212126; --line:#34343b; --muted:#a6a39b;
+  --red:#e0344f; --red-shadow:#7d1023; --gold:#e8c23a; --note-bg:#33290c; --note-fg:#f0d97a;
+  --kbd-bg:#2c2c32; --ok:#5fd08a; --ok-bg:#163522; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --ink:#f1efe9; --bg:#17171a; --card:#212126; --line:#34343b; --muted:#a6a39b;
+  --red:#e0344f; --red-shadow:#7d1023; --gold:#e8c23a; --note-bg:#33290c; --note-fg:#f0d97a;
+  --kbd-bg:#2c2c32; --ok:#5fd08a; --ok-bg:#163522; color-scheme:dark}
+body{background:var(--bg);color:var(--ink);font-family:var(--font);line-height:1.75}
+.w{max-width:760px;margin:0 auto;padding-block:28px 60px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+h1{font-size:26px;margin:0 0 4px;text-wrap:balance} h1 b{color:var(--red)}
+.sub{color:var(--muted);margin:0 0 20px}
+.steps{display:flex;flex-direction:column;gap:12px}
+.step{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px 20px;display:flex;gap:16px}
+.step>div{min-width:0}
+.n{flex:none;width:34px;height:34px;border-radius:9px;background:var(--ink);color:var(--gold);font-weight:900;display:flex;align-items:center;justify-content:center;font-size:18px}
+.step h2{font-size:17px;margin:2px 0 6px;text-wrap:balance} .step p{margin:4px 0}
+kbd{background:var(--kbd-bg);border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;padding:1px 6px;font-size:13px}
+.bm{display:inline-block;margin:10px 0 4px;background:var(--red);color:#fff;text-decoration:none;font-weight:800;font-size:18px;padding:12px 22px;border-radius:12px;box-shadow:0 4px 0 var(--red-shadow);cursor:grab}
+.bm:focus-visible{outline:3px solid var(--gold);outline-offset:3px}
+.warn{color:var(--red);font-weight:700}
+ul{margin:6px 0;padding-left:20px} li{margin:3px 0}
+.code{font-family:ui-monospace,Consolas,monospace;background:var(--ink);color:var(--gold);padding:1px 8px;border-radius:6px;font-weight:700;white-space:nowrap}
+.flow{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:8px 0;font-size:13px;font-weight:700}
+.flow span{background:var(--ok-bg);color:var(--ok);padding:3px 10px;border-radius:999px}
+.flow i{font-style:normal;color:var(--muted)}
+.note{font-size:13px;color:var(--note-fg);background:var(--note-bg);border-radius:10px;padding:10px 14px;margin-top:18px}
+</style>
+<div class="w">
+<h1><b>ロス</b>申請</h1>
+<p class="sub">ロス（廃棄・景品・買取ミスなど）をマイカに登録する前に、本部の承認をLINE WORKSでもらうためのツールです。お店のパソコンのChromeに1回だけ設置してください。</p>
+<div class="steps">
+<div class="step"><div class="n">1</div><div><h2>ブックマークバーを表示する</h2><p>Chromeで <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>B</kbd> を押すと、画面の上にブックマークバーが出ます。</p></div></div>
+<div class="step"><div class="n">2</div><div><h2>下の赤いボタンをブックマークバーへドラッグする</h2>
+<a class="bm" href="javascript:(function(){var r='natadeccoco/oripa-assist';function go(v){var s=document.createElement('script');s.src='https://cdn.jsdelivr.net/gh/'+r+'@'+v+'/loss-shinsei.min.js';s.onerror=function(){alert('ロス申請を読み込めませんでした。ネット接続を確認してください')};document.body.appendChild(s)}if(location.hostname!=='pos.mycalinks.com'){alert('マイカ（pos.mycalinks.com）を開いてから押してください');return}fetch('https://api.github.com/repos/'+r+'/commits/main').then(function(x){return x.json()}).then(function(j){go(j.sha||'main')}).catch(function(){go('main')})})();" id="bm">ロス申請</a>
+<p id="hint" class="warn" hidden>クリックではなく、ブックマークバーへドラッグ（引っぱって離す）してください</p>
+<p>ボタンをつかんだまま、画面上のブックマークバーまで引っぱって離します。バーに「ロス申請」が出れば設置完了です。</p></div></div>
+<div class="step"><div class="n">3</div><div><h2>ロスするときの流れ</h2>
+<div class="flow"><span>ツールで申請</span><i>→</i><span>役員が承認</span><i>→</i><span>マイカでロス登録（理由に申請番号）</span></div>
+<ul>
+<li>マイカを開いた状態で、ブックマークの「ロス申請」を押します</li>
+<li>上の「申請者」に<b>自分の名前</b>を入れます（次からは自動で入ります）</li>
+<li>左で商品名を検索して「追加」→ 右で点数を合わせます</li>
+<li>ロス区分を選び、<b>理由を具体的に</b>書きます（例：「10/25の買取で3点を5点と数えて買い取ったため、差分2点」）。破損などは写真も付けられます</li>
+<li>「本部に承認を依頼する」を押すと、LINE WORKSの「ロス申請」グループに届きます。役員が承認すると、ツールの「最近の申請」に ✅ が付きます</li>
+<li>承認されたら、マイカの「在庫」→「ロス」→「新規登録」でロスを登録します。<b>理由の欄に申請番号</b>（例 <span class="code">L1030-153012-47</span>）を入れてください。ツールの「番号をコピー」で貼り付けられます</li>
+<li>差し戻されたら、マイカには登録しないでください</li>
+</ul></div></div>
+<div class="step"><div class="n">4</div><div><h2>承認のないロスは毎晩チェックされます</h2>
+<p>毎晩22時に、その日マイカに登録されたロスと承認を照らし合わせます。承認が確認できないロスは「ロス申請」グループに⚠️で知らせが届きます。申請番号を入れ忘れても、承認済みの申請と商品が一致すれば大丈夫です。</p></div></div>
+</div>
+<p class="note">このブックマークは、押すたびに最新版のツールを読み込みます。ツールが新しくなっても<b>入れ直しは不要</b>です。使いにくいところは、ツール右上の「意見を送る」から具体的に送ってください。</p>
+</div>
+<script>
+document.getElementById('bm').addEventListener('click',function(e){e.preventDefault();document.getElementById('hint').hidden=false;});
+</script>
