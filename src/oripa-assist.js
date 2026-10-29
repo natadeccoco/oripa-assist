@@ -72,7 +72,7 @@
   document.body.appendChild(host);
   var root = host.attachShadow({ mode: 'open' });
   root.innerHTML = '<style>' + CSS() + '</style><div class="wrap"><div class="win">' +
-    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-10-30 版AC</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
+    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-10-30 版AD</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
     (ALL ? '' : '<div class="tabs"><button data-tab="make" class="on">新しく作る</button><button data-tab="refill">補充する</button></div>') +
     '<button class="x" id="close" title="閉じる">×</button></div>' +
     '<div class="bd" id="body"><div class="msg">読み込み中…</div></div></div></div>';
@@ -1127,10 +1127,9 @@
         return '<div class="mh2">' + esc(st) + '　' + sum(st, function (r) { return r.n; }) + '点・原価 ' + yen(sum(st, function (r) { return r.p.cost * r.n; })) + '</div><table><tr><th>区分</th><th>商品</th><th>状態</th><th>数</th><th>マスタ</th><th>原価</th><th>在庫</th></tr>' +
           by[st].map(function (r) { return '<tr><td>' + esc(r.role) + '</td><td>' + (r.p.kind === 'psa' ? '《' + esc(psaLabel(r.p)) + '》' : '') + esc(r.p.name) + '</td><td>' + esc(condText(r.p)) + '</td><td>' + r.n + '</td><td>' + yen(r.p.sell) + '</td><td>' + yen(r.p.cost * r.n) + '</td><td>' + r.p.stock + '</td></tr>'; }).join('') + '</table>';
       }).join('') +
-      '<div class="sm">「各店に発送依頼を送る」で、各店の「オリパ・買取共有」グループに、その店が送るカードの画像と文が届きます。「文をコピー」はLINE WORKSなどにそのまま貼れます。「マイカに店間移動の下書きを作る」で、各店→通販店の店間移動が出荷管理に下書きで入ります（出荷は各店で）。各店の在庫はまだ何も動かしていません。</div>' +
-      '<div class="acts"><button class="ghost" data-x>閉じる</button><button class="ghost" data-csv>CSVを保存</button><button class="ghost" data-copy>文をコピー</button>' + '<button class="ghost" data-ship>マイカに店間移動の下書きを作る（通販店へ）</button>' + (APPROVAL_URL ? '<button class="primary" data-send>各店に発送依頼を送る</button>' : '') + '</div>');
+      '<div class="sm">「各店に発送依頼を送る」で、各店の「オリパ・買取共有」グループに、その店が送るカードの画像と文が届きます。「文をコピー」はLINE WORKSなどにそのまま貼れます。各店の在庫はまだ何も動かしていません。</div>' +
+      '<div class="acts"><button class="ghost" data-x>閉じる</button><button class="ghost" data-csv>CSVを保存</button><button class="ghost" data-copy>文をコピー</button>' + (APPROVAL_URL ? '<button class="primary" data-send>各店に発送依頼を送る</button>' : '') + '</div>');
     m.querySelector('[data-x]').onclick = function () { m.remove(); };
-    m.querySelector('[data-ship]').onclick = function () { requestShip(pt, by, stores, title); };
     if (m.querySelector('[data-send]')) m.querySelector('[data-send]').onclick = function () { requestPick(pt, by, stores, title); };
     m.querySelector('[data-copy]').onclick = function () {
       var b = this;
