@@ -6,7 +6,8 @@
  *   GET  ?action=lstatus&id=…   … 申請の結果
  *   GET  ?action=llist&store=… … その店の最近の申請（ツールの「最近の申請」）
  *   POST {action:'losscheck', key, stores:[{store, losses:[マイカのロス]}]}
- *        … 雄司のPC（myca_import.ps1 -LossCheck、毎晩22時）から。承認のないロスを「ロス申請」グループに警告
+ *        … 雄司のPC（loss_check.ps1、毎晩22時）から。承認のないロスを「ロス申請」グループに警告。backfill:true なら「導入前」として記録だけ
+ *   集計は「ロス分析」タブ（夜のチェックのたびに作り直す）
  * LINE WORKSのボタン：postback 'lapprove:ID' / 'lreject:ID'（callback() から lossCallback() に回す）
  * 送り先：役員が「ロス申請」グループで「ロス申請に登録」と送ると、そのグループが登録される（LW_LOSS_CHANNEL）
  * スクリプト プロパティ LOSS_KEY … lSetup() が作る。PCの config.json の LOSS_KEY と同じ値（夜のチェック用の合言葉）
@@ -147,7 +148,8 @@ function lossCheck(d) {
         var reason = String(L.reason || ''), genre = String(L.genre || '');
         var names = (L.products || []).map(function (p) { return p.name + ' ×' + p.count; });
         var judge = '', appId = '';
-        if (exempt.some(function (w) { return reason.indexOf(w) >= 0 || genre.indexOf(w) >= 0; })) judge = '対象外';
+        if (d.backfill) judge = '導入前';
+        if (!judge && exempt.some(function (w) { return reason.indexOf(w) >= 0 || genre.indexOf(w) >= 0; })) judge = '対象外';
         if (!judge) {
           var mm = reason.match(L_ID_RE);
           if (mm) {
@@ -176,7 +178,8 @@ function lossCheck(d) {
     if (rows.length) ms.getRange(ms.getLastRow() + 1, 1, rows.length, M_COLS.length).setValues(rows);
   } finally { lock.releaseLock(); }
   var sent = false;
-  if (bad.length && ch) {
+  try { lAnalyze(); } catch (e) { console.error(e); }
+  if (bad.length && ch && !d.backfill) {
     var t = '⚠️【承認のないロスがあります】' + bad.length + '件\nマイカにロス登録されていますが、ロス申請の承認が確認できませんでした。該当店舗は本部に事情を連絡してください。\n';
     bad.forEach(function (b) {
       var x = new Date(new Date(b.at).getTime() + 9 * 3600e3);
@@ -188,6 +191,62 @@ function lossCheck(d) {
     sent = true;
   }
   return json({ ok: true, checked: newCount, bad: bad.length, sent: sent, channel: !!ch });
+}
+
+/* ---------- ロス分析（「マイカのロス」から店舗別・月別に集計） ---------- */
+var L_STORES = ['千葉中央', '柏', '町田', '松戸', '中野', 'お台場', '津田沼', '横浜'];
+function lAnalyze() {
+  var mv = mSheet().getDataRange().getValues().slice(1), exempt = lExempt();
+  var ym = function (d) { return Utilities.formatDate(new Date(d), 'Asia/Tokyo', 'yyyy/MM'); };
+  var months = {}, agg = {}, gen = {};
+  mv.forEach(function (r) {
+    if (!r[0] || !r[2]) return;
+    var st = r[1], m = ym(r[2]), j = String(r[8] || ''), reason = String(r[4] || ''), genre = String(r[3] || '');
+    var tana = exempt.some(function (w) { return reason.indexOf(w) >= 0 || genre.indexOf(w) >= 0; });
+    months[m] = 1;
+    var k = st + '|' + m, a = agg[k] || (agg[k] = { n: 0, pts: 0, yen: 0, tn: 0, tyen: 0, ok: 0, bad: 0 });
+    if (tana) { a.tn++; a.tyen += Number(r[6]) || 0; return; }
+    a.n++; a.pts += Number(r[5]) || 0; a.yen += Number(r[6]) || 0;
+    if (/^承認済み/.test(j)) a.ok++; else if (/^無承認/.test(j)) a.bad++;
+    var g = genre || '（区分なし）', gk = st + '|' + g, b = gen[gk] || (gen[gk] = { n: 0, yen: 0 }); b.n++; b.yen += Number(r[6]) || 0;
+  });
+  var ms = Object.keys(months).sort().reverse();
+  var ss = lBook(), sh = ss.getSheetByName('ロス分析') || ss.insertSheet('ロス分析');
+  sh.clear();
+  var out = [['ロス分析（「マイカのロス」から自動集計・夜のチェックのたびに更新）', '', '', '', '', '', '', '', '', ''],
+    ['※金額はマイカの販売価格ベース。「棚卸での調整」など承認不要のロスは別枠。無承認率＝無承認÷（承認済み＋無承認）。11/1より前は申請の仕組みがないため「導入前」', '', '', '', '', '', '', '', '', ''],
+    ['', '', '', '', '', '', '', '', '', ''],
+    ['月', '店舗', 'ロス件数', 'ロス点数', 'ロス金額', '承認済み', '無承認', '無承認率', '棚卸調整 件数', '棚卸調整 金額']];
+  ms.forEach(function (m) {
+    var tot = { n: 0, pts: 0, yen: 0, ok: 0, bad: 0, tn: 0, tyen: 0 };
+    L_STORES.forEach(function (st) {
+      var a = agg[st + '|' + m] || { n: 0, pts: 0, yen: 0, ok: 0, bad: 0, tn: 0, tyen: 0 };
+      Object.keys(tot).forEach(function (k) { tot[k] += a[k]; });
+      var den = a.ok + a.bad;
+      out.push([m, st, a.n, a.pts, a.yen, a.ok, a.bad, den ? a.bad / den : '', a.tn, a.tyen]);
+    });
+    var d2 = tot.ok + tot.bad;
+    out.push([m, '全店合計', tot.n, tot.pts, tot.yen, tot.ok, tot.bad, d2 ? tot.bad / d2 : '', tot.tn, tot.tyen]);
+  });
+  out.push(['', '', '', '', '', '', '', '', '', ''], ['【全期間】店舗 × ロス区分（棚卸調整を除く）', '', '', '', '', '', '', '', '', ''], ['店舗', 'ロス区分', '件数', '金額', '', '', '', '', '', '']);
+  Object.keys(gen).sort(function (x, y) { return gen[y].yen - gen[x].yen; }).forEach(function (k) {
+    var p = k.split('|'); out.push([p[0], p[1], gen[k].n, gen[k].yen, '', '', '', '', '', '']);
+  });
+  sh.getRange(1, 1, out.length, 10).setValues(out);
+  sh.getRange(1, 1).setFontWeight('bold').setFontSize(13);
+  sh.getRange(2, 1).setFontColor('#666666');
+  sh.getRange(4, 1, 1, 10).setFontWeight('bold').setBackground('#efede7');
+  var n1 = 4 + ms.length * 9;
+  if (ms.length) {
+    sh.getRange(5, 5, ms.length * 9, 1).setNumberFormat('#,##0"円"');
+    sh.getRange(5, 10, ms.length * 9, 1).setNumberFormat('#,##0"円"');
+    sh.getRange(5, 8, ms.length * 9, 1).setNumberFormat('0%');
+    for (var i = 0; i < ms.length; i++) sh.getRange(5 + i * 9 + 8, 1, 1, 10).setFontWeight('bold').setBackground('#f6f5f2');
+  }
+  sh.getRange(n1 + 2, 1).setFontWeight('bold');
+  sh.getRange(n1 + 3, 1, 1, 4).setFontWeight('bold').setBackground('#efede7');
+  if (out.length > n1 + 3) sh.getRange(n1 + 4, 4, out.length - n1 - 3, 1).setNumberFormat('#,##0"円"');
+  sh.setFrozenRows(4); sh.autoResizeColumns(2, 9); sh.setColumnWidth(1, 80);
 }
 
 /** 1回だけ：Botが「ロス申請」グループ（役員＋全店の店舗アカウント）を作って、送り先に登録する */
