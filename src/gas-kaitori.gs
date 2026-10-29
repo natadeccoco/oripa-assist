@@ -136,6 +136,7 @@ function kaitoriCallback(ev, data) {
     if (row.values[12] !== '承認待ち') { if (ch) send(ch, { type: 'text', text: '依頼番号 ' + m[2] + ' はすでに「' + row.values[12] + '」です（' + row.values[13] + '）。' }); return; }
     var st = m[1] === 'approve' ? '承認' : '差し戻し';
     kSheet().getRange(row.r, 13, 1, 3).setValues([[st, name, new Date()]]);
+    try { kSummary(); } catch (e) { console.error('査定集計: ' + e); }
     if (ch) send(ch, { type: 'text', text: (st === '承認' ? '✅ 買取を承認しました' : '↩️ 買取を差し戻しました') + '（依頼番号 ' + m[2] + '・' + name + '）' +
       (st === '承認' ? '' : '\n直してほしい点をこのトークで伝えてください。') });
   } finally { lock.releaseLock(); }
@@ -156,11 +157,49 @@ function kLogLines(id, d) {
     return [now, d.store, d.reception || '', d.requester, id, d.txId || '', d.customer || '', Number(d.total) || 0, q.n || '', q.cond || '', q.cat || '', cnt, unit, unit * cnt, ref, ref ? Math.round(unit / ref * 1000) / 1000 : '', q.tab || '', q.flags || '', d.countChecked ? '確認済み' : ''];
   });
   var sh = kLogSheet(); sh.getRange(sh.getLastRow() + 1, 1, rows.length, K_LOG_COLS.length).setValues(rows);
+  try { kSummary(); } catch (e) { console.error('査定集計: ' + e); }
+}
+
+/* ---------- 査定集計（月 × 店舗 × 査定者）：査定ログから毎回作り直す ---------- */
+var K_SUM_COLS = ['月', '店舗', '査定者', '依頼件数', '明細行数', '買取合計', '🚨赤の件数', '⚠️黄の件数', '警告が出た依頼', '警告が出た依頼の割合', '買取表比の平均', '買取表比（金額の重み付き）', '差し戻し件数', '枚数確認あり'];
+function kSummary() {
+  var ss = kBook(), log = ss.getSheetByName('査定ログ');
+  var sh = ss.getSheetByName('査定集計'); if (!sh) { sh = ss.insertSheet('査定集計'); }
+  var vals = log ? log.getDataRange().getValues().slice(1) : [];
+  var st = {}; // 依頼番号 → 状態
+  var kv = kSheet().getDataRange().getValues(); for (var i = 1; i < kv.length; i++) st[kv[i][0]] = kv[i][12];
+  var g = {};
+  vals.forEach(function (v) {
+    if (!v[0]) return;
+    var mon = Utilities.formatDate(new Date(v[0]), 'Asia/Tokyo', 'yyyy-MM'), who = String(v[3] || '').replace(/\s+/g, '') || '（名前なし）';
+    var k = mon + '|' + v[1] + '|' + who, o = g[k] || (g[k] = { mon: mon, store: v[1], who: who, reqs: {}, warnReqs: {}, rows: 0, total: 0, red: 0, yel: 0, rs: 0, rn: 0, wu: 0, wr: 0, cnt: {} });
+    var id = v[4]; o.reqs[id] = Number(v[7]) || 0; o.rows++;
+    var f = String(v[17] || ''), r = (f.match(/🚨/g) || []).length, y = (f.match(/⚠️/g) || []).length;
+    o.red += r; o.yel += y; if (r + y) o.warnReqs[id] = 1;
+    var unit = Number(v[12]) || 0, n = Number(v[11]) || 0, ref = Number(v[14]) || 0;
+    if (ref > 0 && unit > 0) { o.rs += unit / ref; o.rn++; o.wu += unit * n; o.wr += ref * n; }
+    if (v[18]) o.cnt[id] = 1;
+  });
+  var rows = Object.keys(g).map(function (k) {
+    var o = g[k], ids = Object.keys(o.reqs), nw = Object.keys(o.warnReqs).length;
+    var back = ids.filter(function (id) { return st[id] === '差し戻し'; }).length;
+    return [o.mon, o.store, o.who, ids.length, o.rows, ids.reduce(function (s, id) { return s + o.reqs[id]; }, 0), o.red, o.yel, nw,
+      ids.length ? nw / ids.length : 0, o.rn ? o.rs / o.rn : '', o.wr ? o.wu / o.wr : '', back, Object.keys(o.cnt).length];
+  }).sort(function (a, b) { return a[0] < b[0] ? 1 : a[0] > b[0] ? -1 : String(a[1]).localeCompare(String(b[1])) || String(a[2]).localeCompare(String(b[2])); });
+  sh.clearContents();
+  sh.getRange(1, 1, 1, K_SUM_COLS.length).setValues([K_SUM_COLS]).setFontWeight('bold').setBackground('#efede7');
+  sh.setFrozenRows(1);
+  if (rows.length) {
+    sh.getRange(2, 1, rows.length, K_SUM_COLS.length).setValues(rows);
+    sh.getRange(2, 6, rows.length, 1).setNumberFormat('#,##0"円"');
+    sh.getRange(2, 10, rows.length, 3).setNumberFormat('0%');
+  }
+  sh.getRange(rows.length + 3, 1).setValue('※査定ログ（本部承認を依頼した買取の明細）から自動で作っています。買取表比は「入力した単価 ÷ 買取表の価格」（買取表にない商品は除く）。最終更新 ' + Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy/MM/dd HH:mm'));
 }
 
 /** 最初に1回：買取タブと買取設定タブを作り、価格が読めるか確かめる */
 function kSetup() {
-  kSheet(); kSettingSheet();
+  kSheet(); kSettingSheet(); kLogSheet(); kSummary();
   var rows = kPrices();
   Logger.log('買取表の価格：' + rows.length + '行');
   Logger.log('買取設定：' + JSON.stringify(kConfig()));
