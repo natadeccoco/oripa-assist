@@ -9,7 +9,7 @@
  *        … 雄司のPC（myca_import.ps1 -LossCheck、毎晩22時）から。承認のないロスを「ロス申請」グループに警告
  * LINE WORKSのボタン：postback 'lapprove:ID' / 'lreject:ID'（callback() から lossCallback() に回す）
  * 送り先：役員が「ロス申請」グループで「ロス申請に登録」と送ると、そのグループが登録される（LW_LOSS_CHANNEL）
- * スクリプト プロパティ LOSS_KEY … PCの config.json の LOSS_KEY と同じ値（夜のチェック用の合言葉）
+ * スクリプト プロパティ LOSS_KEY … lSetup() が作る。PCの config.json の LOSS_KEY と同じ値（夜のチェック用の合言葉）
  * 履歴は「オリパ承認履歴」スプレッドシート（SHEET_ID）の「ロス申請」「マイカのロス」「ロス設定」タブ。
  */
 var L_COLS = ['申請番号', '申請日時', '店舗', '申請者', 'ロス区分', '理由', '内容', '点数', '販売価格合計', '原価合計', '状態', '判断した人', '判断日時', 'マイカのロスID', '照合日時'];
@@ -190,9 +190,10 @@ function lossCheck(d) {
   return json({ ok: true, checked: newCount, bad: bad.length, sent: sent, channel: !!ch });
 }
 
-/** 最初に1回：タブを作る（LOSS_KEY はスクリプト プロパティに手で貼る） */
+/** 最初に1回：タブと LOSS_KEY を作る */
 function lSetup() {
   lSheet(); mSheet(); lSettingSheet();
+  if (!P.getProperty('LOSS_KEY')) P.setProperty('LOSS_KEY', 'loss-' + Utilities.getUuid().replace(/-/g, ''));
   Logger.log('ロス申請の送り先：' + (lChannel() || 'まだ（グループで「ロス申請に登録」と送る）'));
-  Logger.log('LOSS_KEY：' + (P.getProperty('LOSS_KEY') ? '入っています' : 'まだ入っていません'));
+  Logger.log('LOSS_KEY（PCの config.json に入れる）：' + P.getProperty('LOSS_KEY'));
 }
