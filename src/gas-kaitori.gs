@@ -107,6 +107,7 @@ function kaitoriPost(d) {
       String(d.text || '').slice(0, 45000), String(d.warnText || '').slice(0, 45000), d.comment || '', approval ? '承認待ち' : '確認済み', approval ? '' : d.requester, approval ? '' : new Date(), d.txId || '', d.staff || '']);
   } finally { lock.releaseLock(); }
   if (!approval) return json({ ok: true, id: id }); // 警告の確認は査定者向け：記録だけ残し、グループには送らない
+  try { kLogLines(id, d); } catch (e) { console.error('査定ログ: ' + e); }
   var yen = function (n) { return Number(n || 0).toLocaleString() + '円'; };
   var head = '【買取承認依頼】' + d.store + '店　依頼者：' + d.requester + '\n' + (d.customer ? d.customer + ' 様　' : '') + yen(d.total) + (d.reason ? '（' + d.reason + '）' : '') + '\n依頼番号：' + id;
   var imgErr = '';
@@ -138,6 +139,23 @@ function kaitoriCallback(ev, data) {
     if (ch) send(ch, { type: 'text', text: (st === '承認' ? '✅ 買取を承認しました' : '↩️ 買取を差し戻しました') + '（依頼番号 ' + m[2] + '・' + name + '）' +
       (st === '承認' ? '' : '\n直してほしい点をこのトークで伝えてください。') });
   } finally { lock.releaseLock(); }
+}
+
+/* ---------- 査定ログ（承認ライン以上の買取の明細を、査定者つきで1行ずつためる） ---------- */
+var K_LOG_COLS = ['日時', '店舗', '受付番号', '査定者', '依頼番号', 'マイカ取引ID', 'お客様', '買取合計', '商品', '状態', '種類', '枚数', '単価', '小計', '買取表', '買取表比', '買取表のタブ', '警告', '枚数確認'];
+function kLogSheet() {
+  var ss = kBook(), sh = ss.getSheetByName('査定ログ');
+  if (!sh) { sh = ss.insertSheet('査定ログ'); sh.appendRow(K_LOG_COLS); sh.setFrozenRows(1); }
+  return sh;
+}
+function kLogLines(id, d) {
+  var ls = d.lines || []; if (!ls.length) return;
+  var now = new Date();
+  var rows = ls.map(function (q) {
+    var unit = Number(q.unit) || 0, cnt = Number(q.cnt) || 0, ref = Number(q.ref) || '';
+    return [now, d.store, d.reception || '', d.requester, id, d.txId || '', d.customer || '', Number(d.total) || 0, q.n || '', q.cond || '', q.cat || '', cnt, unit, unit * cnt, ref, ref ? Math.round(unit / ref * 1000) / 1000 : '', q.tab || '', q.flags || '', d.countChecked ? '確認済み' : ''];
+  });
+  var sh = kLogSheet(); sh.getRange(sh.getLastRow() + 1, 1, rows.length, K_LOG_COLS.length).setValues(rows);
 }
 
 /** 最初に1回：買取タブと買取設定タブを作り、価格が読めるか確かめる */

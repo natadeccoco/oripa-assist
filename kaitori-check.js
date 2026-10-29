@@ -357,7 +357,7 @@
     var t = S.tx, ap = approvalLine(), need = (t.total_price || 0) >= ap.line, approval = kind === 'approval';
     var m = document.createElement('div'); m.className = 'md';
     m.innerHTML = '<div class="mbox"><div class="mh">' + (approval ? '本部に買取の承認を依頼します' : '警告を見直したことを記録します') + '</div><div class="frm">' +
-      '<label>あなたの名前（必須）<input id="rq" value="' + esc(S.staff) + '"></label>' +
+      '<label>' + (approval ? '査定した人の名前（必須・査定ログに残ります）' : 'あなたの名前（必須）') + '<input id="rq" value="' + esc(S.staff) + '"></label>' +
       (approval ? '<label>お客様名（カナ）<input id="cu" value="' + esc(S.cust) + '"></label>' +
         '<label>理由<select id="rs">' + (need ? '<option>買取合計が承認ライン以上</option>' : '') + '<option>古いカードで不安</option><option>状態の判断に迷う</option><option>真贋が不安</option><option>その他</option></select></label>' +
         '<div class="photo">📷 写真（商品・明細画面など）は、LINE WORKSの「オリパ・買取共有」グループに直接送ってください。</div>' : '') +
@@ -382,7 +382,8 @@
         var body = { action: 'kaitori', kind: kind, store: SHORT[S.sid], requester: name, customer: approval ? m.querySelector('#cu').value.trim() : S.cust,
           total: t.total_price, line: ap.line, reason: approval ? m.querySelector('#rs').value : '', warnCount: flags.length, warnText: warnText(),
           text: S.lines.slice(0, 60).map(lineText).join('\n') + (S.lines.length > 60 ? '\nほか' + (S.lines.length - 60) + '行' : ''),
-          comment: m.querySelector('#cm').value.trim(), countChecked: S.countOk === t.id, image: sheet, images: images, txId: t.id, staff: S.staff };
+          comment: m.querySelector('#cm').value.trim(), countChecked: S.countOk === t.id, image: sheet, reception: t.reception_number || '',
+          lines: approval ? S.lines.map(function (q) { return { n: q.dn, cond: q.cond || '', cat: q.cat || '', cnt: q.cnt, unit: q.unit, ref: q.ref || '', tab: (q.refs[0] || {}).r ? q.refs[0].r.t : '', flags: q.flags.map(function (f) { return (f.lv === 'red' ? '🚨' : '⚠️') + f.t; }).join(' / ') }; }) : [], images: images, txId: t.id, staff: S.staff };
         var j = await fetch(GAS, { method: 'POST', body: JSON.stringify(body) }).then(function (r) { return r.json(); });
         if (!j.ok) throw new Error(j.error || '送信できませんでした');
         if (approval) saveReq({ kind: kind, id: j.id, status: '承認待ち', by: '' }); else saveConf({ id: j.id, by: name });
