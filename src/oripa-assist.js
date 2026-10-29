@@ -72,7 +72,7 @@
   document.body.appendChild(host);
   var root = host.attachShadow({ mode: 'open' });
   root.innerHTML = '<style>' + CSS() + '</style><div class="wrap"><div class="win">' +
-    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-10-30 版AD</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
+    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-10-30 版AE</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
     (ALL ? '' : '<div class="tabs"><button data-tab="make" class="on">新しく作る</button><button data-tab="refill">補充する</button></div>') +
     '<button class="x" id="close" title="閉じる">×</button></div>' +
     '<div class="bd" id="body"><div class="msg">読み込み中…</div></div></div></div>';
@@ -1128,7 +1128,7 @@
           by[st].map(function (r) { return '<tr><td>' + esc(r.role) + '</td><td>' + (r.p.kind === 'psa' ? '《' + esc(psaLabel(r.p)) + '》' : '') + esc(r.p.name) + '</td><td>' + esc(condText(r.p)) + '</td><td>' + r.n + '</td><td>' + yen(r.p.sell) + '</td><td>' + yen(r.p.cost * r.n) + '</td><td>' + r.p.stock + '</td></tr>'; }).join('') + '</table>';
       }).join('') +
       '<div class="sm">「各店に発送依頼を送る」で、各店の「オリパ・買取共有」グループに、その店が送るカードの画像と文が届きます。「文をコピー」はLINE WORKSなどにそのまま貼れます。各店の在庫はまだ何も動かしていません。</div>' +
-      '<div class="acts"><button class="ghost" data-x>閉じる</button><button class="ghost" data-csv>CSVを保存</button><button class="ghost" data-copy>文をコピー</button>' + (APPROVAL_URL ? '<button class="primary" data-send>各店に発送依頼を送る</button>' : '') + '</div>');
+      '<div class="acts"><button class="ghost" data-x>閉じる</button><button class="ghost" data-copy>文をコピー</button>' + (APPROVAL_URL ? '<button class="primary" data-send>各店に発送依頼を送る</button>' : '') + '</div>');
     m.querySelector('[data-x]').onclick = function () { m.remove(); };
     if (m.querySelector('[data-send]')) m.querySelector('[data-send]').onclick = function () { requestPick(pt, by, stores, title); };
     m.querySelector('[data-copy]').onclick = function () {
@@ -1136,13 +1136,6 @@
       var done = function () { b.textContent = 'コピーしました'; setTimeout(function () { b.textContent = '文をコピー'; }, 1500); };
       var fallback = function () { var ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); done(); } catch (e) { } ta.remove(); };
       if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, fallback); else fallback();
-    };
-    m.querySelector('[data-csv]').onclick = function () {
-      var q = function (v) { v = String(v == null ? '' : v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
-      var csv = '\ufeff' + ['店舗', '区分', '商品', '状態', '数', 'マスタ価格', '原価（合計）', '在庫', '商品ID'].join(',') + '\n' +
-        stores.map(function (st) { return by[st].map(function (r) { return [st, r.role, r.p.name, condText(r.p), r.n, r.p.sell, r.p.cost * r.n, r.p.stock, r.p.id].map(q).join(','); }).join('\n'); }).join('\n');
-      var a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
-      a.download = '全店オリパ_集め先_' + pt.price + '円x' + pt.init + '口.csv'; document.body.appendChild(a); a.click(); a.remove();
     };
   }
   // 全店モード：各店の「オリパ・買取共有」グループに、その店が送るカードの画像＋文で発送依頼を送る
