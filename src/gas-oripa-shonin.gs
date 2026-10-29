@@ -143,6 +143,7 @@ function userName(userId) {
 function doGet(e) {
   var p = (e && e.parameter) || {};
   if (/^k/.test(p.action || '')) return kaitoriGet(p); // 買取チェック（gas-kaitori.gs）
+  if (/^l(status|list)$/.test(p.action || '')) return lossGet(p); // ロス申請（gas-loss.gs）
   if (p.action === 'status') {
     var row = findRow(p.id); if (!row) return json({ ok: false, error: '依頼が見つかりません' });
     var v = row.values;
@@ -180,6 +181,7 @@ function doPost(e) {
   try {
     var d = JSON.parse(e.postData.contents);
     if (d.action === 'kaitori') return kaitoriPost(d); // 買取チェック（gas-kaitori.gs）
+    if (d.action === 'loss' || d.action === 'losscheck') return lossPost(d); // ロス申請（gas-loss.gs）
     if (d.action === 'share') { // 足りない当たりを「在庫共有」グループで募集する
       var sc = P.getProperty('LW_SHARE_CHANNEL');
       if (!sc) return json({ ok: false, error: '在庫共有グループがまだ登録されていません（本部に連絡してください）' });
@@ -243,7 +245,9 @@ function callback(e, k) {
       }
       return ContentService.createTextOutput('ok');
     }
+    if (!data && ev.type === 'message' && ev.content && String(ev.content.text || '').trim() === 'ロス申請に登録' && ev.source && ev.source.channelId) { lossRegister(ev); return ContentService.createTextOutput('ok'); }
     if (!data) return ContentService.createTextOutput('ok');
+    if (/^l(approve|reject):/.test(String(data))) { lossCallback(ev, String(data)); return ContentService.createTextOutput('ok'); } // ロス申請
     if (/^k(approve|reject):/.test(String(data))) { kaitoriCallback(ev, String(data)); return ContentService.createTextOutput('ok'); } // 買取チェック
     var sp = String(data).match(/^shipped:(.+)$/);
     if (sp) { markShipped(sp[1], userName(ev.source && ev.source.userId), 'button'); return ContentService.createTextOutput('ok'); }
