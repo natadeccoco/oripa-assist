@@ -7,7 +7,7 @@
   if (location.hostname !== 'pos.mycalinks.com') { alert('マイカ（pos.mycalinks.com）を開いてから押してください'); return; }
   var old = document.getElementById('ndk-loss-host'); if (old) old.remove();
 
-  var VERSION = '2026-10-30 版A';
+  var VERSION = '2026-10-30 版B';
   var GAS = 'https://script.google.com/macros/s/AKfycbwXHuu-X3L0qzJhvaszEIm-1xdeNIqJACQ0uM7mz5Q0hvwfdF9IuQiTKr3qmscNVmnhcQ/exec';
   var FB_URL = 'https://script.google.com/macros/s/AKfycbwl-ZCZ1LyefvSzEGkBEpTFTuFyvW0p-AYye6jBWaLP9t7-bC9_Owfeh4jKScNkFys6Fw/exec';
   var SHORT = { 322: '柏', 323: '津田沼', 324: '松戸', 325: '横浜', 326: '中野', 327: '町田', 328: '千葉中央', 390: '通販', 409: 'お台場' };
@@ -48,7 +48,7 @@
     '.hd button{all:unset;cursor:pointer;color:#fff;font-weight:700;padding:5px 10px;border-radius:8px;background:rgba(255,255,255,.14)}.hd button.fbb{background:#2563eb}' +
     '.body{flex:1;overflow:auto;padding:14px 16px;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;align-items:start}' +
     '@media (max-width:860px){.body{grid-template-columns:1fr}}' +
-    '.col{min-width:0}h2{font-size:15px;margin:2px 0 8px}' +
+    '#res{max-height:44vh;overflow:auto;margin-top:6px}.col{min-width:0}h2{font-size:15px;margin:2px 0 8px}' +
     '.box{background:#fff;border:1.5px solid #e5e2da;border-radius:12px;padding:12px 14px;margin-bottom:12px}' +
     'input.q,select.f,textarea.f,input.f{display:block;width:100%;padding:8px 10px;border:1.5px solid #d6d2c8;border-radius:8px;font:inherit;font-weight:400;background:#fff}' +
     'textarea.f{min-height:70px;resize:vertical}' +
