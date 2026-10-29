@@ -97,6 +97,7 @@ function kFind(id) {
 function kSplit(t) { var parts = []; t = String(t || ''); while (t.length > 1900) { var k = t.lastIndexOf('\n', 1900); if (k < 500) k = 1900; parts.push(t.slice(0, k)); t = t.slice(k).replace(/^\n/, ''); } if (t) parts.push(t); return parts; }
 
 function kaitoriPost(d) {
+  if (/^daily/.test(d.kind || '')) return kDaily(d); // 全店買取チェック（全店買取チェック.gs）
   var ch = CH[d.store]; if (!ch) return json({ ok: false, error: '店舗「' + d.store + '」のLINE WORKSグループが登録されていません' });
   if (!d.requester) return json({ ok: false, error: '名前を入れてください' });
   var approval = d.kind === 'approval';
