@@ -6,7 +6,7 @@
  * 合言葉はスクリプト プロパティ LOSS_KEY（PCの config.json の LOSS_KEY と同じ。ロスのチェックと共用）
  * 書き込み先：スプレッドシート「買取表チェック（全店）」（初回に自動作成、IDはスクリプト プロパティ K_DAILY_SHEET）
  */
-var KD_COLS = ['確認状況', '社員への確認メモ', '買取日時', '店舗', '受付番号', 'お客様', '商品', '状態', '枚数', '買取単価', '買取表', '買取表比', '上乗せ額', '判定', '理由', '買取表のタブ', '査定者', '承認依頼番号', 'マイカ取引ID', 'キー'];
+var KD_COLS = ['確認状況', '社員への確認メモ', '買取日時', '店舗', '受付番号', 'お客様', '商品', '型番', 'パック', 'レアリティ', '状態', '枚数', '買取単価', '買取表', '買取表比', '上乗せ額', '判定', '理由', '買取表のタブ', '査定者', '承認依頼番号', 'マイカ取引ID', 'キー'];
 var KD_HIGH = 1.5;
 
 function kdBook() {
@@ -18,9 +18,11 @@ function kdBook() {
     var sh = ss.getSheets()[0]; sh.setName('明細');
     sh.getRange(1, 1, 1, KD_COLS.length).setValues([KD_COLS]).setFontWeight('bold').setBackground('#efede7');
     sh.setFrozenRows(1); sh.setFrozenColumns(2);
-    sh.setColumnWidth(2, 220); sh.setColumnWidth(7, 300); sh.setColumnWidth(15, 280);
+    sh.setColumnWidth(2, 220); sh.setColumnWidth(7, 300); sh.setColumnWidth(18, 280);
     ss.insertSheet('集計');
   }
+  var m = ss.getSheetByName('明細'); // 列の追加（型番・パック・レアリティ）：古い形のシートなら列を差し込む
+  if (m && m.getRange(1, 8).getValue() !== '型番') { m.insertColumnsAfter(7, 3); m.getRange(1, 8, 1, 3).setValues([['型番', 'パック', 'レアリティ']]).setFontWeight('bold').setBackground('#efede7'); }
   return ss;
 }
 
@@ -99,7 +101,7 @@ function kDaily(d) {
     var j = kdJudge(I, l); if (!j.hit) return;
     var unit = Number(l.unit) || 0, cnt = Number(l.cnt) || 0, w = who[String(l.tx)] || {};
     var at = new Date(l.at);
-    rows.push(['未確認', '', at, l.store, l.rec || '', l.cust || '', l.name || '', l.cond || '', cnt, unit, j.ref || '', j.ref ? unit / j.ref : '',
+    rows.push(['未確認', '', at, l.store, l.rec || '', l.cust || '', l.name || '', l.no || '', l.exp || '', l.rar || '', l.cond || '', cnt, unit, j.ref || '', j.ref ? unit / j.ref : '',
       j.ref ? Math.max(0, unit - j.ref) * cnt : '', j.hit, j.why, j.tab || '', w.by || '', w.id || '', l.tx || '', l.k]);
   });
   if (rows.length) {
@@ -107,12 +109,12 @@ function kDaily(d) {
     sh.insertRowsBefore(2, rows.length);
     sh.getRange(2, 1, rows.length, KD_COLS.length).setValues(rows);
     sh.getRange(2, 3, rows.length, 1).setNumberFormat('yyyy/MM/dd(ddd) HH:mm');
-    sh.getRange(2, 10, rows.length, 2).setNumberFormat('#,##0"円"');
-    sh.getRange(2, 12, rows.length, 1).setNumberFormat('0%');
-    sh.getRange(2, 13, rows.length, 1).setNumberFormat('#,##0"円"');
+    sh.getRange(2, 13, rows.length, 2).setNumberFormat('#,##0"円"');
+    sh.getRange(2, 15, rows.length, 1).setNumberFormat('0%');
+    sh.getRange(2, 16, rows.length, 1).setNumberFormat('#,##0"円"');
     var rule = SpreadsheetApp.newDataValidation().requireValueInList(['未確認', '確認済み（問題なし）', '確認済み（ミス）', '要対応'], true).build();
     sh.getRange(2, 1, rows.length, 1).setDataValidation(rule);
-    rows.forEach(function (r, i) { sh.getRange(2 + i, 14).setBackground(/^🚨/.test(r[13]) ? '#ffd9de' : '#fff4c2'); });
+    rows.forEach(function (r, i) { sh.getRange(2 + i, 17).setBackground(/^🚨/.test(r[16]) ? '#ffd9de' : '#fff4c2'); });
   }
   kdSummary(ss);
   return json({ ok: true, written: rows.length, skipped: lines.length - rows.length });
@@ -122,7 +124,7 @@ function kdSummary(ss) {
   var sh = ss.getSheetByName('明細'), out = ss.getSheetByName('集計') || ss.insertSheet('集計');
   var last = sh.getLastRow(), vals = last >= 2 ? sh.getRange(2, 1, last - 1, KD_COLS.length).getValues() : [];
   var day = {}, mon = {};
-  var add = function (m, k, store, v) { var o = m[k + '|' + store] || (m[k + '|' + store] = { k: k, store: store, n: 0, red: 0, amt: 0, open: 0 }); o.n++; if (/^🚨/.test(v[13])) o.red++; o.amt += Number(v[12]) || 0; if (v[0] === '未確認') o.open++; };
+  var add = function (m, k, store, v) { var o = m[k + '|' + store] || (m[k + '|' + store] = { k: k, store: store, n: 0, red: 0, amt: 0, open: 0 }); o.n++; if (/^🚨/.test(v[16])) o.red++; o.amt += Number(v[15]) || 0; if (v[0] === '未確認') o.open++; };
   vals.forEach(function (v) {
     if (!v[2]) return; var dt = new Date(v[2]);
     add(day, Utilities.formatDate(dt, 'Asia/Tokyo', 'yyyy/MM/dd'), v[3], v);
