@@ -72,7 +72,7 @@
   document.body.appendChild(host);
   var root = host.attachShadow({ mode: 'open' });
   root.innerHTML = '<style>' + CSS() + '</style><div class="wrap"><div class="win">' +
-    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-10-29 版AB</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
+    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-10-30 版AC</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
     (ALL ? '' : '<div class="tabs"><button data-tab="make" class="on">新しく作る</button><button data-tab="refill">補充する</button></div>') +
     '<button class="x" id="close" title="閉じる">×</button></div>' +
     '<div class="bd" id="body"><div class="msg">読み込み中…</div></div></div></div>';
@@ -1127,9 +1127,10 @@
         return '<div class="mh2">' + esc(st) + '　' + sum(st, function (r) { return r.n; }) + '点・原価 ' + yen(sum(st, function (r) { return r.p.cost * r.n; })) + '</div><table><tr><th>区分</th><th>商品</th><th>状態</th><th>数</th><th>マスタ</th><th>原価</th><th>在庫</th></tr>' +
           by[st].map(function (r) { return '<tr><td>' + esc(r.role) + '</td><td>' + (r.p.kind === 'psa' ? '《' + esc(psaLabel(r.p)) + '》' : '') + esc(r.p.name) + '</td><td>' + esc(condText(r.p)) + '</td><td>' + r.n + '</td><td>' + yen(r.p.sell) + '</td><td>' + yen(r.p.cost * r.n) + '</td><td>' + r.p.stock + '</td></tr>'; }).join('') + '</table>';
       }).join('') +
-      '<div class="sm">「各店に発送依頼を送る」で、各店の「オリパ・買取共有」グループに、その店が送るカードの画像と文が届きます。「文をコピー」はLINE WORKSなどにそのまま貼れます。各店の在庫はまだ何も動かしていません。</div>' +
-      '<div class="acts"><button class="ghost" data-x>閉じる</button><button class="ghost" data-csv>CSVを保存</button><button class="ghost" data-copy>文をコピー</button>' + (APPROVAL_URL ? '<button class="primary" data-send>各店に発送依頼を送る</button>' : '') + '</div>');
+      '<div class="sm">「各店に発送依頼を送る」で、各店の「オリパ・買取共有」グループに、その店が送るカードの画像と文が届きます。「文をコピー」はLINE WORKSなどにそのまま貼れます。「マイカに店間移動の下書きを作る」で、各店→通販店の店間移動が出荷管理に下書きで入ります（出荷は各店で）。各店の在庫はまだ何も動かしていません。</div>' +
+      '<div class="acts"><button class="ghost" data-x>閉じる</button><button class="ghost" data-csv>CSVを保存</button><button class="ghost" data-copy>文をコピー</button>' + '<button class="ghost" data-ship>マイカに店間移動の下書きを作る（通販店へ）</button>' + (APPROVAL_URL ? '<button class="primary" data-send>各店に発送依頼を送る</button>' : '') + '</div>');
     m.querySelector('[data-x]').onclick = function () { m.remove(); };
+    m.querySelector('[data-ship]').onclick = function () { requestShip(pt, by, stores, title); };
     if (m.querySelector('[data-send]')) m.querySelector('[data-send]').onclick = function () { requestPick(pt, by, stores, title); };
     m.querySelector('[data-copy]').onclick = function () {
       var b = this;
@@ -1190,6 +1191,44 @@
       }
       m.querySelector('[data-x]').disabled = false; m.querySelector('[data-x]').textContent = '閉じる';
       if (ng) { b.disabled = false; b.textContent = '送れなかった店にもう一度送る'; } else b.textContent = '全店に送りました';
+    };
+  }
+  // 全店モード：各店 → 通販店 の店間移動を、マイカに「下書き」で作る（発送はマイカの出荷管理で各店が行う）
+  function requestShip(pt, by, stores, title) {
+    var to = (S.stores || []).filter(function (s) { return /通販/.test(s.display_name || ''); })[0];
+    var list = stores.filter(function (st) { return !/通販/.test(st) && by[st].some(function (r) { return r.p.sid; }); });
+    var m = modal('<div class="mh">マイカに店間移動の下書きを作りますか？</div><div class="frm">' +
+      '<div class="sm">チェックした店舗ごとに、マイカの「出荷管理」に<b>通販店あての店間移動（下書き）</b>を作ります。在庫はまだ動きません。各店が出荷管理 → 下書きを開いて、中身を確かめてから「出荷」してください。</div>' +
+      (to ? '' : '<div class="sm" style="color:#c0392b">通販店が見つかりませんでした。</div>') +
+      '<div class="pkst">' + list.map(function (st) {
+        var agg = {}, n = 0; by[st].forEach(function (r) { agg[r.p.id] = (agg[r.p.id] || 0) + r.n; n += r.n; });
+        return '<label class="ck"><input type="checkbox" data-st="' + esc(st) + '" checked> ' + esc(st) + '（' + Object.keys(agg).length + '品・' + n + '点・原価 ' + yen(by[st].reduce(function (s, r) { return s + r.p.cost * r.n; }, 0)) + '）<span class="pkr" data-r="' + esc(st) + '"></span></label>';
+      }).join('') + '</div>' +
+      '<label>メモ（下書きの備考に入ります） <input id="sd" style="width:100%;font-size:14px;padding:8px;border:1.5px solid #d6d2c8;border-radius:8px" value="' + esc('TikTok・通販オリパ ' + title.replace(/（原価率[^）]*）/, '')) + '"></label></div>' +
+      '<div class="acts"><button class="ghost" data-x>やめる</button><button class="primary" data-ok' + (to ? '' : ' disabled') + '>下書きを作る</button></div>');
+    m.querySelector('[data-x]').onclick = function () { m.remove(); };
+    m.querySelector('[data-ok]').onclick = async function () {
+      var b = this, memo = m.querySelector('#sd').value.trim();
+      var sel = [].slice.call(m.querySelectorAll('[data-st]:checked')).map(function (x) { return x.dataset.st; });
+      if (!sel.length || !to) return;
+      b.disabled = true; m.querySelector('[data-x]').disabled = true;
+      var ng = 0;
+      for (var i = 0; i < sel.length; i++) {
+        var st = sel[i], mark = m.querySelector('[data-r="' + st + '"]');
+        b.textContent = '作成中… ' + (i + 1) + '/' + sel.length; if (mark) mark.textContent = '　作成中…';
+        try {
+          var rows = by[st], sid = rows[0].p.sid, agg = {}, order = [], cost = 0;
+          rows.forEach(function (r) { if (!(r.p.id in agg)) { agg[r.p.id] = 0; order.push(r.p.id); } agg[r.p.id] += r.n; cost += r.p.cost * r.n; });
+          var body = { to_store_id: to.id, total_wholesale_price: Math.round(cost), shipment_date: new Date().toString(), products: order.map(function (id) { return { product_id: Number(id), item_count: agg[id] }; }) };
+          if (memo) body.description = memo;
+          var j = await api('/api/store/' + sid + '/store-shipment', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+          var no = j && (j.id || (j.storeShipment && j.storeShipment.id) || (j.store_shipment && j.store_shipment.id));
+          if (mark) { mark.textContent = '　✅ 下書きを作りました' + (no ? '（No.' + no + '）' : ''); mark.style.color = '#1e7d4f'; }
+          m.querySelector('[data-st="' + st + '"]').checked = false;
+        } catch (e) { ng++; if (mark) { mark.textContent = '　作れませんでした：' + e.message; mark.style.color = '#c0392b'; } }
+      }
+      m.querySelector('[data-x]').disabled = false; m.querySelector('[data-x]').textContent = '閉じる';
+      if (ng) { b.disabled = false; b.textContent = '作れなかった店でもう一度'; } else b.textContent = '全店の下書きを作りました';
     };
   }
   function showDetail(pt) {
