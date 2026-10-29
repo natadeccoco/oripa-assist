@@ -190,6 +190,24 @@ function lossCheck(d) {
   return json({ ok: true, checked: newCount, bad: bad.length, sent: sent, channel: !!ch });
 }
 
+/** 1回だけ：Botが「ロス申請」グループ（役員＋全店の店舗アカウント）を作って、送り先に登録する */
+function lCreateGroup() {
+  if (lChannel()) { Logger.log('すでに登録済み：' + lChannel()); return; }
+  var ap = (P.getProperty('LW_APPROVERS') || '').split(',').map(function (s) { return s.trim(); }).filter(String);
+  var miss = [], members = ap.slice();
+  Object.keys(CH).forEach(function (s) { var u = ''; try { u = storeUser(s); } catch (e) { } if (u) { if (members.indexOf(u) < 0) members.push(u); } else miss.push(s); });
+  Logger.log('メンバー ' + members.length + '人：' + members.map(userName).join('、') + (miss.length ? '／見つからない店：' + miss.join('、') : ''));
+  var r = UrlFetchApp.fetch('https://www.worksapis.com/v1.0/bots/' + prop('LW_BOT_ID') + '/channels', {
+    method: 'post', contentType: 'application/json', muteHttpExceptions: true,
+    headers: { Authorization: 'Bearer ' + token() }, payload: JSON.stringify({ members: members, title: 'ロス申請' })
+  });
+  var j = JSON.parse(r.getContentText() || '{}');
+  if (!j.channelId) throw new Error('グループを作れませんでした（' + r.getResponseCode() + '）: ' + r.getContentText());
+  P.setProperty('LW_LOSS_CHANNEL', j.channelId);
+  send(j.channelId, { type: 'text', text: '「ロス申請」グループです。\n店舗のロス申請（承認・差し戻しは役員のみ）と、承認のないロスの警告（毎晩22時）がここに届きます。\nロスはマイカに登録する前に、ブックマークの「ロス申請」から申請してください。' });
+  Logger.log('作成・登録しました：' + j.channelId);
+}
+
 /** 最初に1回：タブと LOSS_KEY を作る */
 function lSetup() {
   lSheet(); mSheet(); lSettingSheet();
