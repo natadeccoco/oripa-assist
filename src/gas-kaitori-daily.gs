@@ -7,7 +7,7 @@
  * 書き込み先：スプレッドシート「買取表チェック（全店）」（初回に自動作成、IDはスクリプト プロパティ K_DAILY_SHEET）
  */
 var KD_COLS = ['確認状況', '社員への確認メモ', '買取日時', '店舗', '受付番号', 'お客様', '商品', '型番', 'パック', 'レアリティ', '状態', '枚数', '買取単価', '買取表', '買取表比', '上乗せ額', '判定', '理由', '買取表のタブ', '査定者', '承認依頼番号', 'マイカ取引ID', 'キー'];
-var KD_HIGH = 1.5;
+var KD_HIGH = 1.2;
 
 function kdBook() {
   var id = P.getProperty('K_DAILY_SHEET'), ss = null;
@@ -184,7 +184,7 @@ function kdWarn(rows, ss) {
 /** 最初に1回：買取警告グループを作り、あいさつと、今シートにある未確認の分を送る */
 function kdWarnSetup() {
   var ch = kdWarnChannel();
-  send(ch, { type: 'text', text: '買取警告グループです（役員のみ）。\n毎晩22:10ごろ、全店の買取を買取表と照らし合わせて、買取表より高く買ったもの（🚨1.5倍以上・トレーナーズの@と単価違い／⚠️それ以外の上乗せ）をここにお知らせします。' });
+  send(ch, { type: 'text', text: '買取警告グループです（役員のみ）。\n毎晩22:10ごろ、全店の買取を買取表と照らし合わせて、買取表より高く買ったもの（🚨1.2倍以上・トレーナーズの@と単価違い／⚠️それ以外の上乗せ）をここにお知らせします。' });
   var ss = kdBook(), sh = ss.getSheetByName('明細'), last = sh.getLastRow();
   if (last >= 2) { var rows = sh.getRange(2, 1, last - 1, KD_COLS.length).getValues().filter(function (r) { return r[0] === '未確認'; }); if (rows.length) kdWarn(rows, ss); }
   Logger.log('買取警告グループ: ' + ch);
