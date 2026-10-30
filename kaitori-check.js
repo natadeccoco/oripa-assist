@@ -144,9 +144,10 @@
       html += '<optgroup label="' + esc(label) + '">' + names.map(function (n) { seen[n] = 1; return '<option value="' + esc(n) + '"' + (n === cur ? ' selected' : '') + '>' + esc(n) + (mark && mark.indexOf(n) >= 0 ? '（今日出勤）' : '') + '</option>'; }).join('') + '</optgroup>';
     };
     grp('今日の' + st + '店の出勤', today);
+    grp(st + '店のほかのスタッフ', ro.all[st] || []);
     ['柏', '津田沼', '松戸', '横浜', '中野', '町田', '千葉中央', 'お台場'].forEach(function (s) {
       var t = ro.today[s] || [], all = (ro.all[s] || []).concat(t);
-      if (s === st) { grp(st + '店（今日は出勤予定なし）', all); return; }
+      if (s === st) return;
       all = all.filter(function (n, k) { return all.indexOf(n) === k; }).sort(function (a, b) { return (t.indexOf(b) >= 0) - (t.indexOf(a) >= 0); });
       grp('ヘルプ：' + s + '店', all, t);
     });
