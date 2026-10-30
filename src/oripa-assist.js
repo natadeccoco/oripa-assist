@@ -33,6 +33,22 @@
     }
     return '';
   }
+  // スタッフの手直しから学ぶ：提案から外したものは下げ、足したものは上げる（本部のシート「オリパ学習」に記録）
+  var LEARN = {};
+  function loadLearn() { if (!APPROVAL_URL) return; fetch(APPROVAL_URL + '?action=learn').then(function (r) { return r.json(); }).then(function (j) { if (j && j.ok && j.scores) LEARN = j.scores; }).catch(function () { }); }
+  function learnScore(p, base) { var v = (LEARN[base] || {})[nk(p)] || 0; return Math.max(-3, Math.min(3, v)); }
+  function sendLearn(pt) {
+    try {
+      if (!APPROVAL_URL || !pt.orig) return;
+      var fin = {}; flatHits(pt.hits).forEach(function (h) { fin[nk(h.p)] = h.p.name; });
+      var org = {}; pt.orig.forEach(function (o) { org[o.k] = o.name; });
+      var rows = [];
+      Object.keys(org).forEach(function (k) { rows.push({ k: k, name: org[k], r: fin[k] ? '残した' : '外した' }); });
+      Object.keys(fin).forEach(function (k) { if (!org[k]) rows.push({ k: k, name: fin[k], r: '足した' }); });
+      if (!rows.length) return;
+      fetch(APPROVAL_URL, { method: 'POST', body: JSON.stringify({ action: 'learn', store: ALL ? '全店' : shortName(S.sname), base: pt.base || '', price: pt.price, rows: rows }) }).catch(function () { });
+    } catch (e) { }
+  }
   var histCache = {};
   function histCount(p, base) {
     var ck = base + '|' + p.id; if (histCache[ck] != null) return histCache[ck];
@@ -72,7 +88,7 @@
   document.body.appendChild(host);
   var root = host.attachShadow({ mode: 'open' });
   root.innerHTML = '<style>' + CSS() + '</style><div class="wrap"><div class="win">' +
-    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-10-30 版AI</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
+    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-10-30 版AJ</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
     (ALL ? '' : '<div class="tabs"><button data-tab="make" class="on">新しく作る</button><button data-tab="refill">補充する</button></div>') +
     '<button class="x" id="close" title="閉じる">×</button></div>' +
     '<div class="bd" id="body"><div class="msg">読み込み中…</div></div></div></div>';
@@ -86,6 +102,7 @@
   (async function init() {
     try {
       var ses = await api('/api/auth/session'); S.me = ses && ses.user && ses.user.id;
+      loadLearn();
       var all = await api('/api/store/all');
       if (ALL) { S.stores = all.stores || []; await loadAllStores(); return; }
       S.stores = (all.stores || []).filter(function (s) { return !/通販/.test(s.display_name); });
@@ -173,7 +190,9 @@
       L.kinds = [kinds.slice()]; L.dupFirst = kinds.length === 1 && kinds[0] === 'box'; L.allowMis = kinds.indexOf('pack') >= 0;
       L.label = kinds.map(function (k) { return KIND_NAMES[k]; }).join('・') + '（種類を変更）';
     }
-    return [build(price, init, costr, L)];
+    var pt0 = build(price, init, costr, L); pt0.base = L.base;
+    pt0.orig = flatHits(pt0.hits).map(function (h) { return { k: nk(h.p), name: h.p.name }; }); // 最初の提案（スタッフの手直しと比べて学ぶ）
+    return [pt0];
   }
   // 本部ルールを使わない「自由設定」：原価率の上限・下限、当たりの種類、下枠の入れ方を自分で決める
   var KIND_NAMES = { box: 'BOX', card: 'シングル', psa: 'PSA', pack: 'パック', supply: 'サプライ' };
@@ -310,6 +329,7 @@
         if (usedOf(usedIds, p)) s -= 4 * Math.max(1, usedIds[nk(p)] || 0); // 同じ商品（別の在庫・別の店でも）は基本1つまで
         s += Math.log(1 + stockOf(p)) * 1.6 + Math.log(1 + (Number(p.stock) || 0)) * 0.4; // 在庫の多い商品を優先（全店モードは全店の合計）
         s += Math.log(1 + histCount(p, L.base)) * 0.7; // 過去によく入れていた商品を優先
+        s += learnScore(p, L.base) * 0.8; // スタッフが手直しで足した商品は上げ、外した商品は下げる
         return s;
       }
     }
@@ -1263,6 +1283,7 @@
           genre_id: S.genre && S.genre.id, category_id: S.cat && S.cat.id,
           products: items.map(function (h) { return { product_id: h.p.id, item_count: h.n }; }) };
         await api('/api/store/' + S.sid + '/item/original-pack', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        sendLearn(pt);
         m.querySelector('.mbox').innerHTML = '<div class="mh">一時保存しました</div><div class="sm">マイカの「オリパ・福袋」→「一時保存」タブに「' + esc(name) + '」があります。中身を確認してから作成してください。</div><div class="acts"><button class="primary" data-x>OK</button></div>';
         m.querySelector('[data-x]').onclick = function () { m.remove(); };
       } catch (e) {
