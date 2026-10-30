@@ -88,7 +88,7 @@
   document.body.appendChild(host);
   var root = host.attachShadow({ mode: 'open' });
   root.innerHTML = '<style>' + CSS() + '</style><div class="wrap"><div class="win">' +
-    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-10-30 版AK</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
+    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-10-30 版AL</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
     (ALL ? '' : '<div class="tabs"><button data-tab="make" class="on">新しく作る</button><button data-tab="refill">補充する</button></div>') +
     '<button class="x" id="close" title="閉じる">×</button></div>' +
     '<div class="bd" id="body"><div class="msg">読み込み中…</div></div></div></div>';
@@ -120,7 +120,7 @@
     var cats = await api('/api/store/' + sid + '/item/category'); var gens = await api('/api/store/' + sid + '/item/genre');
     S.cat = (cats.itemCategories || []).find(function (c) { return c.handle === 'ORIGINAL_PACK'; });
     S.genre = (gens.itemGenres || []).find(function (g) { return /ポケモン/.test(g.display_name); }) || (gens.itemGenres || [])[0];
-    S.inv = await loadInv(sid, S.sname);
+    S.invBase = await loadInv(sid, S.sname); refreshInv();
     S.loaded = true; render();
   }
   function shortName(n) { return String(n || '').replace('ナタデココ', '').replace(/本?店$/, ''); }
@@ -143,7 +143,19 @@
     applyStoreFilter();
     S.loaded = true; render();
   }
-  function applyStoreFilter() { S.inv = S.invAll.filter(function (p) { return S.useStores.indexOf(p.sid) >= 0; }); S.patterns = []; }
+  function applyStoreFilter() { S.invBase = S.invAll.filter(function (p) { return S.useStores.indexOf(p.sid) >= 0; }); refreshInv(); S.patterns = []; }
+  // カード・BOXの状態で使う在庫をしぼる（ふだんはシングル＝状態A・A-、BOX＝全部。「任意の金額」で傷オリパなどに変えられる）
+  var DEF_CARD_CONDS = ['状態A', '状態A-'];
+  function boxState(p) { return p.bst ? (/^B/.test(p.bst) ? 'B' : p.bst) : '通常'; }
+  function condPass(p) {
+    var c = S.conds;
+    if (p.kind === 'card') return (c && c.card ? c.card : DEF_CARD_CONDS).indexOf(p.cond) >= 0;
+    if (p.kind === 'box' && c && c.box) return c.box.indexOf(boxState(p)) >= 0;
+    return true;
+  }
+  function refreshInv() { S.inv = (S.invBase || []).filter(condPass); }
+  function setConds(c) { S.conds = c || null; refreshInv(); }
+  function cardConds() { var o = {}; (S.invBase || []).forEach(function (p) { if (p.kind === 'card' && p.cond) o[p.cond] = (o[p.cond] || 0) + 1; }); return Object.keys(o).sort(); }
   function storeChips() {
     if (!ALL) return '';
     return '<div class="stchips"><span class="lb">使う店舗</span>' + S.stores.map(function (st) {
@@ -170,12 +182,12 @@
       var shop = Number(p.actual_sell_price != null ? p.actual_sell_price : p.sell_price) || 0;
       var sell = Number(p.item_sell_price) || shop;
       return { id: p.id, name: p.display_name, img: p.image_url, sell: sell, shop: shop, cost: Number(p.average_wholesale_price) || 0, stock: p.stock_number, kind: kind,
-        cond: kind === 'box' && bst ? cond + '・' + bst + (/^B/.test(bst) ? '（シュリンクなし）' : '') : cond, noShrink: kind === 'box' && /^B/.test(bst), exp: p.item_expansion || '', rarity: p.item_rarity || '', fv: bm ? Number(bm[1]) : 0, spec: spec, sid: sid, sname: shortName(sname) };
+        bst: kind === 'box' ? bst : '', cond: kind === 'box' && bst ? cond + '・' + bst + (/^B/.test(bst) ? '（シュリンクなし）' : '') : cond, noShrink: kind === 'box' && /^B/.test(bst), exp: p.item_expansion || '', rarity: p.item_rarity || '', fv: bm ? Number(bm[1]) : 0, spec: spec, sid: sid, sname: shortName(sname) };
     }).filter(function (p) {
       if (p.kind === 'other') return false;
       if (p.kind === 'filler') return true;
       if (p.cost <= 0 || p.sell <= 0) return false;          // 原価・マスタ価格が入っていないものは使わない
-      if (p.kind === 'card' && ['状態A', '状態A-'].indexOf(p.cond) < 0) return false; // シングルは状態A・A-だけ（BOX・PSAは状態を問わない）
+      // シングルの状態（ふだんは状態A・A-だけ）は condPass でしぼる
       if (suspectPrice(p)) { p.kind = 'pack'; p.mis = true; } // BOX扱いだが中身はパックらしいもの（原価がマスタの3割未満）→パック扱い。当たりには使わず、下枠（3000円など）にだけ使う
       return true;
     });
@@ -599,7 +611,7 @@
       var ks = [].slice.call(root.querySelectorAll('.kchk input:checked')).map(function (x) { return x.dataset.k; });
       if (!ks.length) { alert('当たりに入れる種類を1つ以上選んでください'); return; }
       S.form = { price: p, init: n, costr: c, kinds: ks };
-      S.patterns = propose(p, n, c, null, ks); renderMake();
+      setConds(null); S.patterns = propose(p, n, c, null, ks); renderMake();
       var r = $('#res'); if (r) r.scrollIntoView({ behavior: 'smooth' });
     };
     bindPatternButtons();
@@ -611,7 +623,7 @@
     root.querySelectorAll('[data-mode]').forEach(function (b) {
       b.onclick = function () {
         var on = b.dataset.mode === 'free'; if (S.free.on === on) return;
-        S.free.on = on; S.patterns = [];
+        S.free.on = on; S.patterns = []; if (!on) setConds(null);
         if (on && !S.free.price) seedFree(S.free, (S.form && S.form.price) || 1500);
         renderMake();
       };
@@ -631,6 +643,9 @@
   }
   function renderFree(F) {
     if (!F.price) seedFree(F, 1500);
+    var condList = cardConds(); if (!condList.length) condList = DEF_CARD_CONDS.slice();
+    if (!F.cardConds) F.cardConds = DEF_CARD_CONDS.filter(function (c) { return condList.indexOf(c) >= 0; });
+    if (!F.boxConds) F.boxConds = ['通常', 'A-', 'B'];
     var L = learnFor(F.price);
     var fillDef = { at: L.fill.at || 200, card: L.fill.single || 1980, box: L.fill.single || 7980 };
     function num(id, v, w) { return '<input class="n' + (w || '') + '" id="' + id + '" type="number" step="any" value="' + v + '">'; }
@@ -658,6 +673,8 @@
       '</div>' +
       '<div class="fgrid">' +
         '<div class="f"><div class="lb">当たりに入れる種類</div><div class="kchk">' + ['box', 'card', 'psa', 'pack', 'supply'].map(function (k) { return '<label><input type="checkbox" data-k="' + k + '"' + (F.kinds.indexOf(k) >= 0 ? ' checked' : '') + '>' + KIND_NAMES[k] + '</label>'; }).join('') + '</div></div>' +
+        '<div class="f"><div class="lb">シングルの状態</div><div class="kchk cchk">' + condList.map(function (c) { return '<label><input type="checkbox" data-c="' + esc(c) + '"' + (F.cardConds.indexOf(c) >= 0 ? ' checked' : '') + '>' + esc(c.replace('状態', '')) + '</label>'; }).join('') + '</div><div class="hint">傷オリパはB・Cなどにチェック（ふだんはA・A-）</div></div>' +
+        '<div class="f"><div class="lb">BOXの状態</div><div class="kchk bchk">' + [['通常', '通常'], ['A-', 'A-'], ['B', 'B（シュリンクなし）']].map(function (c) { return '<label><input type="checkbox" data-c="' + c[0] + '"' + (F.boxConds.indexOf(c[0]) >= 0 ? ' checked' : '') + '>' + c[1] + '</label>'; }).join('') + '</div></div>' +
         '<div class="f"><div class="lb">下枠</div><select id="ffill">' +
           [['rule', (L.fill.at ? '【@' + L.fill.at + '】' + (L.fill.pack ? '（足りなければパック）' : '') : 'マスタ' + yen(L.fill.single) + '以上の' + fillKindName(L)) + '（' + L.base.toLocaleString() + '円のオリパと同じ）'], ['at', '【@◯◯】商品'], ['card', 'シングル'], ['box', 'BOX'], ['pack', 'パック']].map(function (o) { return '<option value="' + o[0] + '"' + (F.fill === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select>' +
           (F.fill === 'at' ? ' 【@' + num('fval', F.fillVal || fillDef.at) + '】' : (F.fill === 'card' || F.fill === 'box') ? ' マスタ ' + num('fval', F.fillVal || fillDef[F.fill], ' w') + ' 円以上' : '') +
@@ -677,6 +694,8 @@
       F.big = pair('fbig', F.big); F.mid = pair('fmid', F.mid); F.small = pair('fsmall', F.small);
       F.nBig = pair('fnbig', F.nBig).map(Math.round); F.nMid = pair('fnmid', F.nMid).map(Math.round); F.nTotal = pair('fntot', F.nTotal).map(Math.round);
       F.kinds = [].slice.call(root.querySelectorAll('.kchk input:checked')).map(function (x) { return x.dataset.k; });
+      F.cardConds = [].slice.call(root.querySelectorAll('.cchk input:checked')).map(function (x) { return x.dataset.c; });
+      F.boxConds = [].slice.call(root.querySelectorAll('.bchk input:checked')).map(function (x) { return x.dataset.c; });
       F.fill = $('#ffill').value; var fv = $('#fval'); F.fillVal = fv ? fv.value : '';
     }
     $('#fprice').onchange = function () { var p = Number(this.value); if (p > 0) { read(); seedFree(F, p); S.patterns = []; renderMake(); } };
@@ -684,6 +703,9 @@
     $('#go').onclick = function () {
       read();
       if (!F.kinds.length) { alert('当たりに入れる種類を1つ以上選んでください'); return; }
+      if (F.kinds.indexOf('card') >= 0 && !F.cardConds.length) { alert('シングルの状態を1つ以上選んでください'); return; }
+      if (F.kinds.indexOf('box') >= 0 && !F.boxConds.length) { alert('BOXの状態を1つ以上選んでください'); return; }
+      setConds({ card: F.cardConds, box: F.boxConds });
       S.patterns = propose(F.price, F.init, F.cmax, F); renderMake();
       var r = $('#res'); if (r) r.scrollIntoView({ behavior: 'smooth' });
     };
