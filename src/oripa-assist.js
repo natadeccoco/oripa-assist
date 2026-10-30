@@ -72,7 +72,7 @@
   document.body.appendChild(host);
   var root = host.attachShadow({ mode: 'open' });
   root.innerHTML = '<style>' + CSS() + '</style><div class="wrap"><div class="win">' +
-    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-10-30 版AG</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
+    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-10-30 版AH</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
     (ALL ? '' : '<div class="tabs"><button data-tab="make" class="on">新しく作る</button><button data-tab="refill">補充する</button></div>') +
     '<button class="x" id="close" title="閉じる">×</button></div>' +
     '<div class="bd" id="body"><div class="msg">読み込み中…</div></div></div></div>';
@@ -149,10 +149,11 @@
       var isPsa = /PSA/i.test(spec + ' ' + (p.specialty__handle || '') + ' ' + cond + ' ' + p.display_name);
       var kind = bm ? 'filler' : (cat === 'CARD' ? (isPsa ? 'psa' : 'card') : (cat === 'BOX' ? 'box' : (cat === 'PACK' || /パック/.test(catName) ? 'pack' : (/サプライ/.test(catName) ? 'supply' : 'other'))));
       // マスタ価格 = 商品マスタの販売価格（item_sell_price）。店頭価格 = この在庫の実際の販売価格（actual_sell_price）
+      var bst = ((spec.match(/BOX状態\s*(\S+)/) || [])[1] || ''); // BOXの状態（A-・B など。Bはシュリンクなし）
       var shop = Number(p.actual_sell_price != null ? p.actual_sell_price : p.sell_price) || 0;
       var sell = Number(p.item_sell_price) || shop;
       return { id: p.id, name: p.display_name, img: p.image_url, sell: sell, shop: shop, cost: Number(p.average_wholesale_price) || 0, stock: p.stock_number, kind: kind,
-        cond: cond, exp: p.item_expansion || '', rarity: p.item_rarity || '', fv: bm ? Number(bm[1]) : 0, spec: spec, sid: sid, sname: shortName(sname) };
+        cond: kind === 'box' && bst ? cond + '・' + bst + (/^B/.test(bst) ? '（シュリンクなし）' : '') : cond, noShrink: kind === 'box' && /^B/.test(bst), exp: p.item_expansion || '', rarity: p.item_rarity || '', fv: bm ? Number(bm[1]) : 0, spec: spec, sid: sid, sname: shortName(sname) };
     }).filter(function (p) {
       if (p.kind === 'other') return false;
       if (p.kind === 'filler') return true;
@@ -678,7 +679,7 @@
     return '<' + tag + ' class="cd ' + (big ? 'big ' : '') + (attrs ? 'swap' : '') + '" ' + (attrs || '') + '><div class="im' + (h.p.set ? ' duo' : '') + '">' + img + (h.p.set ? '<span class="settag">セット</span>' : '') + (h.n > 1 ? '<span class="cnt">×' + h.n + '</span>' : '') + '<span class="role r-' + esc(h.role) + '">' + esc(h.role) + '</span>' +
       (h.p.kind === 'psa' ? '<span class="psa">' + esc(psaLabel(h.p)) + '</span>' : '') +
       (attrs ? '<span class="edit">入れ替え</span>' : '') + '</div>' +
-      (ALL && h.p.sname ? '<div class="sttag">' + esc(h.p.sname) + '</div>' : '') + '<div class="nm">' + (h.p.kind === 'psa' ? '《' + esc(psaLabel(h.p)) + '》' : '') + esc(h.p.name) + '</div>' + (h.p.kind === 'psa' ? '<div class="cond psa2">PSA鑑定品</div>' : (h.p.cond && !h.p.set ? '<div class="cond">' + esc(h.p.cond) + '</div>' : '')) +
+      (ALL && h.p.sname ? '<div class="sttag">' + esc(h.p.sname) + '</div>' : '') + '<div class="nm">' + (h.p.kind === 'psa' ? '《' + esc(psaLabel(h.p)) + '》' : '') + esc(h.p.name) + '</div>' + (h.p.kind === 'psa' ? '<div class="cond psa2">PSA鑑定品</div>' : (h.p.cond && !h.p.set ? '<div class="cond' + (h.p.noShrink ? ' nosh' : '') + '">' + esc(h.p.cond) + '</div>' : '')) +
       (h.p.set ? '<div class="cond">' + esc(h.p.set.map(function (m) { return m.kind === 'psa' ? psaLabel(m) : (m.cond || ''); }).join('＋')) + '</div>' : '') + '<div class="pr">マスタ ' + yen(h.p.sell) + (h.p.set ? '（2枚合計）' : '') + '</div>' + (h.p.shop != null ? '<div class="cs">店頭 ' + yen(h.p.shop) + '</div>' : '') + '<div class="cs">原価 ' + yen(h.p.cost) + '</div></' + tag + '>';
   }
 
@@ -1393,7 +1394,7 @@
       '.orow.on,.pickable.on .im{outline:3px solid #c8102e}.orow span{color:#777;font-size:12px}',
       '.pickable{cursor:pointer}',
       '.psa{position:absolute;right:3px;top:3px;font-size:10px;font-weight:900;padding:1px 6px;border-radius:4px;background:#1a3fa0;color:#fff;letter-spacing:.03em}.cond.psa2{background:#1a3fa0;color:#fff}',
-      '.cond{display:inline-block;font-size:9.5px;font-weight:800;color:#555;background:#efece4;border-radius:4px;padding:0 5px;margin:2px 0 1px}',
+      '.cond{display:inline-block;font-size:9.5px;font-weight:800;color:#555;background:#efece4;border-radius:4px;padding:0 5px;margin:2px 0 1px}.cond.nosh{background:#c0392b;color:#fff}',
       '.cd.swap{cursor:pointer}.cd.swap:hover .im{outline:3px solid #e8c23a}',
       '.edit{position:absolute;left:0;right:0;bottom:0;background:rgba(29,29,34,.78);color:#fff;font-size:10px;font-weight:800;text-align:center;padding:3px 0;opacity:0;transition:opacity .15s}',
       '.cd.swap:hover .edit{opacity:1}',
