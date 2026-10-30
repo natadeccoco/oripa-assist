@@ -72,7 +72,7 @@
   document.body.appendChild(host);
   var root = host.attachShadow({ mode: 'open' });
   root.innerHTML = '<style>' + CSS() + '</style><div class="wrap"><div class="win">' +
-    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-10-30 版AF</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
+    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-10-30 版AG</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
     (ALL ? '' : '<div class="tabs"><button data-tab="make" class="on">新しく作る</button><button data-tab="refill">補充する</button></div>') +
     '<button class="x" id="close" title="閉じる">×</button></div>' +
     '<div class="bd" id="body"><div class="msg">読み込み中…</div></div></div></div>';
@@ -262,6 +262,7 @@
 
   // 同じ商品かどうか（別の在庫行・別の店舗の同じBOXも同じものとして数える）
   function nk(p) { return 'N:' + p.kind + ':' + String(p.name || '').replace(/[\s　]/g, '') + (p.kind === 'psa' ? ':' + (p.spec || '') + (p.cond || '') : ''); }
+  var MAX_SAME = 2; // 同じ商品を当たりに入れるのは2個まで
   function usedOf(u, p) { return !!(u[p.id] || u[nk(p)]); }
   function markUsed(u, p) { u[p.id] = 1; u[nk(p)] = (u[nk(p)] || 0) + 1; }
   function build(price, init, costr, L) {
@@ -293,7 +294,7 @@
         var g = order[oi][0], pass = order[oi][1], hiU = order[oi][2] ? Math.max(hi, L.mid[1] * price) : hi; // BOXが範囲内に無ければ少し上のBOXを使う（シングルより優先）
         {
           var kinds = L.kinds[g];
-          var c = HINV.filter(function (p) { return kinds.indexOf(p.kind) >= 0 && left[p.id] > 0 && p.sell >= lo && p.sell < hiU && (pass || !usedOf(usedIds, p)) && !(lastOneMode && isDeck(p)); });
+          var c = HINV.filter(function (p) { return kinds.indexOf(p.kind) >= 0 && left[p.id] > 0 && p.sell >= lo && p.sell < hiU && (pass || !usedOf(usedIds, p)) && (usedIds[nk(p)] || 0) < MAX_SAME && !(lastOneMode && isDeck(p)); });
           if (!c.length) continue;
           c.sort(function (a, b) { return sc(b) - sc(a); });
           return c[0];
@@ -410,7 +411,7 @@
           .sort(function (a, b) { return b.p.cost - a.p.cost; });
         if (!nonPref.length) break;
         var room3 = budget - hitCost() - fillCost, swapped = false;
-        var boxes = HINV.filter(function (q) { return pref.indexOf(q.kind) >= 0 && left[q.id] > 0 && (L.dupFirst || !usedOf(usedIds, q)) && q.sell >= L.small[0] * price && q.sell < bigHi; })
+        var boxes = HINV.filter(function (q) { return pref.indexOf(q.kind) >= 0 && left[q.id] > 0 && (L.dupFirst || !usedOf(usedIds, q)) && (usedIds[nk(q)] || 0) < MAX_SAME && q.sell >= L.small[0] * price && q.sell < bigHi; })
           .sort(function (a, b) { return a.cost - b.cost; });
         for (var ni = 0; ni < nonPref.length && !swapped; ni++) {
           var hs = nonPref[ni];
