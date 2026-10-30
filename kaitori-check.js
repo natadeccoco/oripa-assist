@@ -6,7 +6,7 @@
   if (location.hostname !== 'pos.mycalinks.com') { alert('マイカ（pos.mycalinks.com）を開いてから押してください'); return; }
   var old = document.getElementById('ndk-kaitori-host'); if (old) old.remove();
 
-  var VERSION = '2026-10-31 版L';
+  var VERSION = '2026-10-31 版M';
   var GAS = 'https://script.google.com/macros/s/AKfycbwXHuu-X3L0qzJhvaszEIm-1xdeNIqJACQ0uM7mz5Q0hvwfdF9IuQiTKr3qmscNVmnhcQ/exec';
   var FB_URL = 'https://script.google.com/macros/s/AKfycbwl-ZCZ1LyefvSzEGkBEpTFTuFyvW0p-AYye6jBWaLP9t7-bC9_Owfeh4jKScNkFys6Fw/exec';
   var SHORT = { 322: '柏', 323: '津田沼', 324: '松戸', 325: '横浜', 326: '中野', 327: '町田', 328: '千葉中央', 390: '通販', 409: 'お台場' };
@@ -16,7 +16,6 @@
   var GRADE = { 'A-': 0.9, 'B': 0.5, 'C': 0.2, 'D': 0.05 };
 
   var S = { sid: null, stores: [], prices: null, idx: null, config: null, list: [], tx: null, lines: [], cust: '', staff: '', pollT: null };
-  try { S.staff = localStorage.getItem('ndk_kaitori_staff') || ''; } catch (e) { }
 
   /* ---------- 共通 ---------- */
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
@@ -94,13 +93,10 @@
     '<div class="bg"><div class="win">' +
     '<div class="hd"><h1><b>買取</b>チェック</h1><span class="v">' + VERSION + '</span>' +
     '<label>店舗 <select id="store"></select></label>' +
-    '<label>担当者 <input id="staff" placeholder="名前" style="width:110px"></label>' +
     '<span class="sp"></span><button id="reload">更新</button><button id="fb">意見を送る</button><button id="close">閉じる ×</button></div>' +
     '<div class="body" id="body"><div class="msg">読み込み中…</div></div></div></div>';
   var $ = function (s) { return R.querySelector(s); };
   $('#close').onclick = function () { clearInterval(S.pollT); host.remove(); };
-  $('#staff').value = S.staff;
-  $('#staff').onchange = function () { S.staff = this.value.trim(); try { localStorage.setItem('ndk_kaitori_staff', S.staff); } catch (e) { } if (S.tx) renderDetail(); };
   $('#reload').onclick = function () { S.tx ? openTx(S.tx.id) : loadList(); };
   $('#fb').onclick = function () { window.open(FB_URL + '?tool=' + encodeURIComponent('買取チェック') + '&store=' + encodeURIComponent(SHORT[S.sid] || ''), '_blank'); };
 
@@ -135,9 +131,10 @@
     try { var r = await gas({ action: 'kstaff' }); S.roster = { today: r.today || {}, all: r.all || {}, day: r.day }; } catch (e) { S.roster = null; }
   }
   // 最終チェックの名前：その日の出勤者（店舗やることリストの出勤予定）を並べ、ヘルプの人はほかの店の一覧から選ぶ
-  function pickerHtml() {
+  function pickerHtml(id) {
+    id = id || 'fn';
     var st = SHORT[S.sid], ro = S.roster, cur = S.pick || '';
-    if (!ro) return '<input id="fn" placeholder="査定した人の名前" value="' + esc(cur) + '">';
+    if (!ro) return '<input id="' + id + '" placeholder="査定した人の名前" value="' + esc(cur) + '">';
     var today = ro.today[st] || [], seen = {}, html = '<option value="">▼ 名前を選んでください</option>';
     var grp = function (label, names, mark) {
       names = names.filter(function (n) { return !seen[n]; }); if (!names.length) return;
@@ -153,18 +150,19 @@
     });
     if (cur && !seen[cur]) html += '<option value="' + esc(cur) + '" selected>' + esc(cur) + '</option>';
     html += '<option value="__other">一覧にいない人（名前を入力）</option>';
-    return '<select id="fn" class="pick">' + html + '</select>';
+    return '<select id="' + id + '" class="pick">' + html + '</select>';
   }
-  function bindPicker() {
-    var f = $('#fn'); if (!f) return;
-    if (f.tagName === 'INPUT') { f.oninput = function () { S.pick = this.value.trim(); }; return; }
+  function bindPicker(f, quiet) {
+    f = f || $('#fn'); if (!f) return;
+    if (f.tagName === 'INPUT') { f.oninput = function () { S.pick = S.staff = this.value.trim(); }; return; }
     f.onchange = function () {
-      if (this.value === '__other') { var v = (prompt('名前を入力してください') || '').trim(); if (!v) { this.value = S.pick || ''; return; } setPick(v); return; }
-      setPick(this.value);
+      var v = this.value;
+      if (v === '__other') { v = (prompt('名前を入力してください') || '').trim(); if (!v) { this.value = S.pick || ''; return; } if (quiet) { var o = document.createElement('option'); o.value = o.textContent = v; this.appendChild(o); this.value = v; } }
+      if (quiet) { S.pick = S.staff = v; } else setPick(v);
     };
   }
   function setPick(n) {
-    S.pick = n; S.staff = n; $('#staff').value = n; try { localStorage.setItem('ndk_kaitori_staff', n); } catch (e) { }
+    S.pick = n; S.staff = n;
     renderDetail();
   }
 
@@ -301,7 +299,7 @@
     clearInterval(S.pollT);
     var t = S.list.find(function (x) { return x.id === id; });
     if (!t) { await loadList(); t = S.list.find(function (x) { return x.id === id; }); if (!t) return; }
-    S.tx = t; S.cust = ''; S.syncing = true; S.pick = '';
+    S.tx = t; S.cust = ''; S.syncing = true; S.pick = ''; S.staff = '';
     S.lines = (t.transaction_carts || []).map(judge);
     renderDetail();
     loadImages(t);
@@ -353,6 +351,7 @@
     if (ri && ri.kind === 'approval' && ri.status !== '承認') st = ri.status === '差し戻し' ? '<div class="st ng">↩️ 差し戻されました（' + esc(ri.by || '') + '）。LINE WORKSのグループで理由を確認してください</div>' : '<div class="st wait">承認待ち（依頼番号 ' + esc(ri.id) + '）… 結果は自動で反映されます</div>';
     if (ci && flags.length) st = '<div class="st ok">✅ 警告を確認しました（' + esc(ci.by || '') + '）</div>' + st;
     var mustConf = flags.length && !ci, ck = chkInfo();
+    if (ck && !S.pick && ck.by) { S.pick = S.staff = ck.by; }
     var fin = ck ? '<div class="st ok">✅ 最終チェック済み（' + esc(ck.by || '') + (ck.at ? '・' + hm(ck.at) : '') + '）</div>'
       : '<div class="fin"><div class="t"><b>最終チェック（すべての買取で必ず）</b><div class="sub">明細・枚数・金額・状態をマイカと実物で確かめたら、自分の名前をリストから選んで押してください。' + (need ? '本部への承認依頼はそのあとです。' : '') + '</div></div>' +
         '<div class="who"><span class="sub">査定した人 </span>' + pickerHtml() + '</div><button class="b" id="fin"' + (mustConf || S.syncing ? ' disabled title="先に警告を見直してください"' : '') + '>最終チェックをする</button></div>';
@@ -418,7 +417,7 @@
     m.querySelector('#x').onclick = function () { m.remove(); };
     m.querySelector('#ok').onclick = async function () {
       var b = this; b.disabled = true; b.textContent = '記録中…';
-      S.staff = name; $('#staff').value = name; try { localStorage.setItem('ndk_kaitori_staff', name); } catch (e) { }
+      S.staff = name;
       try {
         var body = { action: 'kaitori', kind: 'check', store: SHORT[S.sid], requester: name, staff: name, customer: S.cust, total: t.total_price, line: ap.line, need: need,
           txId: t.id, reception: t.reception_number || '', rows: S.lines.length, points: pts, red: red, yel: flags.length - red, warnText: warnText(),
@@ -457,7 +456,7 @@
     var t = S.tx, ap = approvalLine(), need = (t.total_price || 0) >= ap.line, approval = kind === 'approval';
     var m = document.createElement('div'); m.className = 'md';
     m.innerHTML = '<div class="mbox"><div class="mh">' + (approval ? '本部に買取の承認を依頼します' : '警告を見直したことを記録します') + '</div><div class="frm">' +
-      '<label>' + (approval ? '査定した人の名前（必須・査定ログに残ります）' : 'あなたの名前（必須）') + '<input id="rq" value="' + esc(S.staff) + '"></label>' +
+      '<label>' + (approval ? '査定した人（必須・査定ログに残ります）' : 'あなたの名前（必須）') + '<div>' + pickerHtml('rq') + '</div></label>' +
       (approval ? '<label>お客様名（カナ）<input id="cu" value="' + esc(S.cust) + '"></label>' +
         '<label>理由<select id="rs">' + (need ? '<option>買取合計が承認ライン以上</option>' : '') + '<option>古いカードで不安</option><option>状態の判断に迷う</option><option>真贋が不安</option><option>その他</option></select></label>' +
         '<div class="photo">📷 写真（商品・明細画面など）は、LINE WORKSの「オリパ・買取共有」グループに直接送ってください。</div>' : '') +
@@ -466,6 +465,7 @@
         : '<div class="sub">記録だけ残ります（LINE WORKSには送りません）。</div>') +
       '<div class="err" id="er"></div></div><div class="acts" style="justify-content:flex-end"><button class="b g" id="x">やめる</button><button class="b ' + (approval ? 'r' : '') + '" id="ok">' + (approval ? '依頼する' : '確認しました') + '</button></div></div>';
     R.querySelector('.win').appendChild(m);
+    bindPicker(m.querySelector('#rq'), true);
     var files = [];
     var imgP = approval ? sheetImage().then(function (b64) { var bx = m.querySelector('.aprev'); if (bx) bx.innerHTML = '<img src="data:image/jpeg;base64,' + b64 + '" style="width:100%;border-radius:8px;border:1px solid #e5e2da">'; return b64; }, function () { var bx = m.querySelector('.aprev'); if (bx) bx.innerHTML = '<div class="sub">画像を作れなかったので、文章で送ります</div>'; return ''; }) : Promise.resolve('');
     if (approval && m.querySelector('#ph')) m.querySelector('#ph').onchange = function () { files = Array.from(this.files || []).slice(0, 10); m.querySelector('#th').innerHTML = files.map(function (f) { return '<img src="' + URL.createObjectURL(f) + '">'; }).join(''); };
@@ -473,7 +473,7 @@
     m.querySelector('#ok').onclick = async function () {
       var b = this, name = m.querySelector('#rq').value.trim();
       if (!name) { m.querySelector('#rq').focus(); return; }
-      S.staff = name; $('#staff').value = name; try { localStorage.setItem('ndk_kaitori_staff', name); } catch (e) { }
+      S.pick = name; S.staff = name;
       b.disabled = true; b.textContent = '送信中…';
       try {
         var images = []; for (var i = 0; i < files.length; i++) { var x = await shrink(files[i]); if (x) images.push(x); }
