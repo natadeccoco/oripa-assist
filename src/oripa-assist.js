@@ -88,7 +88,7 @@
   document.body.appendChild(host);
   var root = host.attachShadow({ mode: 'open' });
   root.innerHTML = '<style>' + CSS() + '</style><div class="wrap"><div class="win">' +
-    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-10-30 版AL</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
+    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-10-31 版AM</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
     (ALL ? '' : '<div class="tabs"><button data-tab="make" class="on">新しく作る</button><button data-tab="refill">補充する</button></div>') +
     '<button class="x" id="close" title="閉じる">×</button></div>' +
     '<div class="bd" id="body"><div class="msg">読み込み中…</div></div></div></div>';
@@ -827,6 +827,90 @@
       box.querySelector('#sqs').onclick = go; box.querySelector('#sq').onkeydown = function (e) { if (e.key === 'Enter') go(); };
     };
   }
+  // 下枠の手直し（全部の価格帯）：枚数を変える・入れ替える・外す・足す。口数は変えず、ほかの下枠で合わせる
+  function fillAvail(pt, p) { return p.stock - usedIn(pt, p.id); }
+  function takeFromOthers(pt, keep, n) { // ほかの下枠から n 口減らす（多いものから）。減らせた数を返す
+    var got = 0;
+    pt.filler.filter(function (x) { return x !== keep; }).sort(function (a, b) { return b.n - a.n; }).forEach(function (x) { if (got < n) { var m = Math.min(n - got, x.n); x.n -= m; got += m; } });
+    pt.filler = pt.filler.filter(function (x) { return x.n > 0 || x === keep; });
+    return got;
+  }
+  function giveToOthers(pt, keep, n) { // ほかの下枠を n 口増やす（いちばん多い下枠に。在庫が足りなければルールの下枠から）
+    if (n <= 0) return;
+    var o = pt.filler.filter(function (x) { return x !== keep && fillAvail(pt, x.p) >= n; }).sort(function (a, b) { return b.n - a.n; })[0];
+    if (o) { o.n += n; return; }
+    var lf = {}; S.inv.forEach(function (x) { lf[x.id] = fillAvail(pt, x); });
+    var uid = {}; if (keep) uid[keep.p.id] = 1;
+    makeFillerByRule(pt.L, n, lf, uid, pt.price, []).forEach(function (a) { var ex = pt.filler.find(function (x) { return x.p.id === a.p.id; }); if (ex) ex.n += a.n; else pt.filler.push(a); });
+  }
+  function fillPicker(pi, title, exclude, onPick) {
+    var pt = S.patterns[pi];
+    var KT = [['filler', '【@】商品'], ['pack', 'パック'], ['card', 'シングル'], ['box', 'BOX'], ['psa', 'PSA'], ['supply', 'サプライ']];
+    var first = (pt.filler[0] && pt.filler[0].p.kind) || 'filler', kind = first;
+    var m = modal('<div class="mh">' + esc(title) + '</div><div class="sortbar">' + KT.map(function (k) { return '<button class="ghost' + (k[0] === kind ? ' on' : '') + '" data-kt="' + k[0] + '">' + k[1] + '</button>'; }).join('') + '</div>' +
+      '<div class="srch"><input id="q" placeholder="名前で探す（空なら全部）"><button class="ghost" id="qs">探す</button></div><div id="cl"></div>' +
+      '<div class="acts"><button class="ghost" data-x>閉じる</button></div>');
+    function draw() {
+      var q = m.querySelector('#q').value.trim();
+      var list = S.inv.filter(function (p) { return p.kind === kind && p.id !== exclude && fillAvail(pt, p) > 0 && (!q || p.name.indexOf(q) >= 0); }).sort(function (a, b) { return a.cost - b.cost || b.stock - a.stock; }).slice(0, 60);
+      m.querySelector('#cl').innerHTML = '<div class="sm">原価の安い順（60件まで）。在庫が残っているものだけ出ます。</div>' + candHTML(list, pi);
+      m.querySelectorAll('#cl [data-pick]').forEach(function (b) { b.onclick = function () { var p = S.inv.find(function (x) { return x.id === Number(b.dataset.pick); }); if (p) { m.remove(); onPick(p); } }; });
+    }
+    m.querySelectorAll('[data-kt]').forEach(function (b) { b.onclick = function () { kind = b.dataset.kt; m.querySelectorAll('[data-kt]').forEach(function (x) { x.classList.toggle('on', x === b); }); draw(); }; });
+    m.querySelector('#qs').onclick = draw; m.querySelector('#q').onkeydown = function (e) { if (e.key === 'Enter') draw(); };
+    m.querySelector('[data-x]').onclick = function () { m.remove(); };
+    draw();
+  }
+  function askCount(title, def, max, onOk) {
+    var m = modal('<div class="mh">' + esc(title) + '</div><div class="frm"><label>何口分入れますか（最大 ' + max + '）<input id="cn" type="number" min="1" max="' + max + '" value="' + Math.min(def, max) + '"></label></div>' +
+      '<div class="acts"><button class="ghost" data-x>やめる</button><button class="primary" data-ok>決める</button></div>');
+    m.querySelector('[data-x]').onclick = function () { m.remove(); };
+    m.querySelector('[data-ok]').onclick = function () { var n = Math.max(1, Math.min(max, Math.round(Number(m.querySelector('#cn').value) || 0))); m.remove(); onOk(n); };
+  }
+  function openFillAdd(pi) {
+    var pt = S.patterns[pi];
+    fillPicker(pi, '下枠に足すものを選ぶ（足した分、ほかの下枠が減ります）', null, function (p) {
+      var others = pt.filler.reduce(function (s, x) { return s + (x.p.id === p.id ? 0 : x.n); }, 0);
+      var max = Math.min(fillAvail(pt, p), others);
+      if (max <= 0) { alert('減らせる下枠がないので足せません'); return; }
+      askCount('「' + p.name + '」を下枠に足す', 1, max, function (n) {
+        var ex = pt.filler.find(function (x) { return x.p.id === p.id; });
+        var tgt = ex || { p: p, n: 0 }; if (!ex) pt.filler.push(tgt);
+        tgt.n += takeFromOthers(pt, tgt, n);
+        recalc(pt); renderMake();
+      });
+    });
+  }
+  function openFillEdit(pi, fi) {
+    var pt = S.patterns[pi], f = pt.filler[fi];
+    var others = pt.filler.reduce(function (s, x) { return s + (x === f ? 0 : x.n); }, 0);
+    var max = f.n + Math.min(fillAvail(pt, f.p), others);
+    var m = modal('<div class="mh">下枠「' + esc(f.p.name) + '」×' + f.n + '（原価 ' + yen(f.p.cost) + '）</div><div class="frm">' +
+      '<label>枚数（1〜' + max + '）<input id="fn" type="number" min="1" max="' + max + '" value="' + f.n + '"></label>' +
+      '<div class="sm">' + (others ? '増やした分・減らした分は、ほかの下枠で合わせます（口数は' + pt.init + '口のまま）。' : '下枠がこれ1種類だけなので、枚数は変えられません。先に「＋下枠を足す」でほかのものを入れると、その分こちらが減ります。') + '</div></div>' +
+      '<div class="acts"><button class="ghost danger" data-rmf' + (others || pt.filler.length > 1 ? '' : ' disabled') + '>外す</button><button class="ghost" data-swf>ほかのものに入れ替える</button><button class="ghost" data-x>閉じる</button><button class="primary" data-ok>枚数を変える</button></div>');
+    m.querySelector('[data-x]').onclick = function () { m.remove(); };
+    m.querySelector('[data-ok]').onclick = function () {
+      var k = Math.max(1, Math.min(max, Math.round(Number(m.querySelector('#fn').value) || f.n)));
+      if (k > f.n) f.n += takeFromOthers(pt, f, k - f.n); else if (k < f.n) { var d = f.n - k; f.n = k; giveToOthers(pt, f, d); }
+      m.remove(); recalc(pt); renderMake();
+    };
+    m.querySelector('[data-rmf]').onclick = function () {
+      var n = f.n; pt.filler.splice(pt.filler.indexOf(f), 1); giveToOthers(pt, null, n);
+      m.remove(); recalc(pt); renderMake();
+    };
+    m.querySelector('[data-swf]').onclick = function () {
+      m.remove();
+      fillPicker(pi, '「' + f.p.name + '」×' + f.n + ' と入れ替えるものを選ぶ', f.p.id, function (p) {
+        var ex = pt.filler.find(function (x) { return x.p.id === p.id; });
+        var can = Math.min(f.n, fillAvail(pt, p));
+        if (ex) { ex.n += can; } else pt.filler.push({ p: p, n: can });
+        var rest = f.n - can; pt.filler.splice(pt.filler.indexOf(f), 1);
+        if (rest > 0) giveToOthers(pt, null, rest);
+        recalc(pt); renderMake();
+      });
+    };
+  }
   // 下枠（シングル）の入れ替え
   function openFillSwap(pi, fi) {
     var pt = S.patterns[pi], f = pt.filler[fi], L = pt.L, price = pt.price;
@@ -969,9 +1053,9 @@
         (pt.edited ? '<div class="edited">入れ替え済み</div>' : '') +
         sec('大当たり', ['TOP', '大当たり']) + sec('中当たり', ['中当たり', '当たり']) + sec('小当たり', ['小当たり']) + sec('ラストワン賞', ['ラストワン'], 'ラストワン') +
         '<div class="addrow"><button class="ghost" data-add="' + i + '">＋ 当たりを足す</button></div>' +
-        (pt.L.fill.single && pt.filler.length ? '<div class="sec"><div class="sech">下枠<span>' + fN + '枚（1枚平均 原価' + yen(fC / Math.max(fN, 1)) + '・マスタ' + yen(pt.L.fill.single) + '以上の' + fillKindName(pt.L) + '）</span></div><div class="cards">' +
-          pt.filler.map(function (f, fi) { return card({ p: f.p, n: f.n, role: '下枠' }, false, 'data-pi="' + i + '" data-fi="' + fi + '"'); }).join('') + '</div></div>'
-          : '<div class="fill"><b>下枠</b> ' + (fill || 'なし') + '</div>') +
+        '<div class="sec"><div class="sech">下枠<span>' + fN + '口（1口平均 原価' + yen(fC / Math.max(fN, 1)) + (pt.L.fill.single ? '・マスタ' + yen(pt.L.fill.single) + '以上の' + fillKindName(pt.L) : '') + '）　押すと枚数の変更・入れ替え・外すができます</span></div><div class="cards">' +
+          pt.filler.map(function (f, fi) { return card({ p: f.p, n: f.n, role: '下枠' }, false, 'data-pi="' + i + '" data-fi="' + fi + '"'); }).join('') +
+          '<button class="addc" data-fadd="' + i + '">＋<br>下枠を<br>足す</button></div></div>' +
         '<div class="note2">当たりが先に出て補充すると、平均で原価率が <b>' + pct(after) + '</b> くらいまで上がります</div>' +
         (pt.warn.length ? '<div class="warn">' + pt.warn.map(esc).join('<br>') + (APPROVAL_URL && !ALL && needTotal(pt) ? '<div class="shareq"><button class="ghost" data-share="' + i + '">在庫共有で足りない当たりを募集する</button></div>' : '') + '</div>' : '') +
         '<div class="acts"><button class="ghost" data-detail="' + i + '">中身を一覧で見る</button>' + (ALL ? '<button class="primary" data-picklist="' + i + '">店舗ごとの集め先リスト</button>' : saveButtons(pt, i)) + '</div>' + apprLine(pt) +
@@ -987,7 +1071,8 @@
     root.querySelectorAll('[data-chk]').forEach(function (b) { b.onclick = function () { checkApprovals(true); }; });
     root.querySelectorAll('[data-picklist]').forEach(function (b) { b.onclick = function () { showPickList(S.patterns[Number(b.dataset.picklist)]); }; });
     root.querySelectorAll('.cd.swap[data-hi]').forEach(function (b) { b.onclick = function () { openSwap(Number(b.dataset.pi), Number(b.dataset.hi)); }; });
-    root.querySelectorAll('.cd.swap[data-fi]').forEach(function (b) { b.onclick = function () { openFillSwap(Number(b.dataset.pi), Number(b.dataset.fi)); }; });
+    root.querySelectorAll('.cd.swap[data-fi]').forEach(function (b) { b.onclick = function () { openFillEdit(Number(b.dataset.pi), Number(b.dataset.fi)); }; });
+    root.querySelectorAll('[data-fadd]').forEach(function (b) { b.onclick = function () { openFillAdd(Number(b.dataset.fadd)); }; });
     root.querySelectorAll('[data-add]').forEach(function (b) { b.onclick = function () { openAdd(Number(b.dataset.add), b.dataset.role); }; });
   }
 
