@@ -88,7 +88,7 @@
   document.body.appendChild(host);
   var root = host.attachShadow({ mode: 'open' });
   root.innerHTML = '<style>' + CSS() + '</style><div class="wrap"><div class="win">' +
-    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-10-31 版AN</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
+    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-10-31 版AO</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
     (ALL ? '' : '<div class="tabs"><button data-tab="make" class="on">新しく作る</button><button data-tab="refill">補充する</button></div>') +
     '<button class="x" id="close" title="閉じる">×</button></div>' +
     '<div class="bd" id="body"><div class="msg">読み込み中…</div></div></div></div>';
@@ -1387,18 +1387,24 @@
     m.querySelector('[data-x]').onclick = function () { m.remove(); };
     fetch(APPROVAL_URL + '?action=oripatabs&store=' + encodeURIComponent(st)).then(function (r) { return r.json(); }).then(function (j) {
       if (!j.ok) throw new Error(j.error || '読み込めませんでした');
-      var g = guessTab(j.tabs, pt);
-      m.querySelector('.frm').innerHTML = '<div class="sm">「' + esc(j.name) + '」のタブのいちばん下に、ほかのオリパと同じ形（名前・原価・個数・合計、最後に販売口数・売上・粗利益率）で足します。下枠は「下枠」1行にまとめます。</div>' +
-        '<label>書き出すタブ <select id="tb">' + j.tabs.map(function (t) { return '<option' + (t === g ? ' selected' : '') + '>' + esc(t) + '</option>'; }).join('') + '</select></label>' +
+      var g = guessTab(j.tabs, pt), dt = new Date(), defTab = (pt.saveName || defaultName(pt.price)) + ' ' + (dt.getMonth() + 1) + '.' + dt.getDate();
+      m.querySelector('.frm').innerHTML = '<div class="sm">「' + esc(j.name) + '」に、ほかのオリパと同じ形（名前・原価・個数・合計、最後に販売口数・売上・粗利益率）で書き出します。下枠は「下枠」1行にまとめます。</div>' +
+        '<label class="ck"><input type="radio" name="wm" value="new" checked> 新しいタブを作って書き出す</label>' +
+        '<label style="margin-left:24px">タブの名前 <input id="nt" value="' + esc(defTab) + '"></label>' +
+        '<label class="ck"><input type="radio" name="wm" value="old"> 今あるタブのいちばん下に足す</label>' +
+        '<label style="margin-left:24px">タブ <select id="tb">' + j.tabs.map(function (t) { return '<option' + (t === g ? ' selected' : '') + '>' + esc(t) + '</option>'; }).join('') + '</select></label>' +
         '<label>オリパの呼び名（任意・タイトルに入ります） <input id="lb" placeholder="例：見える、傷あり"></label>' +
-        '<div class="sm">タイトルは「' + esc(st) + pt.price + '円　（呼び名）　' + pt.init + '口　Vol.（次の番号）（今日の日付）」になります。</div>';
+        '<div class="sm">ブロックのタイトルは「' + esc(st) + pt.price + '円　（呼び名）　' + pt.init + '口（今日の日付）」になります（今あるタブに足すときは Vol.番号も付きます）。</div>';
       var ok = m.querySelector('[data-ok]'); ok.disabled = false;
       ok.onclick = async function () {
         ok.disabled = true; ok.textContent = '書き出し中…';
         try {
           var rows = flatHits(pt.hits).map(function (h) { return { role: h.role.replace('（セット）', ''), name: h.p.name + (h.setOf ? '（セット）' : ''), cond: sheetCond(h.p), cost: h.p.cost, n: h.n }; });
           var fN = pt.filler.reduce(function (s, f) { return s + f.n; }, 0), fC = pt.filler.reduce(function (s, f) { return s + f.p.cost * f.n; }, 0);
-          var r = await fetch(APPROVAL_URL, { method: 'POST', body: JSON.stringify({ action: 'oripasheet', store: st, tab: m.querySelector('#tb').value, label: m.querySelector('#lb').value.trim(), price: pt.price, init: pt.init, rows: rows, fillerN: fN, fillerCost: fC }) }).then(function (x) { return x.json(); });
+          var isNew = (m.querySelector('[name=wm]:checked') || {}).value === 'new', ntn = m.querySelector('#nt').value.trim();
+          if (isNew && !ntn) throw new Error('タブの名前を入れてください');
+          var withCond = rows.some(function (x) { return x.cond && !/^A-?$/.test(x.cond); });
+          var r = await fetch(APPROVAL_URL, { method: 'POST', body: JSON.stringify({ action: 'oripasheet', store: st, newTab: isNew ? ntn : '', withCond: withCond, tab: m.querySelector('#tb').value, label: m.querySelector('#lb').value.trim(), price: pt.price, init: pt.init, rows: rows, fillerN: fN, fillerCost: fC }) }).then(function (x) { return x.json(); });
           if (!r.ok) throw new Error(r.error || '書き出せませんでした');
           m.querySelector('.mbox').innerHTML = '<div class="mh">書き出しました</div><div class="sm">「' + esc(r.tab) + '」の' + r.row + '行目に「' + esc(r.title) + '」を足しました。</div><div class="acts"><a class="ghost" href="' + esc(r.url) + '" target="_blank" rel="noopener" style="text-decoration:none;display:inline-flex;align-items:center">シートを開く</a><button class="primary" data-x>OK</button></div>';
           m.querySelector('[data-x]').onclick = function () { m.remove(); };
@@ -1420,7 +1426,7 @@
     m.querySelector('[data-ok]').onclick = async function () {
       var btn = this; btn.disabled = true; btn.textContent = '保存中…';
       try {
-        var name = m.querySelector('#nm').value.trim() || defaultName(pt.price);
+        var name = m.querySelector('#nm').value.trim() || defaultName(pt.price); pt.saveName = name;
         var items = flatHits(pt.hits).concat(pt.filler);
         // マイカの画面の「一時保存」と同じ内容で送る（一時保存では在庫は動かない：2026/10/27 確認済み）
         var body = { asDraft: true, display_name: name, sell_price: pt.price, init_stock_number: pt.init,

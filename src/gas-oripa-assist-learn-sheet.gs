@@ -8,10 +8,15 @@ function oripaTabs(store) {
 }
 function oripaWrite(d) {
   var id = oripaSheets()[d.store]; if (!id) return { ok: false, error: d.store + '店の店舗オリパシートがまだ登録されていません' };
-  var ss = SpreadsheetApp.openById(id), sh = ss.getSheetByName(String(d.tab || ''));
+  var ss = SpreadsheetApp.openById(id), sh, fresh = false;
+  if (d.newTab) { // 新しいタブを作って書き出す（同じ名前があれば（2）（3）…を付ける）
+    var base0 = String(d.newTab).replace(/[\[\]\*\?\/\\:]/g, ' ').trim().slice(0, 90) || 'オリパ', nm = base0, k = 2;
+    while (ss.getSheetByName(nm)) nm = base0 + '（' + (k++) + '）';
+    sh = ss.insertSheet(nm, ss.getSheets().length); fresh = true;
+  } else sh = ss.getSheetByName(String(d.tab || ''));
   if (!sh) return { ok: false, error: 'タブ「' + d.tab + '」が見つかりません' };
   var lr = sh.getLastRow(), vals = lr ? sh.getRange(1, 1, lr, 7).getDisplayValues() : [];
-  var last = 0, vol = 0, blocks = 0, cond = false;
+  var last = 0, vol = 0, blocks = 0, cond = fresh && !!d.withCond;
   vals.forEach(function (r, i) {
     if (r.some(function (c) { return String(c).trim() !== ''; })) last = i + 1;
     var a = String(r[0]); if (a.indexOf('円') >= 0 && r[1] === 'ラストワン') { blocks++; var m = a.match(/Vol\.?\s*(\d+)|第\s*(\d+)\s*弾/); if (m) vol = Math.max(vol, Number(m[1] || m[2])); }
@@ -19,8 +24,9 @@ function oripaWrite(d) {
     if (String(r[3]).trim() === '状態') cond = true;
   });
   var now = new Date(), ymd = Utilities.formatDate(now, 'Asia/Tokyo', 'yy.M.d');
-  var title = d.store + d.price + '円　' + (d.label ? d.label + '　' : '') + d.init + '口　Vol.' + (Math.max(vol, blocks) + 1) + '（' + ymd + '）';
+  var title = d.store + d.price + '円　' + (d.label ? d.label + '　' : '') + d.init + '口' + (fresh ? '' : '　Vol.' + (Math.max(vol, blocks) + 1)) + '（' + ymd + '）';
   var s = last ? last + 3 : 3, rows = [], C = cond ? 1 : 0;
+  if (fresh) sh.getRange(2, 1, 1, 6 + C).setValues([cond ? ['', '', '商品', '状態', '原価', '個数', '合計'] : ['', '', '商品', '原価', '個数', '合計']]);
   var items = (d.rows || []).slice();
   var lastOne = items.filter(function (r) { return r.role === 'ラストワン'; });
   var others = items.filter(function (r) { return r.role !== 'ラストワン'; });
