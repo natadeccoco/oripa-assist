@@ -80,6 +80,7 @@ function kaitoriGet(p) {
   try {
     if (p.action === 'kprices') return json({ ok: true, at: new Date().toISOString(), rows: kPrices() });
     if (p.action === 'kconfig') return json({ ok: true, config: kConfig() });
+    if (p.action === 'kstaff') return json(kStaff());
     if (p.action === 'kstatus' && p.tx) { // マイカの取引IDで、その買取の最新の承認依頼・警告の確認を返す（どのPCからでも同じ状態が見える）
       var vals = kSheet().getDataRange().getValues(), ap = null, cf = null;
       for (var i = vals.length - 1; i >= 1 && (!ap || !cf); i--) {
@@ -160,6 +161,28 @@ function kaitoriCallback(ev, data) {
     if (ch) send(ch, { type: 'text', text: (st === '承認' ? '✅ 買取を承認しました' : '↩️ 買取を差し戻しました') + '（依頼番号 ' + m[2] + '・' + name + '）' +
       (st === '承認' ? '' : '\n直してほしい点をこのトークで伝えてください。') });
   } finally { lock.releaseLock(); }
+}
+
+/* ---------- 出勤者（店舗やることリストの「出勤予定」「スタッフ」タブ）：最終チェックの名前の候補 ---------- */
+var K_TODO_SHEET_ID = '1BbIlbu2ztwmp571SQQiXrX-gaDWlzA9Gx0gFRNio64Q';
+var K_STORE_KEY = { chibachuo: '千葉中央', kashiwa: '柏', machida: '町田', matsudo: '松戸', nakano: '中野', odaiba: 'お台場', tsudanuma: '津田沼', yokohama: '横浜' };
+function kStaff() {
+  var day = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd');
+  var c = CacheService.getScriptCache(), hit = c.get('kstaff_' + day); if (hit) return JSON.parse(hit);
+  var ss = SpreadsheetApp.openById(K_TODO_SHEET_ID), today = {}, all = {};
+  var add = function (m, k, n) { var s = K_STORE_KEY[k] || k; n = String(n || '').trim(); if (!n) return; (m[s] = m[s] || []); if (m[s].indexOf(n) < 0) m[s].push(n); };
+  var sh = ss.getSheetByName('出勤予定');
+  if (sh && sh.getLastRow() >= 2) sh.getRange(2, 1, sh.getLastRow() - 1, 3).getValues().forEach(function (v) {
+    var d = v[0] instanceof Date ? Utilities.formatDate(v[0], 'Asia/Tokyo', 'yyyy-MM-dd') : String(v[0]);
+    if (d === day) add(today, v[1], v[2]);
+  });
+  var st = ss.getSheetByName('スタッフ');
+  if (st && st.getLastRow() >= 2) st.getRange(2, 1, st.getLastRow() - 1, 3).getValues().forEach(function (v) {
+    if (String(v[2]).trim() === 'FALSE' || String(v[2]).trim() === '無効') return; add(all, v[0], v[1]);
+  });
+  var out = { ok: true, day: day, today: today, all: all };
+  try { c.put('kstaff_' + day, JSON.stringify(out), 600); } catch (e) { }
+  return out;
 }
 
 /* ---------- 最終チェック（すべての買取で、査定した人が「確認しました」を押した記録） ---------- */
