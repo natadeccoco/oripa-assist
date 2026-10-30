@@ -88,7 +88,7 @@
   document.body.appendChild(host);
   var root = host.attachShadow({ mode: 'open' });
   root.innerHTML = '<style>' + CSS() + '</style><div class="wrap"><div class="win">' +
-    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-10-30 版AJ</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
+    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-10-30 版AK</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
     (ALL ? '' : '<div class="tabs"><button data-tab="make" class="on">新しく作る</button><button data-tab="refill">補充する</button></div>') +
     '<button class="x" id="close" title="閉じる">×</button></div>' +
     '<div class="bd" id="body"><div class="msg">読み込み中…</div></div></div></div>';
@@ -1068,11 +1068,13 @@
     var L = pt.L, p = pt.price, n = pt.need || {};
     var rng = { 'TOP': [L.top * 0.75, L.top * 1.35], '大当たり': [L.big[0], Math.min(L.big[1], L.top)], '中当たり': L.mid, '小当たり': L.small, 'ラストワン': [L.last * 0.7, L.last * 1.4] };
     var r100 = function (v) { return Math.round(v / 100) * 100; };
+    var EM = { 'TOP': '👑', '大当たり': '🔥', '中当たり': '⭐', '小当たり': '✨', 'ラストワン': '🎁' };
     var lines = ['TOP', '大当たり', '中当たり', '小当たり', 'ラストワン'].filter(function (k) { return n[k] > 0; }).map(function (k) {
-      return '・' + (k === 'ラストワン' ? 'ラストワン賞' : k) + '：販売' + yen(r100(rng[k][0] * p)) + '〜' + yen(r100(rng[k][1] * p)) + 'くらいを' + n[k] + '枚';
+      return EM[k] + ' ' + (k === 'ラストワン' ? 'ラストワン賞' : k) + '：販売' + yen(r100(rng[k][0] * p)) + '〜' + yen(r100(rng[k][1] * p)) + 'くらい ×' + n[k] + '枚';
     });
-    return '【在庫募集】' + shortName(S.sname) + '店\n' + p.toLocaleString() + '円×' + pt.init + '口のオリパで、当たりが足りません。\n' + lines.join('\n') +
-      '\n入れたい種類：' + (L.label || '') + '\n送れる店舗は、このトークで返信してください。';
+    var bar = '━━━━━━━━━━━━';
+    return '📣【在庫募集】' + shortName(S.sname) + '店\n🎰 ' + p.toLocaleString() + '円×' + pt.init + '口のオリパで、当たりが足りません\n' + bar + '\n' + lines.join('\n') + '\n' + bar +
+      '\n📦 入れたい種類：' + (L.label || '') + '\n🙋 送れる店舗は、このトークで返信してください！';
   }
   function requestShare(pt) {
     var m = modal('<div class="mh">在庫共有グループで募集しますか？</div><div class="frm">' +
