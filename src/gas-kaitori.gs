@@ -3,7 +3,7 @@
  * 店舗のマイカ画面で動く「買取チェック」ツールから呼ばれる。
  *   GET  ?action=kprices  … 買取表スプレッドシートの全タブの価格（ツールが突き合わせに使う）
  *   GET  ?action=kconfig  … 承認ライン（店舗別・スタッフ別）
- *   GET  ?action=kstatus&id=… … 承認依頼の結果
+ *   GET  ?action=kstatus&id=… … 承認依頼の結果／&tx=マイカ取引ID … その買取の最新の依頼・確認
  *   POST {action:'kaitori', kind:'approval'|'confirm', …} … 承認依頼は店舗のグループへ（中身は1枚の画像）／警告の確認は記録だけ
  * LINE WORKSのボタン：postback 'kapprove:ID' / 'kreject:ID'（callback() から kaitoriCallback() に回す）
  * 履歴は「オリパ承認履歴」スプレッドシート（SHEET_ID）の「買取」タブ、設定は「買取設定」タブ。
@@ -80,6 +80,15 @@ function kaitoriGet(p) {
   try {
     if (p.action === 'kprices') return json({ ok: true, at: new Date().toISOString(), rows: kPrices() });
     if (p.action === 'kconfig') return json({ ok: true, config: kConfig() });
+    if (p.action === 'kstatus' && p.tx) { // マイカの取引IDで、その買取の最新の承認依頼・警告の確認を返す（どのPCからでも同じ状態が見える）
+      var vals = kSheet().getDataRange().getValues(), ap = null, cf = null;
+      for (var i = vals.length - 1; i >= 1 && (!ap || !cf); i--) {
+        if (String(vals[i][15]) !== String(p.tx)) continue;
+        var v = vals[i], o = { id: v[0], status: v[12], by: v[13] || v[4], at: v[14] ? String(v[14]) : '', requester: v[4] };
+        if (v[2] === '承認依頼' && !ap) ap = o; else if (v[2] === '警告の確認' && !cf) cf = o;
+      }
+      return json({ ok: true, approval: ap, confirm: cf });
+    }
     if (p.action === 'kstatus') {
       var row = kFind(p.id); if (!row) return json({ ok: false, error: '依頼が見つかりません' });
       return json({ ok: true, id: row.values[0], status: row.values[12], by: row.values[13], at: row.values[14] ? String(row.values[14]) : '' });
@@ -103,6 +112,13 @@ function kaitoriPost(d) {
   var approval = d.kind === 'approval';
   var lock = LockService.getScriptLock(), id; lock.waitLock(20000);
   try {
+    if (approval && d.txId) { // 同じ買取（マイカの取引ID）に、承認待ち・承認済みの依頼があれば二重に送らない
+      var vs = kSheet().getDataRange().getValues();
+      for (var i = vs.length - 1; i >= 1; i--) {
+        if (vs[i][2] === '承認依頼' && String(vs[i][15]) === String(d.txId) && (vs[i][12] === '承認待ち' || vs[i][12] === '承認'))
+          return json({ ok: true, id: vs[i][0], dup: true, status: vs[i][12], by: vs[i][13] || '' });
+      }
+    }
     id = (approval ? 'K' : 'C') + Utilities.formatDate(new Date(), 'Asia/Tokyo', 'MMdd-HHmmss') + '-' + Math.floor(Math.random() * 90 + 10);
     kSheet().appendRow([id, new Date(), approval ? '承認依頼' : '警告の確認', d.store, d.requester, d.customer || '', Number(d.total) || 0, Number(d.line) || '', Number(d.warnCount) || 0,
       String(d.text || '').slice(0, 45000), String(d.warnText || '').slice(0, 45000), d.comment || '', approval ? '承認待ち' : '確認済み', approval ? '' : d.requester, approval ? '' : new Date(), d.txId || '', d.staff || '']);
