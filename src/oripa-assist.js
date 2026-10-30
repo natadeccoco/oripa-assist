@@ -72,7 +72,7 @@
   document.body.appendChild(host);
   var root = host.attachShadow({ mode: 'open' });
   root.innerHTML = '<style>' + CSS() + '</style><div class="wrap"><div class="win">' +
-    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-10-30 版AE</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
+    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-10-30 版AF</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
     (ALL ? '' : '<div class="tabs"><button data-tab="make" class="on">新しく作る</button><button data-tab="refill">補充する</button></div>') +
     '<button class="x" id="close" title="閉じる">×</button></div>' +
     '<div class="bd" id="body"><div class="msg">読み込み中…</div></div></div></div>';
@@ -260,17 +260,22 @@
   }
   function roleOf(L, price, p) { return p.sell >= L.big[0] * price ? '大当たり' : (p.sell >= L.mid[0] * price ? '中当たり' : '小当たり'); }
 
+  // 同じ商品かどうか（別の在庫行・別の店舗の同じBOXも同じものとして数える）
+  function nk(p) { return 'N:' + p.kind + ':' + String(p.name || '').replace(/[\s　]/g, '') + (p.kind === 'psa' ? ':' + (p.spec || '') + (p.cond || '') : ''); }
+  function usedOf(u, p) { return !!(u[p.id] || u[nk(p)]); }
+  function markUsed(u, p) { u[p.id] = 1; u[nk(p)] = (u[nk(p)] || 0) + 1; }
   function build(price, init, costr, L) {
     var rev = price * init, budget = rev * costr, warn = [];
     var left = {}; S.inv.forEach(function (p) { left[p.id] = p.stock; });
     // 過去事例：1000円のBOX当たりはほぼ¥10,000以上（下位10%で約11倍）、2000円は約6倍以上。安いデッキ・スターター等は当たりに使わない
     var HINV = S.inv.filter(function (p) {
-      if (p.kind === 'box' && L.boxMinX && p.sell < L.boxMinX * price) return false;
+      if (p.kind === 'box' && L.boxMinX && p.sell < L.boxMinX * price * 0.97) return false; // 7,980円のBOXは8,000円帯として使う
       if (p.mis && !L.allowMis) return false; // マスタ価格が間違っているパックは当たりに使わない（自由設定でパックを選んだときは使う）
       return true;
     });
     var lastOneMode = false;
     var usedIds = {};
+    var stockN = {}; S.inv.forEach(function (p) { stockN[nk(p)] = (stockN[nk(p)] || 0) + (Number(p.stock) || 0); });
     var allKinds = [].concat.apply([], L.kinds);
     var rho = (function () { // 在庫の「原価÷マスタ価格」の中央値（枚数の見積もり用）
       var r = S.inv.filter(function (p) { return p.kind !== 'filler' && p.sell > 0; }).map(function (p) { return p.cost / p.sell; }).sort(function (a, b) { return a - b; });
@@ -288,7 +293,7 @@
         var g = order[oi][0], pass = order[oi][1], hiU = order[oi][2] ? Math.max(hi, L.mid[1] * price) : hi; // BOXが範囲内に無ければ少し上のBOXを使う（シングルより優先）
         {
           var kinds = L.kinds[g];
-          var c = HINV.filter(function (p) { return kinds.indexOf(p.kind) >= 0 && left[p.id] > 0 && p.sell >= lo && p.sell < hiU && (pass || !usedIds[p.id]) && !(lastOneMode && isDeck(p)); });
+          var c = HINV.filter(function (p) { return kinds.indexOf(p.kind) >= 0 && left[p.id] > 0 && p.sell >= lo && p.sell < hiU && (pass || !usedOf(usedIds, p)) && !(lastOneMode && isDeck(p)); });
           if (!c.length) continue;
           c.sort(function (a, b) { return sc(b) - sc(a); });
           return c[0];
@@ -299,24 +304,25 @@
       function sc(p) {
         var s = -Math.abs(Math.log(p.sell / ws)) * 1.5;
         if (wantCost) s -= Math.abs(Math.log(Math.max(p.cost, 1) / Math.max(wantCost, 1))) * 2.5;
-        if (usedIds[p.id]) s -= 4; // 同じものは基本1つまで
+        if (usedOf(usedIds, p)) s -= 4 * Math.max(1, usedIds[nk(p)] || 0); // 同じ商品（別の在庫・別の店でも）は基本1つまで
+        s += Math.log(1 + (stockN[nk(p)] || 0)) * 0.6; // 在庫の多い商品を優先
         s += Math.log(1 + histCount(p, L.base)) * 0.7; // 過去によく入れていた商品を優先
         return s;
       }
     }
     var hits = [];
-    function take(p, role) { left[p.id]--; usedIds[p.id] = 1; var h = hits.find(function (x) { return x.p.id === p.id && x.role === role; }); if (h) h.n++; else hits.push({ p: p, n: 1, role: role }); }
+    function take(p, role) { left[p.id]--; markUsed(usedIds, p); var h = hits.find(function (x) { return x.p.id === p.id && x.role === role; }); if (h) h.n++; else hits.push({ p: p, n: 1, role: role }); }
     function hitCost() { return hits.reduce(function (s, h) { return s + h.p.cost * h.n; }, 0); }
     function nOf(roles) { return hits.reduce(function (s, h) { return s + (roles.indexOf(h.role) >= 0 ? h.n : 0); }, 0); }
 
     // セット当たり（3,000円・1万円・2.5万円）：TOP・大当たりにちょうどいい1枚が無いとき、関連する2枚のセットを使う
     var setOn = false; // セットはスタッフが手で組む（自動では入れない：2026/10/29）
-    function useSet(sp, role) { sp.set.forEach(function (m) { left[m.id]--; usedIds[m.id] = 1; }); usedIds[sp.id] = 1; hits.push({ p: sp, n: 1, role: role }); }
+    function useSet(sp, role) { sp.set.forEach(function (m) { left[m.id]--; markUsed(usedIds, m); }); usedIds[sp.id] = 1; hits.push({ p: sp, n: 1, role: role }); }
     var setGroups = L.dupFirst || L.kinds[0].indexOf('box') >= 0 && L.kinds[0].indexOf('card') < 0 ? [['box'], ['card', 'psa']] : [['card', 'psa'], ['box']]; // 2.5万円などBOX優先の値段はBOX同士を先に
     function bestSet(lo, hi, ws, wantCost) {
       var sc2 = function (sp) { return Math.abs(Math.log(sp.sell / ws)) * 1.5 + (wantCost ? Math.abs(Math.log(Math.max(sp.cost, 1) / Math.max(wantCost, 1))) * 2.5 : 0); };
       for (var gi = 0; gi < setGroups.length; gi++) {
-        var c = setPool(HINV, lo, hi, function (p) { return left[p.id] > 0 && !usedIds[p.id]; }, setGroups[gi]);
+        var c = setPool(HINV, lo, hi, function (p) { return left[p.id] > 0 && !usedOf(usedIds, p); }, setGroups[gi]);
         if (c.length) return c.sort(function (a, b) { return sc2(a) - sc2(b); })[0];
       }
       return null;
@@ -378,7 +384,7 @@
       var done = false;
       for (var ci = 0; ci < cand.length && !done; ci++) {
         var h = cand[ci], r = h.role === '小当たり' ? L.small : L.mid;
-        var cheaper = HINV.filter(function (q) { return allKinds.indexOf(q.kind) >= 0 && left[q.id] > 0 && !usedIds[q.id] && q.sell >= r[0] * price && q.sell < r[1] * price && q.cost < h.p.cost * 0.85; }).sort(function (a, b) { return b.cost - a.cost; })[0];
+        var cheaper = HINV.filter(function (q) { return allKinds.indexOf(q.kind) >= 0 && left[q.id] > 0 && !usedOf(usedIds, q) && q.sell >= r[0] * price && q.sell < r[1] * price && q.cost < h.p.cost * 0.85; }).sort(function (a, b) { return b.cost - a.cost; })[0];
         if (cheaper) { left[h.p.id]++; h.n--; if (h.n <= 0) hits.splice(hits.indexOf(h), 1); take(cheaper, h.role); done = true; }
       }
       if (!done) break;
@@ -404,11 +410,11 @@
           .sort(function (a, b) { return b.p.cost - a.p.cost; });
         if (!nonPref.length) break;
         var room3 = budget - hitCost() - fillCost, swapped = false;
-        var boxes = HINV.filter(function (q) { return pref.indexOf(q.kind) >= 0 && left[q.id] > 0 && (L.dupFirst || !usedIds[q.id]) && q.sell >= L.small[0] * price && q.sell < bigHi; })
+        var boxes = HINV.filter(function (q) { return pref.indexOf(q.kind) >= 0 && left[q.id] > 0 && (L.dupFirst || !usedOf(usedIds, q)) && q.sell >= L.small[0] * price && q.sell < bigHi; })
           .sort(function (a, b) { return a.cost - b.cost; });
         for (var ni = 0; ni < nonPref.length && !swapped; ni++) {
           var hs = nonPref[ni];
-          var bq = boxes.filter(function (q) { return q.cost <= hs.p.cost + room3 && q.sell >= hs.p.sell * 0.9; }).sort(function (a, b) { return a.sell - b.sell || a.cost - b.cost; })[0]; // 置き換える当たりより安っぽくならないBOX
+          var bq = boxes.filter(function (q) { return q.cost <= hs.p.cost + room3 && q.sell >= hs.p.sell * 0.9; }).sort(function (a, b) { return (usedIds[nk(a)] || 0) - (usedIds[nk(b)] || 0) || a.sell - b.sell || a.cost - b.cost; })[0]; // まだ使っていないBOXを先に。置き換える当たりより安っぽくならないBOX
           if (bq) { left[hs.p.id]++; hs.n--; if (hs.n <= 0) hits.splice(hits.indexOf(hs), 1); take(bq, fitRole(bq, hs.role)); swapped = true; }
         }
         if (swapped) continue;
@@ -432,7 +438,7 @@
       var moved = false;
       for (var oi = 0; oi < order.length && !moved; oi++) {
         var h0 = order[oi], rr = rangeOf(h0.role);
-        var up = HINV.filter(function (q) { return allKinds.indexOf(q.kind) >= 0 && left[q.id] > 0 && !usedIds[q.id] && q.sell >= rr[0] * price && q.sell < rr[1] * price && q.cost >= h0.p.cost * 1.1 && q.cost - h0.p.cost <= room; });
+        var up = HINV.filter(function (q) { return allKinds.indexOf(q.kind) >= 0 && left[q.id] > 0 && !usedOf(usedIds, q) && q.sell >= rr[0] * price && q.sell < rr[1] * price && q.cost >= h0.p.cost * 1.1 && q.cost - h0.p.cost <= room; });
         var kr0 = L.kinds.findIndex(function (ks) { return ks.indexOf(h0.p.kind) >= 0; }); if (kr0 < 0) kr0 = L.kinds.length - 1;
         for (var g2 = 0; g2 <= kr0 && !moved; g2++) { // 優先する種類を先に（今より優先度の低い種類には替えない）
           var ok = up.filter(function (q) { return L.kinds[g2].indexOf(q.kind) >= 0; }).sort(function (a, b) { return a.cost - b.cost; });
@@ -451,7 +457,7 @@
         if (!lows.length) return;
         var h1 = lows[0], to = upTo[from], tr = rangeOf(to);
         var need = floor - hitCost() - fillCost;
-        var c3 = HINV.filter(function (q) { return allKinds.indexOf(q.kind) >= 0 && left[q.id] > 0 && !usedIds[q.id] && q.sell >= tr[0] * price && q.sell < tr[1] * price && q.cost > h1.p.cost && q.cost - h1.p.cost <= room2; });
+        var c3 = HINV.filter(function (q) { return allKinds.indexOf(q.kind) >= 0 && left[q.id] > 0 && !usedOf(usedIds, q) && q.sell >= tr[0] * price && q.sell < tr[1] * price && q.cost > h1.p.cost && q.cost - h1.p.cost <= room2; });
         if (!c3.length) c3 = HINV.filter(function (q) { return allKinds.indexOf(q.kind) >= 0 && left[q.id] > 0 && L.kinds[0].indexOf(q.kind) >= 0 && q.sell >= tr[0] * price && q.sell < tr[1] * price && q.cost > h1.p.cost && q.cost - h1.p.cost <= room2; }); // 難しい場合は同じBOXを複数
         if (!c3.length) return;
         // 足りない分をちょうど埋めるもの（無ければ一番高いもの）を、優先する種類から
@@ -504,7 +510,7 @@
   function fillerAt(n) { return S.inv.filter(function (p) { return p.kind === 'filler' && p.fv === n; }).sort(function (a, b) { return b.stock - a.stock; }); }
   function fillKindName(L) { return L.fill.kind === 'box' ? 'BOX' : 'シングル'; }
   function singleFillPool(L, price, left, usedIds) {
-    return S.inv.filter(function (p) { return p.kind === (L.fill.kind || 'card') && !p.mis && (left[p.id] == null ? p.stock : left[p.id]) > 0 && !usedIds[p.id] && p.sell >= L.fill.single && p.sell < L.small[0] * price && p.cost >= p.sell * 0.1; }) // 原価が極端に安い（登録ミスらしい）ものは除く
+    return S.inv.filter(function (p) { return p.kind === (L.fill.kind || 'card') && !p.mis && (left[p.id] == null ? p.stock : left[p.id]) > 0 && !usedOf(usedIds, p) && p.sell >= L.fill.single && p.sell < L.small[0] * price && p.cost >= p.sell * 0.1; }) // 原価が極端に安い（登録ミスらしい）ものは除く
       .sort(function (a, b) { return a.sell - b.sell || a.cost - b.cost; }); // マスタ価格の安い順（ルールの下限に近いもの）
   }
   // ルールどおりの下枠を n口分 作る
@@ -532,7 +538,7 @@
       }
     } else {
       var pool = singleFillPool(L, price, left, usedIds);
-      pool.forEach(function (p) { if (got < n) { add(p, 1); usedIds[p.id] = 1; } }); // まずは1種類1枚
+      pool.forEach(function (p) { if (got < n) { add(p, 1); markUsed(usedIds, p); } }); // まずは1種類1枚
       for (var i = 0; got < n && i < pool.length; i++) { var p = pool[i]; if (left[p.id] > 0) add(p, Math.min(n - got, left[p.id])); }
       if (got < n) warn.push('マスタ' + yen(L.fill.single) + '以上の下枠用' + fillKindName(L) + 'が ' + (n - got) + (L.fill.kind === 'box' ? '個' : '枚') + '足りません');
     }
