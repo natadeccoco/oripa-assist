@@ -72,7 +72,7 @@
   document.body.appendChild(host);
   var root = host.attachShadow({ mode: 'open' });
   root.innerHTML = '<style>' + CSS() + '</style><div class="wrap"><div class="win">' +
-    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-10-30 版AH</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
+    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-10-30 版AI</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
     (ALL ? '' : '<div class="tabs"><button data-tab="make" class="on">新しく作る</button><button data-tab="refill">補充する</button></div>') +
     '<button class="x" id="close" title="閉じる">×</button></div>' +
     '<div class="bd" id="body"><div class="msg">読み込み中…</div></div></div></div>';
@@ -263,6 +263,8 @@
 
   // 同じ商品かどうか（別の在庫行・別の店舗の同じBOXも同じものとして数える）
   function nk(p) { return 'N:' + p.kind + ':' + String(p.name || '').replace(/[\s　]/g, '') + (p.kind === 'psa' ? ':' + (p.spec || '') + (p.cond || '') : ''); }
+  var _stk = null, _stkInv = null;
+  function stockOf(p) { if (_stkInv !== S.inv) { _stk = {}; _stkInv = S.inv; S.inv.forEach(function (q) { _stk[nk(q)] = (_stk[nk(q)] || 0) + (Number(q.stock) || 0); }); } return _stk[nk(p)] || 0; }
   var MAX_SAME = 2; // 同じ商品を当たりに入れるのは2個まで
   function usedOf(u, p) { return !!(u[p.id] || u[nk(p)]); }
   function markUsed(u, p) { u[p.id] = 1; u[nk(p)] = (u[nk(p)] || 0) + 1; }
@@ -277,7 +279,6 @@
     });
     var lastOneMode = false;
     var usedIds = {};
-    var stockN = {}; S.inv.forEach(function (p) { stockN[nk(p)] = (stockN[nk(p)] || 0) + (Number(p.stock) || 0); });
     var allKinds = [].concat.apply([], L.kinds);
     var rho = (function () { // 在庫の「原価÷マスタ価格」の中央値（枚数の見積もり用）
       var r = S.inv.filter(function (p) { return p.kind !== 'filler' && p.sell > 0; }).map(function (p) { return p.cost / p.sell; }).sort(function (a, b) { return a - b; });
@@ -307,7 +308,7 @@
         var s = -Math.abs(Math.log(p.sell / ws)) * 1.5;
         if (wantCost) s -= Math.abs(Math.log(Math.max(p.cost, 1) / Math.max(wantCost, 1))) * 2.5;
         if (usedOf(usedIds, p)) s -= 4 * Math.max(1, usedIds[nk(p)] || 0); // 同じ商品（別の在庫・別の店でも）は基本1つまで
-        s += Math.log(1 + (stockN[nk(p)] || 0)) * 0.6; // 在庫の多い商品を優先
+        s += Math.log(1 + stockOf(p)) * 1.6 + Math.log(1 + (Number(p.stock) || 0)) * 0.4; // 在庫の多い商品を優先（全店モードは全店の合計）
         s += Math.log(1 + histCount(p, L.base)) * 0.7; // 過去によく入れていた商品を優先
         return s;
       }
@@ -416,7 +417,7 @@
           .sort(function (a, b) { return a.cost - b.cost; });
         for (var ni = 0; ni < nonPref.length && !swapped; ni++) {
           var hs = nonPref[ni];
-          var bq = boxes.filter(function (q) { return q.cost <= hs.p.cost + room3 && q.sell >= hs.p.sell * 0.9; }).sort(function (a, b) { return (usedIds[nk(a)] || 0) - (usedIds[nk(b)] || 0) || a.sell - b.sell || a.cost - b.cost; })[0]; // まだ使っていないBOXを先に。置き換える当たりより安っぽくならないBOX
+          var bq = boxes.filter(function (q) { return q.cost <= hs.p.cost + room3 && q.sell >= hs.p.sell * 0.9; }).sort(function (a, b) { return (usedIds[nk(a)] || 0) - (usedIds[nk(b)] || 0) || a.sell - b.sell || stockOf(b) - stockOf(a) || a.cost - b.cost; })[0]; // まだ使っていないBOXを先に。置き換える当たりより安っぽくならないBOX
           if (bq) { left[hs.p.id]++; hs.n--; if (hs.n <= 0) hits.splice(hits.indexOf(hs), 1); take(bq, fitRole(bq, hs.role)); swapped = true; }
         }
         if (swapped) continue;
@@ -513,7 +514,7 @@
   function fillKindName(L) { return L.fill.kind === 'box' ? 'BOX' : 'シングル'; }
   function singleFillPool(L, price, left, usedIds) {
     return S.inv.filter(function (p) { return p.kind === (L.fill.kind || 'card') && !p.mis && (left[p.id] == null ? p.stock : left[p.id]) > 0 && !usedOf(usedIds, p) && p.sell >= L.fill.single && p.sell < L.small[0] * price && p.cost >= p.sell * 0.1; }) // 原価が極端に安い（登録ミスらしい）ものは除く
-      .sort(function (a, b) { return a.sell - b.sell || a.cost - b.cost; }); // マスタ価格の安い順（ルールの下限に近いもの）
+      .sort(function (a, b) { return a.sell - b.sell || stockOf(b) - stockOf(a) || a.cost - b.cost; }); // マスタ価格の安い順（ルールの下限に近いもの）、同じ値段なら在庫の多い順
   }
   // ルールどおりの下枠を n口分 作る
   function makeFillerByRule(L, n, left, usedIds, price, warn) {
