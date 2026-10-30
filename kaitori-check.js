@@ -11,7 +11,7 @@
   var FB_URL = 'https://script.google.com/macros/s/AKfycbwl-ZCZ1LyefvSzEGkBEpTFTuFyvW0p-AYye6jBWaLP9t7-bC9_Owfeh4jKScNkFys6Fw/exec';
   var SHORT = { 322: '柏', 323: '津田沼', 324: '松戸', 325: '横浜', 326: '中野', 327: '町田', 328: '千葉中央', 390: '通販', 409: 'お台場' };
   // 判定ルール（本部の基準 2026-10-28）
-  var RULE = { high: 1.2, psaLow: 0.85, boxLow: 0.6, hanyo: 10000, sameCard: 3, sameCardMin: 1000, near: 0.05 };
+  var RULE = { high: 1.1, psaLow: 0.85, boxLow: 0.6, hanyo: 10000, sameCard: 3, sameCardMin: 1000, near: 0.05 };
 
   var S = { sid: null, stores: [], prices: null, idx: null, config: null, list: [], tx: null, lines: [], cust: '', staff: '', pollT: null };
   try { S.staff = localStorage.getItem('ndk_kaitori_staff') || ''; } catch (e) { }
@@ -322,7 +322,7 @@
       (ri && ri.status !== '差し戻し' ? '' : S.syncing ? '<button class="b g" disabled>本部の記録を確認中…</button>' : need ? '<button class="b r" id="req"' + (mustConf ? ' disabled title="先に警告を見直してください"' : '') + '>本部に承認を依頼する</button>' : '<button class="b g" id="req"' + (mustConf ? ' disabled' : '') + '>本部に承認を依頼（任意：古いカードで不安な時など）</button>') + '</div>' +
       (mustConf ? '<div class="sub" style="margin:-6px 0 10px">警告はあなた（査定した人）への確認です。マイカの明細を見直して、直したら「更新」、問題なければ「警告を見直しました」を押してください。' + (need ? 'そのあと本部に承認を依頼できます。' : '') + '</div>' : '') +
       '<table><tr><th></th><th class="l">商品</th><th>数</th><th>入力単価</th><th>買取表</th><th>買取表比</th><th>小計</th></tr>' + rows + '</table>' +
-      '<div class="sub" style="margin-top:8px">買取表：シングルはA 100%／A- 90〜60%／B 50〜20%／C 20〜5%／D 5%以下（Aでも傷・センタリングで80%程度あり）、PSAは85%まで、BOXは60%まで。買取表の1.2倍以上は🚨になります。</div>';
+      '<div class="sub" style="margin-top:8px">買取表：シングルはA 100%／A- 90〜60%／B 50〜20%／C 20〜5%／D 5%以下（Aでも傷・センタリングで80%程度あり）、PSAは85%まで、BOXは60%まで。買取表の1.1倍以上は🚨になります。</div>';
     $('#back').onclick = function () { loadList(); };
     if ($('#req')) $('#req').onclick = function () { if (!this.disabled) countCheck(function () { openSend('approval'); }); };
     if ($('#conf')) $('#conf').onclick = function () { openSend('confirm'); };
