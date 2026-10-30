@@ -85,8 +85,8 @@
     '.mh{font-size:17px;font-weight:800;margin-bottom:10px}' +
     '.frm label{display:block;margin:8px 0;font-weight:700;font-size:13px}.frm input,.frm select,.frm textarea{display:block;width:100%;margin-top:3px;padding:7px 9px;border:1.5px solid #d6d2c8;border-radius:8px;font:inherit;font-weight:400}' +
     '.thumbs{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}.thumbs img{width:70px;height:70px;object-fit:cover;border-radius:6px}' +
-    '.pick{font:inherit;font-size:16px;font-weight:700;padding:8px 10px;border:2px solid #1f1d1a;border-radius:10px;min-width:260px;background:#fff}' +
-    '.fin{background:#fff;border:2px solid #1f1d1a;border-radius:12px;padding:12px 14px;margin:10px 0;display:flex;flex-wrap:wrap;gap:10px;align-items:center}.fin .t{flex:1 1 320px}.fin .who{flex:1 1 100%;order:2}.fin #fin{order:3;margin-left:auto}.fin input{padding:8px 10px;border:1.5px solid #d6d2c8;border-radius:8px;font:inherit;width:150px}.fin .b{font-size:15px}' +
+    '.pick{font:inherit;font-size:14px;font-weight:700;padding:5px 8px;border:1.5px solid #1f1d1a;border-radius:8px;width:220px;background:#fff}' +
+    '.fin{background:#fff;border:2px solid #1f1d1a;border-radius:12px;padding:12px 14px;margin:10px 0;display:flex;flex-wrap:wrap;gap:10px;align-items:center}.fin .t{flex:1 1 320px}.fin .who{order:2}.fin #fin{order:3}.fin input{padding:8px 10px;border:1.5px solid #d6d2c8;border-radius:8px;font:inherit;width:150px}.fin .b{font-size:15px}' +
     '.st{padding:10px 14px;border-radius:10px;font-weight:800;margin:10px 0}.st.wait{background:#fff4c2}.st.ok{background:#e3f4e6;color:#15803d}.st.ng{background:#fff0f2;color:#c8102e}' +
     '.fb{position:absolute;right:18px;bottom:18px}' +
     '.photo{margin:10px 0;padding:10px 12px;border-radius:8px;background:#e3f4e6;color:#14532d;font-weight:700;font-size:13px}' +
@@ -355,7 +355,7 @@
     var mustConf = flags.length && !ci, ck = chkInfo();
     var fin = ck ? '<div class="st ok">✅ 最終チェック済み（' + esc(ck.by || '') + (ck.at ? '・' + hm(ck.at) : '') + '）</div>'
       : '<div class="fin"><div class="t"><b>最終チェック（すべての買取で必ず）</b><div class="sub">明細・枚数・金額・状態をマイカと実物で確かめたら、自分の名前をリストから選んで押してください。' + (need ? '本部への承認依頼はそのあとです。' : '') + '</div></div>' +
-        '<div class="who"><div class="sub" style="margin-bottom:4px">査定した人（今日の出勤者が上。ヘルプの人はスクロールしてほかの店から）</div>' + pickerHtml() + '</div><button class="b" id="fin"' + (mustConf || S.syncing ? ' disabled title="先に警告を見直してください"' : '') + '>最終チェックをする</button></div>';
+        '<div class="who"><span class="sub">査定した人 </span>' + pickerHtml() + '</div><button class="b" id="fin"' + (mustConf || S.syncing ? ' disabled title="先に警告を見直してください"' : '') + '>最終チェックをする</button></div>';
     var rows = S.lines.map(function (m) {
       var lv = m.flags.some(function (f) { return f.lv === 'red'; }) ? 'red' : m.flags.length ? 'yel' : '';
       var ref = m.ref ? yen(m.ref) + '<div class="sub">' + esc((m.refs[0] || {}).r ? m.refs[0].r.t : '') + '</div>' : '<span class="sub">' + esc(m.note || (m.hanyo ? '汎用' : '買取表になし')) + '</span>';
