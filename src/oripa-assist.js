@@ -88,7 +88,7 @@
   document.body.appendChild(host);
   var root = host.attachShadow({ mode: 'open' });
   root.innerHTML = '<style>' + CSS() + '</style><div class="wrap"><div class="win">' +
-    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-10-31 版AM</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
+    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-10-31 版AN</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
     (ALL ? '' : '<div class="tabs"><button data-tab="make" class="on">新しく作る</button><button data-tab="refill">補充する</button></div>') +
     '<button class="x" id="close" title="閉じる">×</button></div>' +
     '<div class="bd" id="body"><div class="msg">読み込み中…</div></div></div></div>';
@@ -1058,7 +1058,7 @@
           '<button class="addc" data-fadd="' + i + '">＋<br>下枠を<br>足す</button></div></div>' +
         '<div class="note2">当たりが先に出て補充すると、平均で原価率が <b>' + pct(after) + '</b> くらいまで上がります</div>' +
         (pt.warn.length ? '<div class="warn">' + pt.warn.map(esc).join('<br>') + (APPROVAL_URL && !ALL && needTotal(pt) ? '<div class="shareq"><button class="ghost" data-share="' + i + '">在庫共有で足りない当たりを募集する</button></div>' : '') + '</div>' : '') +
-        '<div class="acts"><button class="ghost" data-detail="' + i + '">中身を一覧で見る</button>' + (ALL ? '<button class="primary" data-picklist="' + i + '">店舗ごとの集め先リスト</button>' : saveButtons(pt, i)) + '</div>' + apprLine(pt) +
+        '<div class="acts"><button class="ghost" data-detail="' + i + '">中身を一覧で見る</button>' + (ALL ? '<button class="primary" data-picklist="' + i + '">店舗ごとの集め先リスト</button>' : (APPROVAL_URL ? '<button class="ghost" data-sheet="' + i + '">店舗オリパシートに書き出す</button>' : '') + saveButtons(pt, i)) + '</div>' + apprLine(pt) +
         '</div>';
     }).join('') + '</div>';
   }
@@ -1066,6 +1066,7 @@
   function bindPatternButtons() {
     root.querySelectorAll('[data-detail]').forEach(function (b) { b.onclick = function () { showDetail(S.patterns[Number(b.dataset.detail)]); }; });
     root.querySelectorAll('[data-save]').forEach(function (b) { b.onclick = function () { confirmSave(S.patterns[Number(b.dataset.save)]); }; });
+    root.querySelectorAll('[data-sheet]').forEach(function (b) { b.onclick = function () { exportSheet(S.patterns[Number(b.dataset.sheet)]); }; });
     root.querySelectorAll('[data-share]').forEach(function (b) { b.onclick = function () { requestShare(S.patterns[Number(b.dataset.share)]); }; });
     root.querySelectorAll('[data-req]').forEach(function (b) { b.onclick = function () { requestApproval(S.patterns[Number(b.dataset.req)]); }; });
     root.querySelectorAll('[data-chk]').forEach(function (b) { b.onclick = function () { checkApprovals(true); }; });
@@ -1371,6 +1372,40 @@
     m.querySelector('[data-x]').onclick = function () { m.remove(); };
   }
 
+
+  // 店舗オリパシート（店舗ごとのスプレッドシート）に、ほかのオリパと同じ形で書き出す（下枠は1行にまとめる）
+  function sheetCond(p) { if (p.kind === 'psa') return psaLabel(p); if (p.kind === 'box') return p.bst ? (/^B/.test(p.bst) ? 'B' : p.bst) : ''; return String(p.cond || '').replace('状態', ''); }
+  function guessTab(tabs, pt) {
+    var pr = String(pt.price), st = shortName(S.sname), box = pt.L && pt.L.kinds && pt.L.kinds[0].length === 1 && pt.L.kinds[0][0] === 'box';
+    var scuff = S.conds && S.conds.card && S.conds.card.some(function (c) { return !/^状態A-?$/.test(c); });
+    var sc = function (t) { var v = 0; if (t.indexOf(pr + '円') >= 0) v += 10; if (t.indexOf(st) >= 0) v += 3; if (/BOX/i.test(t) === box) v += 2; if (/傷/.test(t) === !!scuff) v += 2; if (/選べる|自販機|コピー|買取/.test(t)) v -= 5; return v; };
+    return tabs.slice().sort(function (a, b) { return sc(b) - sc(a); })[0] || '';
+  }
+  function exportSheet(pt) {
+    var st = shortName(S.sname);
+    var m = modal('<div class="mh">店舗オリパシートに書き出す</div><div class="frm"><div class="sm" id="shs">' + esc(st) + '店のシートを読み込み中…</div></div><div class="acts"><button class="ghost" data-x>やめる</button><button class="primary" data-ok disabled>書き出す</button></div>');
+    m.querySelector('[data-x]').onclick = function () { m.remove(); };
+    fetch(APPROVAL_URL + '?action=oripatabs&store=' + encodeURIComponent(st)).then(function (r) { return r.json(); }).then(function (j) {
+      if (!j.ok) throw new Error(j.error || '読み込めませんでした');
+      var g = guessTab(j.tabs, pt);
+      m.querySelector('.frm').innerHTML = '<div class="sm">「' + esc(j.name) + '」のタブのいちばん下に、ほかのオリパと同じ形（名前・原価・個数・合計、最後に販売口数・売上・粗利益率）で足します。下枠は「下枠」1行にまとめます。</div>' +
+        '<label>書き出すタブ <select id="tb">' + j.tabs.map(function (t) { return '<option' + (t === g ? ' selected' : '') + '>' + esc(t) + '</option>'; }).join('') + '</select></label>' +
+        '<label>オリパの呼び名（任意・タイトルに入ります） <input id="lb" placeholder="例：見える、傷あり"></label>' +
+        '<div class="sm">タイトルは「' + esc(st) + pt.price + '円　（呼び名）　' + pt.init + '口　Vol.（次の番号）（今日の日付）」になります。</div>';
+      var ok = m.querySelector('[data-ok]'); ok.disabled = false;
+      ok.onclick = async function () {
+        ok.disabled = true; ok.textContent = '書き出し中…';
+        try {
+          var rows = flatHits(pt.hits).map(function (h) { return { role: h.role.replace('（セット）', ''), name: h.p.name + (h.setOf ? '（セット）' : ''), cond: sheetCond(h.p), cost: h.p.cost, n: h.n }; });
+          var fN = pt.filler.reduce(function (s, f) { return s + f.n; }, 0), fC = pt.filler.reduce(function (s, f) { return s + f.p.cost * f.n; }, 0);
+          var r = await fetch(APPROVAL_URL, { method: 'POST', body: JSON.stringify({ action: 'oripasheet', store: st, tab: m.querySelector('#tb').value, label: m.querySelector('#lb').value.trim(), price: pt.price, init: pt.init, rows: rows, fillerN: fN, fillerCost: fC }) }).then(function (x) { return x.json(); });
+          if (!r.ok) throw new Error(r.error || '書き出せませんでした');
+          m.querySelector('.mbox').innerHTML = '<div class="mh">書き出しました</div><div class="sm">「' + esc(r.tab) + '」の' + r.row + '行目に「' + esc(r.title) + '」を足しました。</div><div class="acts"><a class="ghost" href="' + esc(r.url) + '" target="_blank" rel="noopener" style="text-decoration:none;display:inline-flex;align-items:center">シートを開く</a><button class="primary" data-x>OK</button></div>';
+          m.querySelector('[data-x]').onclick = function () { m.remove(); };
+        } catch (e) { ok.disabled = false; ok.textContent = '書き出す'; var er = m.querySelector('.err') || m.querySelector('.frm').appendChild(document.createElement('div')); er.className = 'err'; er.textContent = e.message; }
+      };
+    }).catch(function (e) { m.querySelector('#shs').textContent = e.message; m.querySelector('#shs').className = 'err'; });
+  }
   function defaultName(price) { return price.toLocaleString('ja-JP').replace(/,/g, '') + '円オリパ'; }
 
   function confirmSave(pt) {
@@ -1393,8 +1428,9 @@
           products: items.map(function (h) { return { product_id: h.p.id, item_count: h.n }; }) };
         await api('/api/store/' + S.sid + '/item/original-pack', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
         sendLearn(pt);
-        m.querySelector('.mbox').innerHTML = '<div class="mh">一時保存しました</div><div class="sm">マイカの「オリパ・福袋」→「一時保存」タブに「' + esc(name) + '」があります。中身を確認してから作成してください。</div><div class="acts"><button class="primary" data-x>OK</button></div>';
+        m.querySelector('.mbox').innerHTML = '<div class="mh">一時保存しました</div><div class="sm">マイカの「オリパ・福袋」→「一時保存」タブに「' + esc(name) + '」があります。中身を確認してから作成してください。</div><div class="acts">' + (APPROVAL_URL ? '<button class="ghost" data-sheet2>店舗オリパシートにも書き出す</button>' : '') + '<button class="primary" data-x>OK</button></div>';
         m.querySelector('[data-x]').onclick = function () { m.remove(); };
+        if (m.querySelector('[data-sheet2]')) m.querySelector('[data-sheet2]').onclick = function () { m.remove(); exportSheet(pt); };
       } catch (e) {
         btn.disabled = false; btn.textContent = '一時保存する';
         var er = m.querySelector('.err') || m.querySelector('.frm').appendChild(document.createElement('div')); er.className = 'err'; er.textContent = '保存できませんでした：' + e.message;
