@@ -4,7 +4,7 @@
  *   GET  ?action=kprices  … 買取表スプレッドシートの全タブの価格（ツールが突き合わせに使う）
  *   GET  ?action=kconfig  … 承認ライン（店舗別・スタッフ別）
  *   GET  ?action=kstatus&id=… … 承認依頼の結果／&tx=マイカ取引ID … その買取の最新の依頼・確認
- *   POST {action:'kaitori', kind:'approval'|'confirm', …} … 承認依頼は店舗のグループへ（中身は1枚の画像）／警告の確認は記録だけ
+ *   POST {action:'kaitori', kind:'approval'|'confirm'|'check', …} … 承認依頼は店舗のグループへ（中身は1枚の画像）／警告の確認・最終チェックは記録だけ
  * LINE WORKSのボタン：postback 'kapprove:ID' / 'kreject:ID'（callback() から kaitoriCallback() に回す）
  * 履歴は「オリパ承認履歴」スプレッドシート（SHEET_ID）の「買取」タブ、設定は「買取設定」タブ。
  */
@@ -87,7 +87,9 @@ function kaitoriGet(p) {
         var v = vals[i], o = { id: v[0], status: v[12], by: v[13] || v[4], at: v[14] ? String(v[14]) : '', requester: v[4] };
         if (v[2] === '承認依頼' && !ap) ap = o; else if (v[2] === '警告の確認' && !cf) cf = o;
       }
-      return json({ ok: true, approval: ap, confirm: cf });
+      var ck = null, fs = kBook().getSheetByName('最終チェック');
+      if (fs && fs.getLastRow() >= 2) { var fv = fs.getRange(2, 1, fs.getLastRow() - 1, 6).getValues(); for (var k = fv.length - 1; k >= 0; k--) if (String(fv[k][4]) === String(p.tx)) { ck = { id: fv[k][0], by: fv[k][5], at: fv[k][1] ? new Date(fv[k][1]).toISOString() : '' }; break; } }
+      return json({ ok: true, approval: ap, confirm: cf, check: ck });
     }
     if (p.action === 'kstatus') {
       var row = kFind(p.id); if (!row) return json({ ok: false, error: '依頼が見つかりません' });
@@ -107,6 +109,7 @@ function kSplit(t) { var parts = []; t = String(t || ''); while (t.length > 1900
 
 function kaitoriPost(d) {
   if (/^daily/.test(d.kind || '')) return kDaily(d); // 全店買取チェック（全店買取チェック.gs）
+  if (d.kind === 'check') return kCheck(d);
   var ch = CH[d.store]; if (!ch) return json({ ok: false, error: '店舗「' + d.store + '」のLINE WORKSグループが登録されていません' });
   if (!d.requester) return json({ ok: false, error: '名前を入れてください' });
   var approval = d.kind === 'approval';
@@ -157,6 +160,28 @@ function kaitoriCallback(ev, data) {
     if (ch) send(ch, { type: 'text', text: (st === '承認' ? '✅ 買取を承認しました' : '↩️ 買取を差し戻しました') + '（依頼番号 ' + m[2] + '・' + name + '）' +
       (st === '承認' ? '' : '\n直してほしい点をこのトークで伝えてください。') });
   } finally { lock.releaseLock(); }
+}
+
+/* ---------- 最終チェック（すべての買取で、査定した人が「確認しました」を押した記録） ---------- */
+var K_CHK_COLS = ['記録番号', 'チェック日時', '店舗', '受付番号', 'マイカ取引ID', '査定者', 'お客様', '買取合計', '行数', '点数', '🚨', '⚠️', '本部承認', '枚数確認', 'タイミング', '警告', '明細'];
+function kChkSheet() {
+  var ss = kBook(), sh = ss.getSheetByName('最終チェック');
+  if (!sh) { sh = ss.insertSheet('最終チェック'); sh.getRange(1, 1, 1, K_CHK_COLS.length).setValues([K_CHK_COLS]).setFontWeight('bold').setBackground('#efede7'); sh.setFrozenRows(1); }
+  return sh;
+}
+function kCheck(d) {
+  if (!d.requester) return json({ ok: false, error: '名前を入れてください' });
+  if (!d.store) return json({ ok: false, error: '店舗がわかりません' });
+  var id = 'F' + Utilities.formatDate(new Date(), 'Asia/Tokyo', 'MMdd-HHmmss') + '-' + Math.floor(Math.random() * 90 + 10);
+  var lock = LockService.getScriptLock(); lock.waitLock(20000);
+  try {
+    var sh = kChkSheet();
+    sh.appendRow([id, new Date(), d.store, d.reception || '', d.txId || '', d.requester, d.customer || '', Number(d.total) || 0, Number(d.rows) || 0, Number(d.points) || 0,
+      Number(d.red) || 0, Number(d.yel) || 0, d.need ? '必要' : '不要', d.countChecked ? '確認済み' : '', d.paid ? '支払い後' : '支払い前',
+      String(d.warnText || '').slice(0, 45000), String(d.text || '').slice(0, 45000)]);
+    sh.getRange(sh.getLastRow(), 2).setNumberFormat('yyyy/MM/dd HH:mm'); sh.getRange(sh.getLastRow(), 8).setNumberFormat('#,##0"円"');
+  } finally { lock.releaseLock(); }
+  return json({ ok: true, id: id });
 }
 
 /* ---------- 査定ログ（承認ライン以上の買取の明細を、査定者つきで1行ずつためる） ---------- */
@@ -216,7 +241,7 @@ function kSummary() {
 
 /** 最初に1回：買取タブと買取設定タブを作り、価格が読めるか確かめる */
 function kSetup() {
-  kSheet(); kSettingSheet(); kLogSheet(); kSummary();
+  kSheet(); kSettingSheet(); kLogSheet(); kChkSheet(); kSummary();
   var rows = kPrices();
   Logger.log('買取表の価格：' + rows.length + '行');
   Logger.log('買取設定：' + JSON.stringify(kConfig()));

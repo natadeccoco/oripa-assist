@@ -3,6 +3,7 @@
  * 雄司のPC（myca_import の kaitori_check.ps1、毎晩22:10・23:40）から、その日の全店の買取明細が届く。
  *   POST {action:'kaitori', kind:'dailyjudge', key, lines:[…]} … 買取表より高く買った行のキーを返す（書き込みはしない）
  *   POST {action:'kaitori', kind:'dailywrite', key, lines:[…]} … 該当行に状態・お客様名を付けて送り直す → スプレッドシートに追記
+ *   あわせて、最終チェック（買取チェックの「確認しました」）が無い買取を「チェック漏れ」タブにためる
  * 合言葉はスクリプト プロパティ LOSS_KEY（PCの config.json の LOSS_KEY と同じ。ロスのチェックと共用）
  * 書き込み先：スプレッドシート「買取表チェック（全店）」（初回に自動作成、IDはスクリプト プロパティ K_DAILY_SHEET）
  */
@@ -85,6 +86,7 @@ function kDaily(d) {
   if (!key || d.key !== key) return json({ ok: false, error: '合言葉が違います' });
   var I = kdIndex(), lines = d.lines || [];
   if (d.kind === 'dailyjudge') {
+    try { kdUnchecked(lines); } catch (e) { console.error('チェック漏れ: ' + e); }
     var hits = []; lines.forEach(function (l) { if (kdJudge(I, l).hit) hits.push(l.k); });
     return json({ ok: true, n: lines.length, hits: hits });
   }
@@ -188,4 +190,59 @@ function kdWarnSetup() {
   var ss = kdBook(), sh = ss.getSheetByName('明細'), last = sh.getLastRow();
   if (last >= 2) { var rows = sh.getRange(2, 1, last - 1, KD_COLS.length).getValues().filter(function (r) { return r[0] === '未確認'; }); if (rows.length) kdWarn(rows, ss); }
   Logger.log('買取警告グループ: ' + ch);
+}
+
+/* ---------- チェック漏れ：その日の買取のうち、最終チェックが無いもの ---------- */
+var KD_UC_COLS = ['状況', '社員への確認メモ', '買取日時', '店舗', '受付番号', '買取合計', '行数', 'マイカ取引ID', '最終チェック', 'チェックした人'];
+function kdUnchecked(lines) {
+  var tx = {}, from = new Date((P.getProperty('K_CHECK_FROM') || '2026-11-01') + 'T00:00:00+09:00'); // この日より前の買取は数えない（スクリプト プロパティ K_CHECK_FROM で変更）
+  lines.forEach(function (l) {
+    if (!l.tx || new Date(l.at) < from) return;
+    var o = tx[l.tx] || (tx[l.tx] = { store: l.store, rec: l.rec || '', at: l.at, total: 0, n: 0 });
+    o.total += (Number(l.unit) || 0) * (Number(l.cnt) || 0); o.n++;
+  });
+  var done = {}, fs = kBook().getSheetByName('最終チェック');
+  if (fs && fs.getLastRow() >= 2) fs.getRange(2, 1, fs.getLastRow() - 1, 6).getValues().forEach(function (v) { if (v[4]) done[String(v[4])] = { at: v[1], by: v[5] }; });
+  var ss = kdBook(), sh = ss.getSheetByName('チェック漏れ');
+  if (!sh) { sh = ss.insertSheet('チェック漏れ'); sh.getRange(1, 1, 1, KD_UC_COLS.length).setValues([KD_UC_COLS]).setFontWeight('bold').setBackground('#efede7'); sh.setFrozenRows(1); sh.setColumnWidth(2, 220); }
+  var last = sh.getLastRow(), have = {};
+  if (last >= 2) {
+    var vals = sh.getRange(2, 1, last - 1, KD_UC_COLS.length).getValues();
+    vals.forEach(function (v, i) { // あとからチェックした分は「あとでチェック済み」に
+      have[String(v[7])] = 1;
+      var c = done[String(v[7])];
+      if (c && !v[8]) sh.getRange(i + 2, 9, 1, 2).setValues([[c.at, c.by]]);
+    });
+  }
+  var rows = [];
+  Object.keys(tx).forEach(function (id) {
+    if (done[id] || have[id]) return;
+    var o = tx[id]; rows.push(['未確認', '', new Date(o.at), o.store, o.rec, o.total, o.n, id, '', '']);
+  });
+  if (rows.length) {
+    rows.sort(function (a, b) { return b[2] - a[2]; });
+    sh.insertRowsBefore(2, rows.length);
+    sh.getRange(2, 1, rows.length, KD_UC_COLS.length).setValues(rows);
+    sh.getRange(2, 3, rows.length, 1).setNumberFormat('yyyy/MM/dd(ddd) HH:mm');
+    sh.getRange(2, 6, rows.length, 1).setNumberFormat('#,##0"円"');
+    sh.getRange(2, 1, rows.length, 1).setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(['未確認', '確認済み', '要対応'], true).build());
+  }
+  kdCheckSummary(ss, tx, done);
+}
+// 日別・店舗別：買取件数／最終チェック済み／チェック漏れ（PCから届いた期間の分を上書き）
+function kdCheckSummary(ss, tx, done) {
+  var sh = ss.getSheetByName('チェック集計');
+  var head = ['日付', '店舗', '買取件数', '最終チェック済み', 'チェック漏れ', 'チェック率'];
+  if (!sh) { sh = ss.insertSheet('チェック集計'); sh.getRange(1, 1, 1, head.length).setValues([head]).setFontWeight('bold').setBackground('#efede7'); sh.setFrozenRows(1); }
+  var g = {};
+  Object.keys(tx).forEach(function (id) {
+    var o = tx[id], day = Utilities.formatDate(new Date(o.at), 'Asia/Tokyo', 'yyyy/MM/dd'), k = day + '|' + o.store;
+    var x = g[k] || (g[k] = [day, o.store, 0, 0, 0, 0]); x[2]++; if (done[id]) x[3]++; else x[4]++;
+  });
+  var last = sh.getLastRow(), old = last >= 2 ? sh.getRange(2, 1, last - 1, head.length).getValues() : [];
+  var keep = old.filter(function (v) { var day = v[0] instanceof Date ? Utilities.formatDate(v[0], 'Asia/Tokyo', 'yyyy/MM/dd') : String(v[0]); return !g[day + '|' + v[1]]; });
+  var rows = keep.concat(Object.keys(g).map(function (k) { var x = g[k]; x[5] = x[2] ? x[3] / x[2] : 0; return x; }))
+    .sort(function (a, b) { var da = String(a[0] instanceof Date ? Utilities.formatDate(a[0], 'Asia/Tokyo', 'yyyy/MM/dd') : a[0]), db = String(b[0] instanceof Date ? Utilities.formatDate(b[0], 'Asia/Tokyo', 'yyyy/MM/dd') : b[0]); return da < db ? 1 : da > db ? -1 : String(a[1]).localeCompare(String(b[1])); });
+  if (last >= 2) sh.getRange(2, 1, last - 1, head.length).clearContent();
+  if (rows.length) { sh.getRange(2, 1, rows.length, head.length).setValues(rows); sh.getRange(2, 6, rows.length, 1).setNumberFormat('0%'); }
 }

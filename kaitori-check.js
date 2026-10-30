@@ -6,7 +6,7 @@
   if (location.hostname !== 'pos.mycalinks.com') { alert('マイカ（pos.mycalinks.com）を開いてから押してください'); return; }
   var old = document.getElementById('ndk-kaitori-host'); if (old) old.remove();
 
-  var VERSION = '2026-10-30 版I';
+  var VERSION = '2026-10-31 版J';
   var GAS = 'https://script.google.com/macros/s/AKfycbwXHuu-X3L0qzJhvaszEIm-1xdeNIqJACQ0uM7mz5Q0hvwfdF9IuQiTKr3qmscNVmnhcQ/exec';
   var FB_URL = 'https://script.google.com/macros/s/AKfycbwl-ZCZ1LyefvSzEGkBEpTFTuFyvW0p-AYye6jBWaLP9t7-bC9_Owfeh4jKScNkFys6Fw/exec';
   var SHORT = { 322: '柏', 323: '津田沼', 324: '松戸', 325: '横浜', 326: '中野', 327: '町田', 328: '千葉中央', 390: '通販', 409: 'お台場' };
@@ -85,6 +85,7 @@
     '.mh{font-size:17px;font-weight:800;margin-bottom:10px}' +
     '.frm label{display:block;margin:8px 0;font-weight:700;font-size:13px}.frm input,.frm select,.frm textarea{display:block;width:100%;margin-top:3px;padding:7px 9px;border:1.5px solid #d6d2c8;border-radius:8px;font:inherit;font-weight:400}' +
     '.thumbs{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}.thumbs img{width:70px;height:70px;object-fit:cover;border-radius:6px}' +
+    '.fin{background:#fff;border:2px solid #1f1d1a;border-radius:12px;padding:12px 14px;margin:10px 0;display:flex;flex-wrap:wrap;gap:10px;align-items:center}.fin .t{flex:1 1 320px}.fin input{padding:8px 10px;border:1.5px solid #d6d2c8;border-radius:8px;font:inherit;width:150px}.fin .b{font-size:15px}' +
     '.st{padding:10px 14px;border-radius:10px;font-weight:800;margin:10px 0}.st.wait{background:#fff4c2}.st.ok{background:#e3f4e6;color:#15803d}.st.ng{background:#fff0f2;color:#c8102e}' +
     '.fb{position:absolute;right:18px;bottom:18px}' +
     '.photo{margin:10px 0;padding:10px 12px;border-radius:8px;background:#e3f4e6;color:#14532d;font-weight:700;font-size:13px}' +
@@ -282,6 +283,7 @@
       if (S.tx !== t) return;
       if (j.approval) saveReq({ kind: 'approval', id: j.approval.id, status: j.approval.status, by: j.approval.status === '承認待ち' ? '' : j.approval.by });
       if (j.confirm) saveConf({ id: j.confirm.id, by: j.confirm.by });
+      if (j.check) saveChk({ id: j.check.id, by: j.check.by, at: j.check.at });
     } catch (e) { }
   }
   // マイカの商品画像（承認依頼の画像に使う）
@@ -300,6 +302,8 @@
   function saveReq(o) { try { localStorage.setItem(stKey(), JSON.stringify(o)); } catch (e) { } }
   function confInfo() { try { return JSON.parse(localStorage.getItem('ndk_kaitori_conf_' + S.tx.id) || 'null'); } catch (e) { return null; } }
   function saveConf(o) { try { localStorage.setItem('ndk_kaitori_conf_' + S.tx.id, JSON.stringify(o)); } catch (e) { } }
+  function chkInfo() { try { return JSON.parse(localStorage.getItem('ndk_kaitori_chk_' + S.tx.id) || 'null'); } catch (e) { return null; } }
+  function saveChk(o) { try { localStorage.setItem('ndk_kaitori_chk_' + S.tx.id, JSON.stringify(o)); } catch (e) { } }
 
   function renderDetail() {
     var t = S.tx; if (!t) return;
@@ -312,7 +316,10 @@
     var apSt = ri && ri.kind === 'approval' ? ri.status : ''; // 承認の結果は上の「本部承認」の枠に出す
     if (ri && ri.kind === 'approval' && ri.status !== '承認') st = ri.status === '差し戻し' ? '<div class="st ng">↩️ 差し戻されました（' + esc(ri.by || '') + '）。LINE WORKSのグループで理由を確認してください</div>' : '<div class="st wait">承認待ち（依頼番号 ' + esc(ri.id) + '）… 結果は自動で反映されます</div>';
     if (ci && flags.length) st = '<div class="st ok">✅ 警告を確認しました（' + esc(ci.by || '') + '）</div>' + st;
-    var mustConf = flags.length && !ci;
+    var mustConf = flags.length && !ci, ck = chkInfo();
+    var fin = ck ? '<div class="st ok">✅ 最終チェック済み（' + esc(ck.by || '') + (ck.at ? '・' + hm(ck.at) : '') + '）</div>'
+      : '<div class="fin"><div class="t"><b>最終チェック（すべての買取で必ず）</b><div class="sub">明細・枚数・金額・状態をマイカと実物で確かめたら、名前を入れて押してください。' + (need ? '本部への承認依頼はそのあとです。' : '') + '</div></div>' +
+        '<input id="fn" placeholder="査定した人の名前" value="' + esc(S.staff) + '"><button class="b" id="fin"' + (mustConf || S.syncing ? ' disabled title="先に警告を見直してください"' : '') + '>最終チェックをする</button></div>';
     var rows = S.lines.map(function (m) {
       var lv = m.flags.some(function (f) { return f.lv === 'red'; }) ? 'red' : m.flags.length ? 'yel' : '';
       var ref = m.ref ? yen(m.ref) + '<div class="sub">' + esc((m.refs[0] || {}).r ? m.refs[0].r.t : '') + '</div>' : '<span class="sub">' + esc(m.note || (m.hanyo ? '汎用' : '買取表になし')) + '</span>';
@@ -331,21 +338,24 @@
       '<div class="card"><div class="sub">チェック結果</div><div class="big">' + (red.length ? '<span style="color:#c8102e">🚨 ' + red.length + '</span> ' : '') + (flags.length - red.length ? '⚠️ ' + (flags.length - red.length) : '') + (!flags.length ? '<span style="color:#15803d">問題なし</span>' : '') + '</div></div></div>' +
       st +
       (flags.length ? '<div class="warns">' + flags.map(function (f) { return '<div class="w ' + f.lv + '">' + (f.lv === 'red' ? '🚨 ' : '⚠️ ') + esc(f.t) + '<div class="d">' + esc(f.d) + '</div></div>'; }).join('') + '</div>' : '') +
+      (mustConf ? '' : fin) +
       '<div class="acts">' +
       (mustConf ? '<button class="b" id="conf">警告を見直しました</button>' : '') +
-      (ri && ri.status !== '差し戻し' ? '' : S.syncing ? '<button class="b g" disabled>本部の記録を確認中…</button>' : need ? '<button class="b r" id="req"' + (mustConf ? ' disabled title="先に警告を見直してください"' : '') + '>本部に承認を依頼する</button>' : '<button class="b g" id="req"' + (mustConf ? ' disabled' : '') + '>本部に承認を依頼（任意：古いカードで不安な時など）</button>') + '</div>' +
-      (mustConf ? '<div class="sub" style="margin:-6px 0 10px">警告はあなた（査定した人）への確認です。マイカの明細を見直して、直したら「更新」、問題なければ「警告を見直しました」を押してください。' + (need ? 'そのあと本部に承認を依頼できます。' : '') + '</div>' : '') +
+      (ri && ri.status !== '差し戻し' ? '' : S.syncing ? '<button class="b g" disabled>本部の記録を確認中…</button>' : need ? '<button class="b r" id="req"' + (mustConf || !ck ? ' disabled title="先に最終チェックをしてください"' : '') + '>本部に承認を依頼する</button>' : (ck ? '<button class="b g" id="req">本部に承認を依頼（任意：古いカードで不安な時など）</button>' : '')) + '</div>' +
+      (mustConf ? '<div class="sub" style="margin:-6px 0 10px">警告はあなた（査定した人）への確認です。マイカの明細を見直して、直したら「更新」、問題なければ「警告を見直しました」を押してください。' + 'そのあと最終チェックをします。' + '</div>' : '') +
+      (mustConf ? fin : '') +
       '<table><tr><th></th><th class="l">商品</th><th>数</th><th>入力単価</th><th>買取表</th><th>買取表比</th><th>小計</th></tr>' + rows + '</table>' +
       '<div class="sub" style="margin-top:8px">買取表：シングルはA 100%／A- 90〜60%／B 50〜20%／C 20〜5%／D 5%以下（Aでも傷・センタリングで80%程度あり）、PSAは85%まで、BOXは60%まで。買取表の1.1倍以上は🚨、状態の目安（A- 90%／B 50%／C 20%／D 5%）の1.1倍以上は⚠️になります。</div>';
     $('#back').onclick = function () { loadList(); };
     if ($('#req')) $('#req').onclick = function () { if (!this.disabled) countCheck(function () { openSend('approval'); }); };
     if ($('#conf')) $('#conf').onclick = function () { openSend('confirm'); };
+    if ($('#fin')) $('#fin').onclick = function () { if (this.disabled) return; var nm = $('#fn').value.trim(); if (!nm) { $('#fn').focus(); return; } countCheck(function () { finalCheck(nm); }); };
   }
 
   // 本部承認の前に：同じカード・BOXが2枚以上ある行の枚数を確認（トレーナーズ・サプライは除く）
   function countCheck(next) {
     var list = S.lines.filter(function (m) { return !m.hanyo && m.cat !== 'サプライ' && m.cnt >= 2; });
-    if (!list.length) { next(); return; }
+    if (!list.length || S.countOk === (S.tx && S.tx.id)) { next(); return; }
     var m = document.createElement('div'); m.className = 'md';
     m.innerHTML = '<div class="mbox"><div class="mh">枚数はあっていますか？</div><div class="sub" style="margin-bottom:8px">2枚（2個）以上の商品です。実物の枚数とマイカの数をもう一度数えてください。</div>' +
       '<table>' + list.map(function (q) { return '<tr><td class="th">' + thumb(q) + '</td><td class="l nm"><b>' + esc(q.dn) + '</b>' + (q.cond ? ' <span class="pill cond">' + esc(q.cond) + '</span>' : '') + '<div class="sub">' + yen(q.unit) + ' × ' + q.cnt + ' ＝ ' + yen(q.unit * q.cnt) + '</div></td><td class="cnt many" style="font-size:30px">×' + q.cnt + '</td></tr>'; }).join('') + '</table>' +
@@ -353,6 +363,35 @@
     R.querySelector('.win').appendChild(m);
     m.querySelector('#x').onclick = function () { m.remove(); };
     m.querySelector('#ok').onclick = function () { m.remove(); S.countOk = S.tx && S.tx.id; next(); };
+  }
+
+  // 最終チェック：「確認しましたか？」に「はい」で、本部に記録（LINE WORKSには送らない）
+  function finalCheck(name) {
+    var t = S.tx, ap = approvalLine(), need = (t.total_price || 0) >= ap.line;
+    var flags = []; S.lines.forEach(function (q) { flags = flags.concat(q.flags); });
+    var red = flags.filter(function (f) { return f.lv === 'red'; }).length, pts = S.lines.reduce(function (s, q) { return s + q.cnt; }, 0);
+    var m = document.createElement('div'); m.className = 'md';
+    m.innerHTML = '<div class="mbox"><div class="mh">確認しましたか？</div>' +
+      '<div style="font-size:15px;line-height:1.9;margin:6px 0 12px">受付 ' + esc(t.reception_number || '') + '　<b>' + yen(t.total_price) + '</b>（' + S.lines.length + '行・' + pts + '点）<br>' +
+      '・商品と状態（A・B・Cなど）は合っていますか？<br>・枚数は実物と合っていますか？<br>・単価の桁、見た買取表の行は合っていますか？' +
+      (flags.length ? '<br>・警告 ' + flags.length + '件（🚨' + red + '）は見直しましたか？' : '') + '</div>' +
+      '<div class="sub">査定した人：<b>' + esc(name) + '</b>　この確認は本部に記録されます。</div><div class="err" id="er"></div>' +
+      '<div class="acts" style="justify-content:flex-end"><button class="b g" id="x">いいえ（見直す）</button><button class="b r" id="ok">はい、確認しました</button></div></div>';
+    R.querySelector('.win').appendChild(m);
+    m.querySelector('#x').onclick = function () { m.remove(); };
+    m.querySelector('#ok').onclick = async function () {
+      var b = this; b.disabled = true; b.textContent = '記録中…';
+      S.staff = name; $('#staff').value = name; try { localStorage.setItem('ndk_kaitori_staff', name); } catch (e) { }
+      try {
+        var body = { action: 'kaitori', kind: 'check', store: SHORT[S.sid], requester: name, staff: name, customer: S.cust, total: t.total_price, line: ap.line, need: need,
+          txId: t.id, reception: t.reception_number || '', rows: S.lines.length, points: pts, red: red, yel: flags.length - red, warnText: warnText(),
+          countChecked: S.countOk === t.id, paid: t.status !== 'draft', text: S.lines.slice(0, 60).map(lineText).join('\n') };
+        var j = await fetch(GAS, { method: 'POST', body: JSON.stringify(body) }).then(function (r) { return r.json(); });
+        if (!j.ok) throw new Error(j.error || '記録できませんでした');
+        saveChk({ id: j.id, by: name, at: new Date().toISOString() });
+        m.remove(); renderDetail();
+      } catch (e) { b.disabled = false; b.textContent = 'はい、確認しました'; m.querySelector('#er').textContent = '記録できませんでした：' + e.message; }
+    };
   }
 
   // 画像のない汎用（トレーナーズ）は、カードの形に「@20」を描いた代わりの画像
