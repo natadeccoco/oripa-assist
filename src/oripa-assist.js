@@ -88,7 +88,7 @@
   document.body.appendChild(host);
   var root = host.attachShadow({ mode: 'open' });
   root.innerHTML = '<style>' + CSS() + '</style><div class="wrap"><div class="win">' +
-    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-10-31 版AO</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
+    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-10-31 版AP</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
     (ALL ? '' : '<div class="tabs"><button data-tab="make" class="on">新しく作る</button><button data-tab="refill">補充する</button></div>') +
     '<button class="x" id="close" title="閉じる">×</button></div>' +
     '<div class="bd" id="body"><div class="msg">読み込み中…</div></div></div></div>';
@@ -378,7 +378,7 @@
     var est = function (r) { return rho * geo(r[0], r[1], 0.5) * price; };
     var nBig = L.nBig[0], nMid = L.nMid[0], nTot = Math.max(L.nTotal[0], nBig + nMid);
     var fillEst = fillUnitEst();
-    function estCost(b, m, t) { var sm = t - b - m; return (top ? top.cost : 0) + (last ? last.cost : 0) + Math.max(b - 1, 0) * est(L.big) + m * est(L.mid) + sm * est(L.small) + (init - t - 1) * fillEst; }
+    function estCost(b, m, t) { var sm = t - b - m; return (top ? top.cost : 0) + (last ? last.cost : 0) + Math.max(b - 1, 0) * est(L.big) + m * est(L.mid) + sm * est(L.small) + (init - t) * fillEst; } // ラストワン賞は口数に含めない
     for (var guard = 0; guard < 50; guard++) {
       var tried = false;
       if (nMid < L.nMid[1] && nBig + nMid + 1 <= nTot && estCost(nBig, nMid + 1, nTot) <= budget) { nMid++; tried = true; }
@@ -389,7 +389,7 @@
     var nSmall = Math.max(0, nTot - nBig - nMid);
 
     // 3) 下枠を先に決める
-    var fillN = Math.max(0, init - nTot - 1);
+    var fillN = Math.max(0, init - nTot); // ラストワン賞は口数に含めない（当たり＋下枠＝口数）
     var filler = makeFillerByRule(L, fillN, left, usedIds, price, warn);
     var fillCost = filler.reduce(function (s, f) { return s + f.p.cost * f.n; }, 0);
 
@@ -790,8 +790,8 @@
     };
     m.querySelector('#qs').onclick = search; m.querySelector('#q').onkeydown = function (e) { if (e.key === 'Enter') search(); };
     m.querySelector('[data-rm]').onclick = function () {
-      h.n--; if (h.n <= 0) pt.hits.splice(hi, 1);
-      adjustFiller(pt, 1); recalc(pt); m.remove(); renderMake();
+      var wasLast = h.role === 'ラストワン'; h.n--; if (h.n <= 0) pt.hits.splice(hi, 1);
+      if (!wasLast) adjustFiller(pt, 1); recalc(pt); m.remove(); renderMake();
     };
     m.querySelector('[data-x]').onclick = function () { m.remove(); };
   }
@@ -1016,7 +1016,7 @@
           var ex = pt.hits.find(function (x) { return x.p.id === p.id && x.role === role; });
           if (ex) ex.n++; else pt.hits.push({ p: p, n: 1, role: role });
           pt.hits.sort(function (a, b) { return roleRank(a.role) - roleRank(b.role) || b.p.cost - a.p.cost; });
-          adjustFiller(pt, -1); recalc(pt); m.remove(); renderMake();
+          if (role !== 'ラストワン') adjustFiller(pt, -1); recalc(pt); m.remove(); renderMake(); // ラストワン賞は口数に含めないので下枠は減らさない
         };
       });
     }
@@ -1418,7 +1418,7 @@
     var total = flatHits(pt.hits).concat(pt.filler).reduce(function (s, h) { return s + h.n; }, 0), nSet = pt.hits.filter(function (h) { return h.p.set; }).length;
     var m = modal('<div class="mh">マイカに一時保存しますか？</div>' +
       '<div class="frm"><label>商品名 <input id="nm" value="' + esc(defaultName(pt.price)) + '"></label>' +
-      '<div class="sm">値段 ' + yen(pt.price) + '／' + pt.init + '口／封入 ' + total + '枚／原価率 ' + pct(pt.costr) + '</div>' +
+      '<div class="sm">値段 ' + yen(pt.price) + '／' + pt.init + '口／封入 ' + total + '枚' + (pt.hits.some(function (h) { return h.role === 'ラストワン'; }) ? '（ラストワン賞1枚を含む。ラストワン賞は口数に入りません）' : '') + '／原価率 ' + pct(pt.costr) + '</div>' +
       (nSet ? '<div class="sm"><b>セット当たりが' + nSet + 'つあるので、封入枚数は口数より' + nSet + '枚多くなります。セットの2枚は同じ袋に入れてください。</b></div>' : '') +
       '<div class="sm">「一時保存」に入るだけで、まだ販売はされません。マイカの「オリパ・福袋」→「一時保存」で中身を確認してから作成してください。</div></div>' +
       '<div class="acts"><button class="ghost" data-x>やめる</button><button class="primary" data-ok>一時保存する</button></div>');

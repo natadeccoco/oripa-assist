@@ -12,7 +12,7 @@ function oripaWrite(d) {
   if (d.newTab) { // 新しいタブを作って書き出す（同じ名前があれば（2）（3）…を付ける）
     var base0 = String(d.newTab).replace(/[\[\]\*\?\/\\:]/g, ' ').trim().slice(0, 90) || 'オリパ', nm = base0, k = 2;
     while (ss.getSheetByName(nm)) nm = base0 + '（' + (k++) + '）';
-    sh = ss.insertSheet(nm, ss.getSheets().length); fresh = true;
+    sh = ss.insertSheet(nm, 0); fresh = true; // いちばん左に作る
   } else sh = ss.getSheetByName(String(d.tab || ''));
   if (!sh) return { ok: false, error: 'タブ「' + d.tab + '」が見つかりません' };
   var lr = sh.getLastRow(), vals = lr ? sh.getRange(1, 1, lr, 7).getDisplayValues() : [];
