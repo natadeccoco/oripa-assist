@@ -117,7 +117,9 @@ function kDaily(d) {
     rows.forEach(function (r, i) { sh.getRange(2 + i, 17).setBackground(/^🚨/.test(r[16]) ? '#ffd9de' : '#fff4c2'); });
   }
   kdSummary(ss);
-  return json({ ok: true, written: rows.length, skipped: lines.length - rows.length });
+  var werr = '';
+  if (rows.length) { try { kdWarn(rows, ss); } catch (e) { werr = String(e.message || e); console.error('買取警告: ' + werr); } }
+  return json({ ok: true, written: rows.length, skipped: lines.length - rows.length, warnErr: werr });
 }
 
 function kdSummary(ss) {
@@ -146,3 +148,44 @@ function kdSummary(ss) {
 
 /** 最初に1回：スプレッドシートを作ってURLをログに出す */
 function kdSetup() { var ss = kdBook(); kdSummary(ss); Logger.log('買取表チェック（全店）: ' + ss.getUrl()); }
+
+/* ---------- 役員の「買取警告」グループに送る ---------- */
+// グループはBotが作る（役員＝LW_APPROVERS の3人＋Bot）。IDはスクリプト プロパティ K_WARN_CHANNEL
+function kdWarnChannel() {
+  var ch = P.getProperty('K_WARN_CHANNEL'); if (ch) return ch;
+  var members = (P.getProperty('LW_APPROVERS') || '').split(',').map(function (s) { return s.trim(); }).filter(String);
+  if (!members.length) throw new Error('LW_APPROVERS（役員のID）がありません');
+  var r = UrlFetchApp.fetch('https://www.worksapis.com/v1.0/bots/' + prop('LW_BOT_ID') + '/channels', {
+    method: 'post', contentType: 'application/json', muteHttpExceptions: true,
+    headers: { Authorization: 'Bearer ' + token() }, payload: JSON.stringify({ members: members, title: '買取警告' })
+  });
+  var j = JSON.parse(r.getContentText() || '{}');
+  if (!j.channelId) throw new Error('買取警告グループを作れませんでした（' + r.getResponseCode() + '）: ' + r.getContentText());
+  P.setProperty('K_WARN_CHANNEL', j.channelId);
+  return j.channelId;
+}
+function kdLine(r) { // r は明細の1行（KD_COLS の並び）
+  var d = Utilities.formatDate(new Date(r[2]), 'Asia/Tokyo', 'M/d(E) HH:mm').replace('Mon', '月').replace('Tue', '火').replace('Wed', '水').replace('Thu', '木').replace('Fri', '金').replace('Sat', '土').replace('Sun', '日');
+  var yen = function (n) { return Number(n || 0).toLocaleString() + '円'; };
+  var card = String(r[6]).replace(/[（(][^）)]*[）)]\s*$/, '') + '　' + [r[8], r[7], r[9]].filter(String).join(' ') + (r[10] ? '（' + r[10] + '）' : '');
+  return (/^🚨/.test(r[16]) ? '🚨' : '⚠️') + ' ' + r[3] + '　' + d + '　受付' + r[4] + (r[5] ? '　' + r[5] + ' 様' : '') +
+    '\n　' + card + ' ×' + r[11] + '\n　買取表 ' + yen(r[13]) + ' → ' + yen(r[12]) + '（' + (r[13] ? Math.round(r[12] / r[13] * 100) + '%' : '') + (r[15] ? '・上乗せ ' + yen(r[15]) : '') + '）' + (r[19] ? '　査定者：' + r[19] : '') +
+    (/^🚨@/.test(r[16]) ? '\n　' + r[17] : '');
+}
+function kdWarn(rows, ss) {
+  var ch = kdWarnChannel();
+  var red = rows.filter(function (r) { return /^🚨/.test(r[16]); }), yel = rows.filter(function (r) { return !/^🚨/.test(r[16]); });
+  var amt = rows.reduce(function (s, r) { return s + (Number(r[15]) || 0); }, 0);
+  var head = '【買取警告】買取表より高く買った買取が ' + rows.length + '件（🚨' + red.length + '・⚠️' + yel.length + '）　上乗せ合計 ' + amt.toLocaleString() + '円';
+  var body = red.concat(yel).slice(0, 30).map(kdLine).join('\n\n') + (rows.length > 30 ? '\n\nほか ' + (rows.length - 30) + '件' : '');
+  var tail = '\n\n確認状況・社員への確認メモはこちら：\n' + ss.getUrl();
+  kSplit(head + '\n\n' + body + tail).forEach(function (x) { send(ch, { type: 'text', text: x }); });
+}
+/** 最初に1回：買取警告グループを作り、あいさつと、今シートにある未確認の分を送る */
+function kdWarnSetup() {
+  var ch = kdWarnChannel();
+  send(ch, { type: 'text', text: '買取警告グループです（役員のみ）。\n毎晩22:10ごろ、全店の買取を買取表と照らし合わせて、買取表より高く買ったもの（🚨1.5倍以上・トレーナーズの@と単価違い／⚠️それ以外の上乗せ）をここにお知らせします。' });
+  var ss = kdBook(), sh = ss.getSheetByName('明細'), last = sh.getLastRow();
+  if (last >= 2) { var rows = sh.getRange(2, 1, last - 1, KD_COLS.length).getValues().filter(function (r) { return r[0] === '未確認'; }); if (rows.length) kdWarn(rows, ss); }
+  Logger.log('買取警告グループ: ' + ch);
+}
