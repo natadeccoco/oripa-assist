@@ -6,7 +6,7 @@
   if (location.hostname !== 'pos.mycalinks.com') { alert('マイカ（pos.mycalinks.com）を開いてから押してください'); return; }
   var old = document.getElementById('ndk-kaitori-host'); if (old) old.remove();
 
-  var VERSION = '2026-10-31 版K';
+  var VERSION = '2026-10-31 版L';
   var GAS = 'https://script.google.com/macros/s/AKfycbwXHuu-X3L0qzJhvaszEIm-1xdeNIqJACQ0uM7mz5Q0hvwfdF9IuQiTKr3qmscNVmnhcQ/exec';
   var FB_URL = 'https://script.google.com/macros/s/AKfycbwl-ZCZ1LyefvSzEGkBEpTFTuFyvW0p-AYye6jBWaLP9t7-bC9_Owfeh4jKScNkFys6Fw/exec';
   var SHORT = { 322: '柏', 323: '津田沼', 324: '松戸', 325: '横浜', 326: '中野', 327: '町田', 328: '千葉中央', 390: '通販', 409: 'お台場' };
@@ -85,7 +85,7 @@
     '.mh{font-size:17px;font-weight:800;margin-bottom:10px}' +
     '.frm label{display:block;margin:8px 0;font-weight:700;font-size:13px}.frm input,.frm select,.frm textarea{display:block;width:100%;margin-top:3px;padding:7px 9px;border:1.5px solid #d6d2c8;border-radius:8px;font:inherit;font-weight:400}' +
     '.thumbs{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}.thumbs img{width:70px;height:70px;object-fit:cover;border-radius:6px}' +
-    '.chips{display:flex;flex-wrap:wrap;gap:6px}.chip{border:1.5px solid #d6d2c8;background:#fff;padding:7px 12px;border-radius:999px;font:inherit;font-size:14px;font-weight:700;cursor:pointer}.chip.on{background:#1f1d1a;color:#fff;border-color:#1f1d1a}.chip.help{border-style:dashed;color:#555}.chip small{font-size:11px;color:#15803d}.hp{margin:8px 0}.hp b{display:block;margin-bottom:4px;font-size:13px}' +
+    '.pick{font:inherit;font-size:16px;font-weight:700;padding:8px 10px;border:2px solid #1f1d1a;border-radius:10px;min-width:260px;background:#fff}' +
     '.fin{background:#fff;border:2px solid #1f1d1a;border-radius:12px;padding:12px 14px;margin:10px 0;display:flex;flex-wrap:wrap;gap:10px;align-items:center}.fin .t{flex:1 1 320px}.fin .who{flex:1 1 100%;order:2}.fin #fin{order:3;margin-left:auto}.fin input{padding:8px 10px;border:1.5px solid #d6d2c8;border-radius:8px;font:inherit;width:150px}.fin .b{font-size:15px}' +
     '.st{padding:10px 14px;border-radius:10px;font-weight:800;margin:10px 0}.st.wait{background:#fff4c2}.st.ok{background:#e3f4e6;color:#15803d}.st.ng{background:#fff0f2;color:#c8102e}' +
     '.fb{position:absolute;right:18px;bottom:18px}' +
@@ -136,39 +136,37 @@
   }
   // 最終チェックの名前：その日の出勤者（店舗やることリストの出勤予定）を並べ、ヘルプの人はほかの店の一覧から選ぶ
   function pickerHtml() {
-    var st = SHORT[S.sid], ro = S.roster, today = ro && ro.today[st] || [];
-    var cur = S.pick || '';
+    var st = SHORT[S.sid], ro = S.roster, cur = S.pick || '';
     if (!ro) return '<input id="fn" placeholder="査定した人の名前" value="' + esc(cur) + '">';
-    var names = today.slice(); if (cur && names.indexOf(cur) < 0) names.push(cur);
-    return '<div class="chips">' + (names.length ? names.map(function (n) { return '<button class="chip' + (n === cur ? ' on' : '') + '" data-n="' + esc(n) + '">' + esc(n) + '</button>'; }).join('') : '<span class="sub">今日の' + esc(st) + '店の出勤予定がありません</span>') +
-      '<button class="chip help" id="helpPick">＋ ヘルプの人</button></div>';
+    var today = ro.today[st] || [], seen = {}, html = '<option value="">▼ 名前を選んでください</option>';
+    var grp = function (label, names, mark) {
+      names = names.filter(function (n) { return !seen[n]; }); if (!names.length) return;
+      html += '<optgroup label="' + esc(label) + '">' + names.map(function (n) { seen[n] = 1; return '<option value="' + esc(n) + '"' + (n === cur ? ' selected' : '') + '>' + esc(n) + (mark && mark.indexOf(n) >= 0 ? '（今日出勤）' : '') + '</option>'; }).join('') + '</optgroup>';
+    };
+    grp('今日の' + st + '店の出勤', today);
+    ['柏', '津田沼', '松戸', '横浜', '中野', '町田', '千葉中央', 'お台場'].forEach(function (s) {
+      var t = ro.today[s] || [], all = (ro.all[s] || []).concat(t);
+      if (s === st) { grp(st + '店（今日は出勤予定なし）', all); return; }
+      all = all.filter(function (n, k) { return all.indexOf(n) === k; }).sort(function (a, b) { return (t.indexOf(b) >= 0) - (t.indexOf(a) >= 0); });
+      grp('ヘルプ：' + s + '店', all, t);
+    });
+    if (cur && !seen[cur]) html += '<option value="' + esc(cur) + '" selected>' + esc(cur) + '</option>';
+    html += '<option value="__other">一覧にいない人（名前を入力）</option>';
+    return '<select id="fn" class="pick">' + html + '</select>';
   }
   function bindPicker() {
-    R.querySelectorAll('.chip[data-n]').forEach(function (b) { b.onclick = function () { setPick(this.dataset.n); }; });
-    if ($('#helpPick')) $('#helpPick').onclick = helpPick;
-    if ($('#fn') && $('#fn').tagName === 'INPUT') $('#fn').oninput = function () { S.pick = this.value.trim(); };
+    var f = $('#fn'); if (!f) return;
+    if (f.tagName === 'INPUT') { f.oninput = function () { S.pick = this.value.trim(); }; return; }
+    f.onchange = function () {
+      if (this.value === '__other') { var v = (prompt('名前を入力してください') || '').trim(); if (!v) { this.value = S.pick || ''; return; } setPick(v); return; }
+      setPick(this.value);
+    };
   }
   function setPick(n) {
     S.pick = n; S.staff = n; $('#staff').value = n; try { localStorage.setItem('ndk_kaitori_staff', n); } catch (e) { }
     renderDetail();
   }
-  function helpPick() {
-    var ro = S.roster || { today: {}, all: {} }, me = SHORT[S.sid];
-    var stores = ['柏', '津田沼', '松戸', '横浜', '中野', '町田', '千葉中央', 'お台場'].filter(function (s) { return s !== me; });
-    var m = document.createElement('div'); m.className = 'md';
-    m.innerHTML = '<div class="mbox"><div class="mh">ヘルプの人を選んでください</div><div class="sub" style="margin-bottom:8px">ほかの店のスタッフです。今日その店に出勤予定の人には「今日」が付いています。</div>' +
-      stores.map(function (s) {
-        var t = ro.today[s] || [], all = (ro.all[s] || []).slice().sort(function (a, b) { return (t.indexOf(b) >= 0) - (t.indexOf(a) >= 0); });
-        if (!all.length) return '';
-        return '<div class="hp"><b>' + esc(s) + '</b><div class="chips">' + all.map(function (n) { return '<button class="chip" data-h="' + esc(n) + '">' + esc(n) + (t.indexOf(n) >= 0 ? ' <small>今日</small>' : '') + '</button>'; }).join('') + '</div></div>';
-      }).join('') +
-      '<div class="frm"><label>一覧にいない人<input id="hpFree" placeholder="名前を入力"></label></div>' +
-      '<div class="acts" style="justify-content:flex-end"><button class="b g" id="x">やめる</button><button class="b" id="ok">この名前にする</button></div></div>';
-    R.querySelector('.win').appendChild(m);
-    m.querySelectorAll('.chip[data-h]').forEach(function (b) { b.onclick = function () { m.remove(); setPick(this.dataset.h); }; });
-    m.querySelector('#x').onclick = function () { m.remove(); };
-    m.querySelector('#ok').onclick = function () { var v = m.querySelector('#hpFree').value.trim(); if (!v) { m.querySelector('#hpFree').focus(); return; } m.remove(); setPick(v); };
-  }
+
   function approvalLine() {
     var c = S.config || {}, st = (c.staff || {})[N(S.staff).replace(/\s/g, '')] || (c.staff || {})[String(S.staff).replace(/\s+/g, '')];
     if (st) return { line: st, why: S.staff + 'さんの承認ライン' };
@@ -355,8 +353,8 @@
     if (ci && flags.length) st = '<div class="st ok">✅ 警告を確認しました（' + esc(ci.by || '') + '）</div>' + st;
     var mustConf = flags.length && !ci, ck = chkInfo();
     var fin = ck ? '<div class="st ok">✅ 最終チェック済み（' + esc(ck.by || '') + (ck.at ? '・' + hm(ck.at) : '') + '）</div>'
-      : '<div class="fin"><div class="t"><b>最終チェック（すべての買取で必ず）</b><div class="sub">明細・枚数・金額・状態をマイカと実物で確かめたら、自分の名前を選んで押してください。' + (need ? '本部への承認依頼はそのあとです。' : '') + '</div></div>' +
-        '<div class="who"><div class="sub" style="margin-bottom:4px">査定した人を選んでください</div>' + pickerHtml() + '</div><button class="b" id="fin"' + (mustConf || S.syncing ? ' disabled title="先に警告を見直してください"' : '') + '>最終チェックをする</button></div>';
+      : '<div class="fin"><div class="t"><b>最終チェック（すべての買取で必ず）</b><div class="sub">明細・枚数・金額・状態をマイカと実物で確かめたら、自分の名前をリストから選んで押してください。' + (need ? '本部への承認依頼はそのあとです。' : '') + '</div></div>' +
+        '<div class="who"><div class="sub" style="margin-bottom:4px">査定した人（今日の出勤者が上。ヘルプの人はスクロールしてほかの店から）</div>' + pickerHtml() + '</div><button class="b" id="fin"' + (mustConf || S.syncing ? ' disabled title="先に警告を見直してください"' : '') + '>最終チェックをする</button></div>';
     var rows = S.lines.map(function (m) {
       var lv = m.flags.some(function (f) { return f.lv === 'red'; }) ? 'red' : m.flags.length ? 'yel' : '';
       var ref = m.ref ? yen(m.ref) + '<div class="sub">' + esc((m.refs[0] || {}).r ? m.refs[0].r.t : '') + '</div>' : '<span class="sub">' + esc(m.note || (m.hanyo ? '汎用' : '買取表になし')) + '</span>';
