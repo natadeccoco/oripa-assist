@@ -6,7 +6,7 @@
   if (location.hostname !== 'pos.mycalinks.com') { alert('マイカ（pos.mycalinks.com）を開いてから押してください'); return; }
   var old = document.getElementById('ndk-kaitori-host'); if (old) old.remove();
 
-  var VERSION = '2026-10-29 版F';
+  var VERSION = '2026-10-30 版G';
   var GAS = 'https://script.google.com/macros/s/AKfycbwXHuu-X3L0qzJhvaszEIm-1xdeNIqJACQ0uM7mz5Q0hvwfdF9IuQiTKr3qmscNVmnhcQ/exec';
   var FB_URL = 'https://script.google.com/macros/s/AKfycbwl-ZCZ1LyefvSzEGkBEpTFTuFyvW0p-AYye6jBWaLP9t7-bC9_Owfeh4jKScNkFys6Fw/exec';
   var SHORT = { 322: '柏', 323: '津田沼', 324: '松戸', 325: '横浜', 326: '中野', 327: '町田', 328: '千葉中央', 390: '通販', 409: 'お台場' };
@@ -250,7 +250,7 @@
     clearInterval(S.pollT);
     var t = S.list.find(function (x) { return x.id === id; });
     if (!t) { await loadList(); t = S.list.find(function (x) { return x.id === id; }); if (!t) return; }
-    S.tx = t; S.cust = '';
+    S.tx = t; S.cust = ''; S.syncing = true;
     S.lines = (t.transaction_carts || []).map(judge);
     renderDetail();
     loadImages(t);
@@ -258,7 +258,17 @@
       try { var cs = await api('/api/store/' + S.sid + '/customer?id=' + t.customer_id); S.cust = ((cs || [])[0] || {}).full_name_ruby || ''; } catch (e) { }
       if (S.tx === t) renderDetail();
     }
+    await syncStatus(t); S.syncing = false; if (S.tx === t) renderDetail();
     pollStatus();
+  }
+  // 本部側の記録（マイカの取引IDで引く）に合わせる：別のPCで依頼した分や、送信中に閉じた分もここで分かる
+  async function syncStatus(t) {
+    try {
+      var j = await gas({ action: 'kstatus', tx: t.id });
+      if (S.tx !== t) return;
+      if (j.approval) saveReq({ kind: 'approval', id: j.approval.id, status: j.approval.status, by: j.approval.status === '承認待ち' ? '' : j.approval.by });
+      if (j.confirm) saveConf({ id: j.confirm.id, by: j.confirm.by });
+    } catch (e) { }
   }
   // マイカの商品画像（承認依頼の画像に使う）
   async function loadImages(t) {
@@ -309,7 +319,7 @@
       (flags.length ? '<div class="warns">' + flags.map(function (f) { return '<div class="w ' + f.lv + '">' + (f.lv === 'red' ? '🚨 ' : '⚠️ ') + esc(f.t) + '<div class="d">' + esc(f.d) + '</div></div>'; }).join('') + '</div>' : '') +
       '<div class="acts">' +
       (mustConf ? '<button class="b" id="conf">警告を見直しました</button>' : '') +
-      (ri && ri.status !== '差し戻し' ? '' : need ? '<button class="b r" id="req"' + (mustConf ? ' disabled title="先に警告を見直してください"' : '') + '>本部に承認を依頼する</button>' : '<button class="b g" id="req"' + (mustConf ? ' disabled' : '') + '>本部に承認を依頼（任意：古いカードで不安な時など）</button>') + '</div>' +
+      (ri && ri.status !== '差し戻し' ? '' : S.syncing ? '<button class="b g" disabled>本部の記録を確認中…</button>' : need ? '<button class="b r" id="req"' + (mustConf ? ' disabled title="先に警告を見直してください"' : '') + '>本部に承認を依頼する</button>' : '<button class="b g" id="req"' + (mustConf ? ' disabled' : '') + '>本部に承認を依頼（任意：古いカードで不安な時など）</button>') + '</div>' +
       (mustConf ? '<div class="sub" style="margin:-6px 0 10px">警告はあなた（査定した人）への確認です。マイカの明細を見直して、直したら「更新」、問題なければ「警告を見直しました」を押してください。' + (need ? 'そのあと本部に承認を依頼できます。' : '') + '</div>' : '') +
       '<table><tr><th></th><th class="l">商品</th><th>数</th><th>入力単価</th><th>買取表</th><th>買取表比</th><th>小計</th></tr>' + rows + '</table>' +
       '<div class="sub" style="margin-top:8px">買取表：シングルはA 100%／A- 90〜60%／B 50〜20%／C 20〜5%／D 5%以下（Aでも傷・センタリングで80%程度あり）、PSAは85%まで、BOXは60%まで。買取表の1.5倍以上は🚨になります。</div>';
@@ -386,7 +396,7 @@
           lines: approval ? S.lines.map(function (q) { return { n: q.dn, cond: q.cond || '', cat: q.cat || '', cnt: q.cnt, unit: q.unit, ref: q.ref || '', tab: (q.refs[0] || {}).r ? q.refs[0].r.t : '', flags: q.flags.map(function (f) { return (f.lv === 'red' ? '🚨' : '⚠️') + f.t; }).join(' / ') }; }) : [], images: images, txId: t.id, staff: S.staff };
         var j = await fetch(GAS, { method: 'POST', body: JSON.stringify(body) }).then(function (r) { return r.json(); });
         if (!j.ok) throw new Error(j.error || '送信できませんでした');
-        if (approval) saveReq({ kind: kind, id: j.id, status: '承認待ち', by: '' }); else saveConf({ id: j.id, by: name });
+        if (approval) saveReq({ kind: kind, id: j.id, status: j.status || '承認待ち', by: j.by || '' }); else saveConf({ id: j.id, by: name });
         m.remove(); renderDetail(); pollStatus();
       } catch (e) { b.disabled = false; b.textContent = approval ? '依頼する' : '確認しました'; m.querySelector('#er').textContent = '送れませんでした：' + e.message; }
     };
