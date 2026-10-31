@@ -85,6 +85,10 @@ function kaitoriGet(p) {
     if (p.action === 'kprices') return json({ ok: true, at: new Date().toISOString(), rows: kPrices() });
     if (p.action === 'kconfig') return json({ ok: true, config: kConfig() });
     if (p.action === 'kstaff') return json(kStaff());
+    if (p.action === 'ksnkr') { // 査定表の画像用：PSA10カードのスニダン直近の取引価格（最大6枚）
+      var ns = JSON.parse(p.n || '[]').slice(0, 6);
+      return json({ ok: true, r: ns.map(function (n) { try { return kIsPsa10(n) ? kSnkrPsa10(n) : null; } catch (e) { return { price: 0, why: '取得できませんでした' }; } }) });
+    }
     if (p.action === 'kstatus' && p.tx) { // マイカの取引IDで、その買取の最新の承認依頼・警告の確認を返す（どのPCからでも同じ状態が見える）
       var vals = kSheet().getDataRange().getValues(), ap = null, cf = null;
       for (var i = vals.length - 1; i >= 1 && (!ap || !cf); i--) {

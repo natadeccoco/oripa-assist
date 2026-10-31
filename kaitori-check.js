@@ -6,7 +6,7 @@
   if (location.hostname !== 'pos.mycalinks.com') { alert('マイカ（pos.mycalinks.com）を開いてから押してください'); return; }
   var old = document.getElementById('ndk-kaitori-host'); if (old) old.remove();
 
-  var VERSION = '2026-10-31 版P';
+  var VERSION = '2026-10-31 版Q';
   var GAS = 'https://script.google.com/macros/s/AKfycbwXHuu-X3L0qzJhvaszEIm-1xdeNIqJACQ0uM7mz5Q0hvwfdF9IuQiTKr3qmscNVmnhcQ/exec';
   var FB_URL = 'https://script.google.com/macros/s/AKfycbwl-ZCZ1LyefvSzEGkBEpTFTuFyvW0p-AYye6jBWaLP9t7-bC9_Owfeh4jKScNkFys6Fw/exec';
   var SHORT = { 322: '柏', 323: '津田沼', 324: '松戸', 325: '横浜', 326: '中野', 327: '町田', 328: '千葉中央', 390: '通販', 409: 'お台場' };
@@ -553,7 +553,13 @@
         return new Promise(function (res) { var im = new Image(); im.onload = function () { imgs[u] = im; res(); }; im.onerror = function () { res(); }; im.src = 'data:' + j.mime + ';base64,' + j.b64; });
       }).catch(function () { });
     }));
-    var COLS = Math.min(6, Math.max(3, list.length)), CW = 210, CH = 380, GAP = 12, PAD = 24, W = PAD * 2 + COLS * CW + (COLS - 1) * GAP;
+    // PSA10はスニダンの直近の取引価格も載せる（GAS経由・最大6枚・15秒で打ち切り）
+    var psaL = list.filter(function (m) { return /PSA\s*10/i.test(m.dn); }).slice(0, 6);
+    if (psaL.length) await Promise.race([
+      fetch(GAS + '?action=ksnkr&n=' + encodeURIComponent(JSON.stringify(psaL.map(function (m) { return m.dn; })))).then(function (r) { return r.json(); })
+        .then(function (j) { (j.r || []).forEach(function (x, i) { if (psaL[i]) psaL[i].snk = x; }); }).catch(function () { }),
+      new Promise(function (r) { setTimeout(r, 15000); })]);
+    var COLS = Math.min(6, Math.max(3, list.length)), CW = 210, CH = psaL.length ? 406 : 380, GAP = 12, PAD = 24, W = PAD * 2 + COLS * CW + (COLS - 1) * GAP;
     var rows = Math.ceil(list.length / COLS), HEAD = 120, H = HEAD + PAD + rows * (CH + GAP) + (rest.length ? 60 : 20);
     var cv = document.createElement('canvas'); cv.width = W; cv.height = H; var c = cv.getContext('2d');
     var F = '"Hiragino Sans","Noto Sans JP","Yu Gothic","Meiryo",sans-serif';
@@ -585,6 +591,9 @@
       c.font = '15px ' + F; c.fillStyle = '#555';
       c.fillText(m.ref ? '買取表 ' + yen(m.ref) + '（' + Math.round(m.unit / m.ref * 100) + '%）' : m.hanyo ? (m.at != null && m.unit !== m.at ? '⚠ 単価が@' + m.at + 'とちがう' : '汎用') : '買取表になし', x + 8, ty + 93);
       c.font = 'bold 15px ' + F; c.fillStyle = '#1f1d1a'; c.fillText('小計 ' + yen(m.unit * m.cnt), x + 8, ty + 116);
+      if (m.snk) { var sk = m.snk; c.font = 'bold 15px ' + F; c.fillStyle = sk.price ? '#b4235a' : '#999';
+        c.fillText(fit(sk.price ? 'スニダン ' + yen(sk.price) + '（' + Math.round(m.unit / sk.price * 100) + '%）' : 'スニダン：取引なし', CW - 16), x + 8, ty + 140);
+        if (sk.price && sk.date) { c.font = '13px ' + F; c.fillStyle = '#888'; c.fillText(fit('直近の取引 ' + sk.date, CW - 16), x + 8, ty + 160); } }
     });
     if (rest.length) {
       var rs = rest.reduce(function (s, m) { return s + m.unit * m.cnt; }, 0), rn = rest.reduce(function (s, m) { return s + m.cnt; }, 0);
