@@ -137,7 +137,8 @@ function kaitoriPost(d) {
   var yen = function (n) { return Number(n || 0).toLocaleString() + '円'; };
   var head = '【買取承認依頼】' + d.store + '店　依頼者：' + d.requester + '\n' + (d.customer ? d.customer + ' 様　' : '') + yen(d.total) + (d.reason ? '（' + d.reason + '）' : '') + '\n依頼番号：' + id;
   var imgErr = '';
-  send(ch, { type: 'text', text: (head + (d.comment ? '\nコメント：' + d.comment : '')).slice(0, 1990) });
+  var snk = ''; try { snk = kSnkrText(d.lines); } catch (e) { console.error('スニダン: ' + e); }
+  send(ch, { type: 'text', text: (head + (d.comment ? '\nコメント：' + d.comment : '') + snk).slice(0, 1990) });
   var sentSheet = false;
   if (d.image) { try { send(ch, { type: 'image', fileId: uploadImage(d.image, 'kaitori_' + id + '.jpg') }); sentSheet = true; } catch (e) { imgErr = String(e.message || e); console.error(imgErr); } }
   if (!sentSheet && d.text) kSplit('［明細］\n' + d.text).forEach(function (x) { send(ch, { type: 'text', text: x }); });
@@ -253,6 +254,7 @@ function kRejectPage(p) {
     var c = kRejectCheck(p.id, p.k), v = c.row.values;
     if (v[12] !== '承認待ち') return out('<div style="font:16px sans-serif;padding:24px">依頼番号 ' + esc(v[0]) + ' はすでに「' + esc(v[12]) + '」です（' + esc(v[13]) + '）。</div>');
     var data = { id: v[0], k: p.k, store: v[3], requester: v[4], cust: v[5], total: v[6], lines: kParse(v[17]) || [], text: v[9], pin: !!P.getProperty('K_REJECT_PIN') };
+    data.lines.forEach(function (q) { if (kIsPsa10(q.n)) { try { q.snk = kSnkrPsa10(q.n); } catch (e) { q.snk = null; } } });
     return out(K_REJECT_HTML.replace('__DATA__', JSON.stringify(data).replace(/</g, '\\u003c')));
   } catch (e) { return out('<div style="font:16px sans-serif;padding:24px">' + esc(e.message || e) + '</div>'); }
 }
@@ -316,6 +318,7 @@ function draw(){
   D.lines.forEach(function(q,i){var s=ST[i]||{};
     h+='<div class="c'+(s.kind?' on':'')+'" data-i="'+i+'">'+(q.img?'<img src="'+esc(q.img)+'">':'<img>')+'<div class="b"><div class="n">'+esc(q.n)+(q.cond?'<span class="pill">'+esc(q.cond)+'</span>':'')+'</div>'+
     '<div class="sub">×'+q.cnt+'　単価 <b>'+yen(q.unit)+'</b>'+(q.ref?'　買取表 '+yen(q.ref)+'（'+Math.round(q.unit/q.ref*100)+'%）':'')+'</div>'+
+    (q.snk&&q.snk.price?'<div class="sub" style="color:#1f1d1a">スニダン PSA10 直近 <b>'+yen(q.snk.price)+'</b>（'+esc(q.snk.date)+'）　買取は '+Math.round(q.unit/q.snk.price*100)+'%'+(q.snk.url?'　<a href="'+esc(q.snk.url)+'" target="_blank">売買履歴</a>':'')+'</div>':q.snk===null||(q.snk&&!q.snk.price)?'<div class="sub">スニダン PSA10：見つかりませんでした</div>':'')+
     '<div class="k">'+KINDS.map(function(k){return '<button data-k="'+k[0]+'" class="'+(s.kind===k[0]?'on':'')+'">'+k[1]+'</button>'}).join('')+'</div>'+
     '<div class="x">'+(s.kind==='price'?'<input class="p" type="number" inputmode="numeric" placeholder="指示する単価" value="'+(s.price||'')+'">':'')+'<input class="m" placeholder="ひとこと（任意）" value="'+esc(s.memo||'')+'"></div></div></div>';
   });
@@ -367,6 +370,47 @@ document.getElementById('go').onclick=function(){save();var b=this,its=items(),e
 };
 draw();
 </script></body></html>`;
+
+/* ---------- スニダン：PSA10の直近の売買価格（売買履歴ページのいちばん上） ---------- */
+function kIsPsa10(n) { return /PSA\s*10/i.test(String(n || '')); }
+function kSnkrModel(n) { // 商品名の（sv2a 203/165 SAR）から「sv2a」「203」「165」
+  var m = String(n || '').normalize('NFKC').match(/([A-Za-z][A-Za-z0-9\-]*)\s+(\d{1,3})\/(\d{1,3}|[A-Za-z\-]+)/);
+  return m ? { set: m[1], no: m[2], tot: m[3] } : null;
+}
+function kSnkrFetch(u) {
+  var r = UrlFetchApp.fetch(u, { muteHttpExceptions: true, headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)', 'Accept-Language': 'ja' } });
+  if (r.getResponseCode() >= 300) throw new Error('スニダン ' + r.getResponseCode());
+  return r.getContentText();
+}
+function kSnkrPsa10(n) {
+  var md = kSnkrModel(n); if (!md) return { price: 0, why: '型番がわかりません' };
+  var key = 'snk_' + (md.set + '_' + md.no + '_' + md.tot).toLowerCase(), c = CacheService.getScriptCache(), hit = c.get(key);
+  if (hit) return JSON.parse(hit);
+  var html = kSnkrFetch('https://snkrdunk.com/search?keywords=' + encodeURIComponent(md.set + ' ' + md.no + '/' + md.tot));
+  var ids = [], re = /apparels\/(\d+)/g, mm; while ((mm = re.exec(html)) && ids.length < 4) if (ids.indexOf(mm[1]) < 0) ids.push(mm[1]);
+  var no3 = ('00' + md.no).slice(-3), want = (md.set + '-' + no3).toLowerCase(), out = { price: 0, why: 'スニダンに見つかりません' };
+  for (var i = 0; i < ids.length; i++) {
+    var url = 'https://snkrdunk.com/apparels/' + ids[i] + '/sales-histories', h = kSnkrFetch(url);
+    var pn = (h.match(/pkmn-tcg-([A-Za-z0-9\-]+)/) || [])[1] || '';
+    if (pn.toLowerCase() !== want) continue; // 型番（セット＋番号）が合うカードだけ使う
+    var t = h.replace(/<[^>]+>/g, '\n').replace(/&[a-z]+;/g, ' '), a = t.indexOf('状態PSA10の売買履歴'), b = t.indexOf('状態PSA10の売買相場', a);
+    var sec = a >= 0 ? t.slice(a, b > a ? b : a + 4000) : '', rows = [], r2 = /(\d{4}\/\d{2}\/\d{2})\s+PSA10\s+([\d,]+)/g, x;
+    while ((x = r2.exec(sec)) && rows.length < 5) rows.push({ date: x[1], price: Number(x[2].replace(/,/g, '')) });
+    out = rows.length ? { price: rows[0].price, date: rows[0].date, recent: rows, url: url.replace('/sales-histories', ''), id: ids[i] } : { price: 0, why: 'PSA10の取引がまだありません', url: url.replace('/sales-histories', '') };
+    break;
+  }
+  try { c.put(key, JSON.stringify(out), 3 * 3600); } catch (e) { }
+  return out;
+}
+function kSnkrText(lines) { // 承認依頼の文章に付ける：PSA10のカードだけ（多くても6枚）
+  var yen = function (n) { return Number(n || 0).toLocaleString() + '円'; }, out = [];
+  (lines || []).filter(function (q) { return kIsPsa10(q.n); }).slice(0, 6).forEach(function (q) {
+    var s; try { s = kSnkrPsa10(q.n); } catch (e) { s = { price: 0, why: '取得できませんでした' }; }
+    var nm = String(q.n).replace(/《[^》]*》/g, '').slice(0, 30);
+    out.push('・' + nm + '\n　' + (s.price ? 'スニダン直近 ' + yen(s.price) + '（' + s.date + '）→ 買取 ' + yen(q.unit) + '（' + Math.round(q.unit / s.price * 100) + '%）' : 'スニダン：' + (s.why || '見つかりません')));
+  });
+  return out.length ? '\n\n［スニダン PSA10 直近の売買］\n' + out.join('\n') : '';
+}
 
 /* ---------- 査定ログ（承認ライン以上の買取の明細を、査定者つきで1行ずつためる） ---------- */
 var K_LOG_COLS = ['日時', '店舗', '受付番号', '査定者', '依頼番号', 'マイカ取引ID', 'お客様', '買取合計', '商品', '状態', '種類', '枚数', '単価', '小計', '買取表', '買取表比', '買取表のタブ', '警告', '枚数確認'];
