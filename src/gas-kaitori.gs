@@ -252,7 +252,7 @@ function kRejectPage(p) {
   try {
     var c = kRejectCheck(p.id, p.k), v = c.row.values;
     if (v[12] !== '承認待ち') return out('<div style="font:16px sans-serif;padding:24px">依頼番号 ' + esc(v[0]) + ' はすでに「' + esc(v[12]) + '」です（' + esc(v[13]) + '）。</div>');
-    var data = { id: v[0], k: p.k, store: v[3], requester: v[4], cust: v[5], total: v[6], lines: kParse(v[17]) || [], text: v[9] };
+    var data = { id: v[0], k: p.k, store: v[3], requester: v[4], cust: v[5], total: v[6], lines: kParse(v[17]) || [], text: v[9], pin: !!P.getProperty('K_REJECT_PIN') };
     return out(K_REJECT_HTML.replace('__DATA__', JSON.stringify(data).replace(/</g, '\\u003c')));
   } catch (e) { return out('<div style="font:16px sans-serif;padding:24px">' + esc(e.message || e) + '</div>'); }
 }
@@ -265,6 +265,7 @@ function kRejectSubmit(id, key, d) {
   var c, v, name;
   try {
     c = kRejectCheck(id, key); v = c.row.values;
+    var pin = P.getProperty('K_REJECT_PIN'); if (pin && String(d.pin || '').trim() !== pin) throw new Error('暗証番号が違います（差し戻しは役員だけができます）');
     if (v[12] !== '承認待ち') throw new Error('依頼番号 ' + id + ' はすでに「' + v[12] + '」です');
     name = userName(c.userId);
     var fb = { by: name, at: new Date().toISOString(), comment: String(d.comment || '').slice(0, 2000), items: (d.items || []).slice(0, 80) };
@@ -319,7 +320,7 @@ function draw(){
     '<div class="x">'+(s.kind==='price'?'<input class="p" type="number" inputmode="numeric" placeholder="指示する単価" value="'+(s.price||'')+'">':'')+'<input class="m" placeholder="ひとこと（任意）" value="'+esc(s.memo||'')+'"></div></div></div>';
   });
   h+='<div style="margin-top:14px"><b>全体へのコメント</b><textarea id="cm" rows="3" placeholder="例：傷があるものは減額でお願いします">'+esc(ST.cm||'')+'</textarea></div>'+
-    '<div style="margin-top:10px"><b>写真を添付（任意）</b><div><input type="file" id="ph" accept="image/*" multiple></div><div class="sub" id="phn">'+(PH.length?PH.length+'枚':'')+'</div></div><div class="err" id="er"></div>';
+    '<div style="margin-top:10px"><b>写真を添付（任意）</b><div><input type="file" id="ph" accept="image/*" multiple></div><div class="sub" id="phn">'+(PH.length?PH.length+'枚':'')+'</div></div>'+(D.pin?'<div style="margin-top:12px"><b>役員の暗証番号</b><div><input id="pin" type="password" inputmode="numeric" style="width:140px" value="'+esc(ST.pin||'')+'"></div><div class="sub">差し戻しは役員だけができます</div></div>':'')+'<div class="err" id="er"></div>';
   document.getElementById('w').innerHTML=h;
   document.querySelectorAll('.c').forEach(function(el){var i=+el.dataset.i;
     el.querySelectorAll('.k button').forEach(function(b){b.onclick=function(){var s=ST[i]=ST[i]||{};s.kind=s.kind===b.dataset.k?'':b.dataset.k;save();draw()}});
@@ -327,6 +328,7 @@ function draw(){
     var m=el.querySelector('input.m');if(m)m.oninput=function(){ST[i].memo=this.value};
   });
   document.getElementById('cm').oninput=function(){ST.cm=this.value};
+  if(document.getElementById('pin'))document.getElementById('pin').oninput=function(){ST.pin=this.value};
   document.getElementById('ph').onchange=function(){var fs=Array.prototype.slice.call(this.files||[],0,5);PH=[];var n=fs.length;if(!n)return;fs.forEach(function(f){shrink(f,function(b){if(b)PH.push(b);if(--n===0)document.getElementById('phn').textContent=PH.length+'枚'})})};
 }
 function save(){document.querySelectorAll('.c').forEach(function(el){var i=+el.dataset.i,s=ST[i];if(!s)return;var p=el.querySelector('input.p'),m=el.querySelector('input.m');if(p)s.price=p.value;if(m)s.memo=m.value})}
@@ -355,11 +357,12 @@ function sheet(its){return Promise.all(its.map(function(it){return load(it.img)}
 document.getElementById('go').onclick=function(){save();var b=this,its=items(),er=document.getElementById('er');ST.cm=(document.getElementById('cm').value||'').trim();
   var bad=its.filter(function(it){return it.kind==='price'&&!(it.price>0)});if(bad.length){er.textContent='「この価格に」の単価を入れてください';return}
   if(!its.length&&!ST.cm){er.textContent='カードの指示かコメントを入れてください';return}
+  if(D.pin&&!(ST.pin||'').trim()){er.textContent='役員の暗証番号を入れてください';return}
   b.disabled=true;b.textContent='画像を作成中…';
   (its.length?sheet(its):Promise.resolve('')).then(function(img){b.textContent='送信中…';
     google.script.run.withSuccessHandler(function(){document.getElementById('w').innerHTML='<div class="msg">✅ 差し戻しを店舗に送りました。<br>このページは閉じて大丈夫です。</div>';document.getElementById('ft').style.display='none'})
       .withFailureHandler(function(e){b.disabled=false;b.textContent='差し戻す';er.textContent='送れませんでした：'+(e&&e.message||e)})
-      .kRejectSubmit(D.id,D.k,{items:its.map(function(it){var o={};for(var x in it)if(x!=='img')o[x]=it[x];return o}),comment:ST.cm,image:img,photos:PH});
+      .kRejectSubmit(D.id,D.k,{items:its.map(function(it){var o={};for(var x in it)if(x!=='img')o[x]=it[x];return o}),comment:ST.cm,image:img,photos:PH,pin:(ST.pin||'').trim()});
   });
 };
 draw();
