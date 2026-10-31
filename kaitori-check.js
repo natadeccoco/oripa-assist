@@ -6,7 +6,7 @@
   if (location.hostname !== 'pos.mycalinks.com') { alert('マイカ（pos.mycalinks.com）を開いてから押してください'); return; }
   var old = document.getElementById('ndk-kaitori-host'); if (old) old.remove();
 
-  var VERSION = '2026-10-31 版N';
+  var VERSION = '2026-10-31 版O';
   var GAS = 'https://script.google.com/macros/s/AKfycbwXHuu-X3L0qzJhvaszEIm-1xdeNIqJACQ0uM7mz5Q0hvwfdF9IuQiTKr3qmscNVmnhcQ/exec';
   var FB_URL = 'https://script.google.com/macros/s/AKfycbwl-ZCZ1LyefvSzEGkBEpTFTuFyvW0p-AYye6jBWaLP9t7-bC9_Owfeh4jKScNkFys6Fw/exec';
   var SHORT = { 322: '柏', 323: '津田沼', 324: '松戸', 325: '横浜', 326: '中野', 327: '町田', 328: '千葉中央', 390: '通販', 409: 'お台場' };
@@ -278,8 +278,8 @@
       var start = new Date(today + 'T00:00:00+09:00').toISOString();
       var dr = await api('/api/store/' + sid + '/transaction?status=draft&transaction_kind=buy&take=30&skip=0&orderBy=-finished_at');
       var cp = await api('/api/store/' + sid + '/transaction?status=completed&transaction_kind=buy&finishedAtStart=' + encodeURIComponent(start) + '&take=100&skip=0&orderBy=-finished_at');
-      var since = Date.now() - 2 * 864e5;
-      var drafts = (dr.transactions || []).filter(function (t) { return new Date(t.updated_at || t.created_at).getTime() >= since; });
+      var since = new Date(start).getTime(); // 今日（日本時間0時から）の査定中だけ出す。マイカに残ったままの前日以前の査定中は出さない
+      var drafts = (dr.transactions || []).filter(function (t) { return new Date(t.created_at || t.updated_at).getTime() >= since; });
       S.list = drafts.concat(cp.transactions || []);
       var row = function (t) {
         var w = 0, red = 0; (t.transaction_carts || []).forEach(function (c) { var j = judge(c); j.flags.forEach(function (x) { w++; if (x.lv === 'red') red++; }); });
