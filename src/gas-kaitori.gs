@@ -160,16 +160,15 @@ function kaitoriCallback(ev, data) {
     var row = kFind(m[2]); if (!row) return;
     var name = userName(userId);
     if (row.values[12] !== '承認待ち') { if (ch) send(ch, { type: 'text', text: '依頼番号 ' + m[2] + ' はすでに「' + row.values[12] + '」です（' + row.values[13] + '）。' }); return; }
-    if (m[1] === 'reject') { // 差し戻しは、押した役員に個別のリンクを送り、カードごとの指示を書いてもらう
-      var key = Utilities.getUuid().replace(/-/g, '').slice(0, 16);
-      kSheet().getRange(row.r, 20).setValue(key + '|' + userId);
+    if (m[1] === 'reject') { // 差し戻し：押したグループに「差し戻し内容を書く」ボタンを出し、カードごとの指示を書いてもらう
+      var old = String(row.values[19] || '').split('|'), key = old[0] && old[1] === userId ? old[0] : Utilities.getUuid().replace(/-/g, '').slice(0, 16);
+      if (key !== old[0]) kSheet().getRange(row.r, 20).setValue(key + '|' + userId);
       var url = WEBAPP_URL + '?action=kreject&id=' + encodeURIComponent(m[2]) + '&k=' + key;
-      try {
-        sendUser(userId, { type: 'button_template', contentText: '依頼番号 ' + m[2] + '（' + row.values[3] + '店・' + Number(row.values[6] || 0).toLocaleString() + '円）の差し戻し内容を書いてください。どのカードをどうするか、カードごとに指示できます。',
-          actions: [{ type: 'uri', label: '差し戻し内容を書く', uri: url }] });
-        if (ch) send(ch, { type: 'text', text: '（' + name + 'さんが依頼番号 ' + m[2] + ' の差し戻し内容を書いています）' });
-      } catch (e) { // 個別に送れないときは、今までどおりすぐ差し戻す
-        console.error('差し戻しリンク: ' + e);
+      var msg = { type: 'button_template', contentText: '↩️ 依頼番号 ' + m[2] + '（' + row.values[3] + '店・' + Number(row.values[6] || 0).toLocaleString() + '円）を差し戻します。下のボタンから、どのカードをどうするか（価格・買取しない・状態・枚数）を書いてください。（' + name + '）',
+        actions: [{ type: 'uri', label: '差し戻し内容を書く', uri: url }] };
+      try { if (ch) send(ch, msg); else sendUser(userId, msg); }
+      catch (e) { // ボタンを送れないときは、今までどおりすぐ差し戻す
+        console.error('差し戻しボタン: ' + e);
         kSheet().getRange(row.r, 13, 1, 3).setValues([['差し戻し', name, new Date()]]);
         if (ch) send(ch, { type: 'text', text: '↩️ 買取を差し戻しました（依頼番号 ' + m[2] + '・' + name + '）\n直してほしい点をこのトークで伝えてください。' });
       }
