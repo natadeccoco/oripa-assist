@@ -272,9 +272,9 @@ function kRejectSubmit(id, key, d) {
     kSheet().getRange(c.row.r, 19, 1, 2).setValues([[JSON.stringify(fb).slice(0, 45000), '']]);
   } finally { lock.releaseLock(); }
   try { kSummary(); } catch (e) { console.error('査定集計: ' + e); }
-  var ch = CH[v[3]], yen = function (n) { return Number(n || 0).toLocaleString() + '円'; };
+  var test = v[3] === 'テスト', ch = test ? P.getProperty('K_WARN_CHANNEL') : CH[v[3]], yen = function (n) { return Number(n || 0).toLocaleString() + '円'; }; // 店舗「テスト」は役員の買取警告グループに送る（見た目の確認用）
   var nums = '①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳';
-  var txt = '↩️ 買取を差し戻しました（依頼番号 ' + id + '・' + name + '）\n' + v[3] + '店　' + (v[5] ? v[5] + ' 様　' : '') + yen(v[6]) + '\n' +
+  var txt = (test ? '【テスト】' : '') + '↩️ 買取を差し戻しました（依頼番号 ' + id + '・' + name + '）\n' + v[3] + '店　' + (v[5] ? v[5] + ' 様　' : '') + yen(v[6]) + '\n' +
     (fb.items.length ? '\n' + fb.items.map(function (it, k) { return (nums[k] || '・') + ' ' + it.n + (it.cond ? '《' + it.cond + '》' : '') + '\n　' + kFbText(it, yen); }).join('\n') : '') +
     (fb.comment ? '\n\nコメント：' + fb.comment : '') + '\n\nマイカを直したら、買取チェックで「更新」→ もう一度承認を依頼してください。';
   if (ch) {
