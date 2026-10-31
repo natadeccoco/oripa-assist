@@ -60,6 +60,22 @@
     }
     return (histCache[ck] = n);
   }
+
+  /* ---------- テーマで絞る（全店オリパ）：ピカチュウ系・ブイズ系など。チェックした複数のテーマを混ぜられる ---------- */
+  var THEMES = [
+    { k: 'pika', label: 'ピカチュウ系', re: /ピカチュウ|ピチュー|ライチュウ/ },
+    { k: 'eevee', label: 'ブイズ系', re: /イーブイ|シャワーズ|サンダース|ブースター|エーフィ|ブラッキー|リーフィア|グレイシア|ニンフィア/ },
+    { k: 'girls', label: 'ガールズ系', re: /リーリエ|ナンジャモ|マリィ|シロナ|カトレア|アセロラ|エリカ|カスミ|カンナ|スイレン|マオ|ルザミーネ|サナ(?!ギ)|セレナ|ミモザ|ボタン|ネモ|ゼイユ|ルチア|アイリス|フウロ|コルニ|ナタネ|ヒカリ|メイ|ベル|スズナ|ミカン|アカネ|ハルカ|ユウリ|ソニア|ルリナ|サイトウ|メロン|ポプラ|クララ|ヒガナ|カリン|アズサ|オモダカ|チリ(?!ー)|ポピー|ライム|リップ|タロ|カキツバタ|スグリ|ミニスカート|おねえさん|おじょうさま|かんこうきゃく|ガールズ|センパイとコウハイ|モノマネむすめ|ブルーの|ナツメ|マーシャ(?!ドー)|イリマ|ライチ(?!ュウ)|アローラの仲間/ },
+    { k: 'legend', label: '伝説系', re: /ミュウツー|ミュウ|ルギア|ホウオウ|レックウザ|グラードン|カイオーガ|ディアルガ|パルキア|ギラティナ|アルセウス|レシラム|ゼクロム|キュレム|ゼルネアス|イベルタル|ジガルデ|ソルガレオ|ルナアーラ|ネクロズマ|ザシアン|ザマゼンタ|ムゲンダイナ|コライドン|ミライドン|テラパゴス|ファイヤー|サンダー(?!ス)|フリーザー|ライコウ|エンテイ|スイクン|ラティアス|ラティオス|ジラーチ|デオキシス|セレビィ|ダークライ|シェイミ|ビクティニ|ケルディオ|メロエッタ|ゲノセクト|ディアンシー|フーパ|ボルケニオン|マギアナ|マーシャドー|ゼラオラ|メルタン|メルメタル|ザルード|バドレックス|レジ|ヒードラン|クレセリア|ユクシー|エムリット|アグノム|コバルオン|テラキオン|ビリジオン|トルネロス|ボルトロス|ランドロス|カプ・|オーガポン|モモワロウ/ },
+    { k: 'starter', label: '御三家系', re: /フシギダネ|フシギソウ|フシギバナ|ヒトカゲ|リザード|ゼニガメ|カメール|カメックス|チコリータ|ベイリーフ|メガニウム|ヒノアラシ|マグマラシ|バクフーン|ワニノコ|アリゲイツ|オーダイル|キモリ|ジュプトル|ジュカイン|アチャモ|ワカシャモ|バシャーモ|ミズゴロウ|ヌマクロー|ラグラージ|ナエトル|ハヤシガメ|ドダイトス|ヒコザル|モウカザル|ゴウカザル|ポッチャマ|ポッタイシ|エンペルト|ツタージャ|ジャノビー|ジャローダ|ポカブ|チャオブー|エンブオー|ミジュマル|フタチマル|ダイケンキ|ハリマロン|ハリボーグ|ブリガロン|フォッコ|テールナー|マフォクシー|ケロマツ|ゲコガシラ|ゲッコウガ|モクロー|フクスロー|ジュナイパー|ニャビー|ニャヒート|ガオガエン|アシマリ|オシャマリ|アシレーヌ|サルノリ|バチンキー|ゴリランダー|ヒバニー|ラビフット|エースバーン|メッソン|ジメレオン|インテレオン|ニャオハ|ニャローテ|マスカーニャ|ホゲータ|アチゲータ|ラウドボーン|クワッス|ウェルカモ|ウェーニバル/ }
+  ];
+  function themeHit(p) { var t = S.themes || []; if (!t.length) return true; if (p.kind !== 'card' && p.kind !== 'psa') return false; var nm = String(p.name || ''); return THEMES.some(function (x) { return t.indexOf(x.k) >= 0 && x.re.test(nm); }); }
+  function themeHTML() {
+    if (!ALL) return '';
+    var t = S.themes || [];
+    return '<div class="f"><div class="lb">テーマで絞る（混ぜられます）</div><div class="tchk">' + THEMES.map(function (x) { return '<label><input type="checkbox" data-t="' + x.k + '"' + (t.indexOf(x.k) >= 0 ? ' checked' : '') + '>' + x.label + '</label>'; }).join('') + '</div><div class="hint">チェックすると、当たりはそのテーマのシングル・PSAだけになります（下枠はそのまま）</div></div>';
+  }
+  function readThemes() { S.themes = [].slice.call(root.querySelectorAll('.tchk input:checked')).map(function (x) { return x.dataset.t; }); }
   function isEnergy(p) { return (p.kind === 'card' || p.kind === 'psa') && /エネルギー/.test(p.name || ''); }
   function isDeck(p) { return /デッキビルド|スターター|スタートデッキ|デッキセット|構築済み|プレミアムデッキ|デッキ/.test(p.name); }
   function suspectPrice(p) { return p.kind === 'box' && p.cost > 0 && (p.cost < p.sell * 0.3 || (!/BOX|ボックス|box/i.test(p.name) && /パック/.test(p.name))); }
@@ -89,7 +105,7 @@
   document.body.appendChild(host);
   var root = host.attachShadow({ mode: 'open' });
   root.innerHTML = '<style>' + CSS() + '</style><div class="wrap"><div class="win">' +
-    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-10-31 版AV</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
+    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-10-31 版AW</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
     (ALL ? '' : '<div class="tabs"><button data-tab="make" class="on">新しく作る</button><button data-tab="refill">補充する</button></div>') +
     '<button class="x" id="close" title="閉じる">×</button></div>' +
     '<div class="bd" id="body"><div class="msg">読み込み中…</div></div></div></div>';
@@ -308,6 +324,7 @@
     var HINV = S.inv.filter(function (p) {
       if (p.kind === 'box' && L.boxMinX && p.sell < L.boxMinX * price * 0.97) return false; // 7,980円のBOXは8,000円帯として使う
       if (isEnergy(p)) return false; // エネルギーカードは自動では提案しない（手で足すのはOK）
+      if (!themeHit(p)) return false; // 全店オリパ：テーマで絞っているときは、テーマのシングル・PSAだけ
       if (p.mis && !L.allowMis) return false; // マスタ価格が間違っているパックは当たりに使わない（自由設定でパックを選んだときは使う）
       return true;
     });
@@ -604,6 +621,7 @@
       '<div class="f"><div class="lb">口数</div><input id="init" type="number" value="' + init + '"> 口</div>' +
       '<div class="f"><div class="lb">最初の原価率（上限）</div><input id="costr" type="number" step="1" value="' + Math.round(costr * 100) + '"> %<div class="hint">ルール：' + pct(L.costMin) + '〜' + pct(L.costMax) + '（' + L.base.toLocaleString() + '円帯）</div></div>' +
       '<div class="f"><div class="lb">当たりに入れる種類</div><div class="kchk">' + ['box', 'card', 'psa', 'pack', 'supply'].map(function (k) { return '<label><input type="checkbox" data-k="' + k + '"' + (kinds.indexOf(k) >= 0 ? ' checked' : '') + '>' + KIND_NAMES[k] + '</label>'; }).join('') + '</div><div class="hint">最初は本部ルールの種類（' + esc(L.label) + '）</div></div>' +
+      themeHTML() +
       '<div class="f go"><button class="primary" id="go">提案する</button></div>' +
       '</div>' + afterForm();
     bindModeTabs(); bindStoreChips();
@@ -611,7 +629,9 @@
     $('#pfree').onchange = function () { var v = Number(this.value); if (v > 0) { S.form = { price: v }; S.patterns = []; renderMake(); } };
     $('#go').onclick = function () {
       var p = cur.price, n = Number($('#init').value) || L.init, c = Math.min((Number($('#costr').value) || Math.round(L.costr * 100)) / 100, 1.5);
-      var ks = [].slice.call(root.querySelectorAll('.kchk input:checked')).map(function (x) { return x.dataset.k; });
+      readThemes();
+      var ks = [].slice.call(root.querySelectorAll('.kchk input[data-k]:checked')).map(function (x) { return x.dataset.k; });
+      if ((S.themes || []).length) ks = ks.filter(function (k) { return k === 'card' || k === 'psa'; }).concat(ks.some(function (k) { return k === 'card' || k === 'psa'; }) ? [] : ['card', 'psa']);
       if (!ks.length) { alert('当たりに入れる種類を1つ以上選んでください'); return; }
       S.form = { price: p, init: n, costr: c, kinds: ks };
       setConds(null); S.patterns = propose(p, n, c, null, ks); renderMake();
@@ -682,6 +702,7 @@
           [['rule', (L.fill.at ? '【@' + L.fill.at + '】' + (L.fill.pack ? '（足りなければパック）' : '') : 'マスタ' + yen(L.fill.single) + '以上の' + fillKindName(L)) + '（' + L.base.toLocaleString() + '円のオリパと同じ）'], ['at', '【@◯◯】商品'], ['card', 'シングル'], ['box', 'BOX'], ['pack', 'パック']].map(function (o) { return '<option value="' + o[0] + '"' + (F.fill === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select>' +
           (F.fill === 'at' ? ' 【@' + num('fval', F.fillVal || fillDef.at) + '】' : (F.fill === 'card' || F.fill === 'box') ? ' マスタ ' + num('fval', F.fillVal || fillDef[F.fill], ' w') + ' 円以上' : '') +
         '</div>' +
+        themeHTML() +
         '<div class="f go"><button class="primary" id="go">提案する</button></div>' +
       '</div>' +
       '<div class="hint">値段を変えると、倍率・枚数・原価率に近い値段帯（' + L.base.toLocaleString() + '円）の目安が入り直します。そのあと自由に書き換えてください。</div>' +
@@ -696,7 +717,8 @@
       F.top = v('ftop') > 0 ? v('ftop') : F.top; F.last = v('flast') > 0 ? v('flast') : F.last;
       F.big = pair('fbig', F.big); F.mid = pair('fmid', F.mid); F.small = pair('fsmall', F.small);
       F.nBig = pair('fnbig', F.nBig).map(Math.round); F.nMid = pair('fnmid', F.nMid).map(Math.round); F.nTotal = pair('fntot', F.nTotal).map(Math.round);
-      F.kinds = [].slice.call(root.querySelectorAll('.kchk input:checked')).map(function (x) { return x.dataset.k; });
+      F.kinds = [].slice.call(root.querySelectorAll('.kchk input[data-k]:checked')).map(function (x) { return x.dataset.k; }); readThemes();
+      if ((S.themes || []).length && !F.kinds.some(function (k) { return k === 'card' || k === 'psa'; })) F.kinds = F.kinds.concat(['card', 'psa']);
       F.cardConds = [].slice.call(root.querySelectorAll('.cchk input:checked')).map(function (x) { return x.dataset.c; });
       F.boxConds = [].slice.call(root.querySelectorAll('.bchk input:checked')).map(function (x) { return x.dataset.c; });
       F.fill = $('#ffill').value; var fv = $('#fval'); F.fillVal = fv ? fv.value : '';
@@ -1553,6 +1575,7 @@
       '.pth{display:flex;gap:10px;align-items:center}.pk{background:#1d1d22;color:#e8c23a;font-weight:900;width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px;flex:none}',
       '.pn{font-weight:800;font-size:15px}.pnote{font-size:11px;color:#777}',
       '.kpi{display:grid;grid-template-columns:repeat(3,1fr);background:#f6f5f2;border-radius:9px;padding:8px 4px;text-align:center}',
+      '.tchk{display:flex;flex-wrap:wrap;gap:6px 12px}.tchk label{display:flex;align-items:center;gap:4px;font-size:13px;font-weight:700;background:#fff7e0;border:1.5px solid #e8c23a;border-radius:8px;padding:4px 10px;cursor:pointer}',
       '.kpiraw{margin-top:6px;background:#fdecea}.kpiraw b{color:#c0392b}',
       '.kpi b{display:block;font-size:16px}.kpi span{font-size:10px;color:#777}',
       '.top{display:flex;justify-content:center}',
