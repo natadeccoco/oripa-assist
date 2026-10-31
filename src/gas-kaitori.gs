@@ -384,19 +384,20 @@ function kSnkrFetch(u) {
 }
 function kSnkrPsa10(n) {
   var md = kSnkrModel(n); if (!md) return { price: 0, why: '型番がわかりません' };
-  var key = 'snk_' + (md.set + '_' + md.no + '_' + md.tot).toLowerCase(), c = CacheService.getScriptCache(), hit = c.get(key);
+  var key = 'snk2_' + (md.set + '_' + md.no + '_' + md.tot).toLowerCase(), c = CacheService.getScriptCache(), hit = c.get(key);
   if (hit) return JSON.parse(hit);
   var html = kSnkrFetch('https://snkrdunk.com/search?keywords=' + encodeURIComponent(md.set + ' ' + md.no + '/' + md.tot));
   var ids = [], re = /apparels\/(\d+)/g, mm; while ((mm = re.exec(html)) && ids.length < 4) if (ids.indexOf(mm[1]) < 0) ids.push(mm[1]);
   var no3 = ('00' + md.no).slice(-3), want = (md.set + '-' + no3).toLowerCase(), out = { price: 0, why: 'スニダンに見つかりません' };
   for (var i = 0; i < ids.length; i++) {
-    var url = 'https://snkrdunk.com/apparels/' + ids[i] + '/sales-histories', h = kSnkrFetch(url);
-    var pn = (h.match(/pkmn-tcg-([A-Za-z0-9\-]+)/) || [])[1] || '';
-    if (pn.toLowerCase() !== want) continue; // 型番（セット＋番号）が合うカードだけ使う
-    var t = h.replace(/<[^>]+>/g, '\n').replace(/&[a-z]+;/g, ' '), a = t.indexOf('状態PSA10の売買履歴'), b = t.indexOf('状態PSA10の売買相場', a);
-    var sec = a >= 0 ? t.slice(a, b > a ? b : a + 4000) : '', rows = [], r2 = /(\d{4}\/\d{2}\/\d{2})\s+PSA10\s+([\d,]+)/g, x;
-    while ((x = r2.exec(sec)) && rows.length < 5) rows.push({ date: x[1], price: Number(x[2].replace(/,/g, '')) });
-    out = rows.length ? { price: rows[0].price, date: rows[0].date, recent: rows, url: url.replace('/sales-histories', ''), id: ids[i] } : { price: 0, why: 'PSA10の取引がまだありません', url: url.replace('/sales-histories', '') };
+    var u = JSON.parse(kSnkrFetch('https://snkrdunk.com/v1/apparels/' + ids[i] + '/used?perPage=1'));
+    var it = (u.apparelUsedItems || [])[0], pn = String(it && it.apparel && it.apparel.productNumber || '');
+    if (!pn) { var hh = kSnkrFetch('https://snkrdunk.com/apparels/' + ids[i] + '/sales-histories'); pn = 'pkmn-tcg-' + ((hh.match(/pkmn-tcg-([A-Za-z0-9\-]+)/) || [])[1] || ''); }
+    if (pn.replace(/^pkmn-tcg-/, '').toLowerCase() !== want) continue; // 型番（セット＋番号）が合うカードだけ使う
+    var url = 'https://snkrdunk.com/apparels/' + ids[i] + '/sales-histories';
+    var j = JSON.parse(kSnkrFetch('https://snkrdunk.com/v1/apparels/' + ids[i] + '/sales-history?page=1&per_page=5&condition_id=22')); // 22＝PSA10
+    var rows = (j.history || []).map(function (x) { return { date: x.date, price: Number(x.price) || 0 }; });
+    out = rows.length ? { price: rows[0].price, date: rows[0].date, recent: rows, min: j.minPrice || 0, url: url, id: ids[i] } : { price: 0, why: 'PSA10の取引がまだありません', min: j.minPrice || 0, url: url };
     break;
   }
   try { c.put(key, JSON.stringify(out), 3 * 3600); } catch (e) { }
