@@ -88,7 +88,7 @@
   document.body.appendChild(host);
   var root = host.attachShadow({ mode: 'open' });
   root.innerHTML = '<style>' + CSS() + '</style><div class="wrap"><div class="win">' +
-    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-10-31 版AQ</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
+    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-10-31 版AR</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
     (ALL ? '' : '<div class="tabs"><button data-tab="make" class="on">新しく作る</button><button data-tab="refill">補充する</button></div>') +
     '<button class="x" id="close" title="閉じる">×</button></div>' +
     '<div class="bd" id="body"><div class="msg">読み込み中…</div></div></div></div>';
@@ -187,6 +187,7 @@
       if (p.kind === 'other') return false;
       if (p.kind === 'filler') return true;
       if (p.cost <= 0 || p.sell <= 0) return false;          // 原価・マスタ価格が入っていないものは使わない
+      if (p.cost <= p.sell * 0.1 && p.sell >= 3000) { p.costRaw = p.cost; p.cost = Math.round(p.sell * 0.7); p.costTmp = true; } // 原価がマスタの1/10以下＝原価の登録ミスとみて、マスタの70%を仮の原価にして計算する
       // シングルの状態（ふだんは状態A・A-だけ）は condPass でしぼる
       if (suspectPrice(p)) { p.kind = 'pack'; p.mis = true; } // BOX扱いだが中身はパックらしいもの（原価がマスタの3割未満）→パック扱い。当たりには使わず、下枠（3000円など）にだけ使う
       return true;
@@ -716,21 +717,22 @@
   function psaLabel(p) { var m = ((p.spec || '') + ' ' + p.name + ' ' + p.cond).match(/PSA\s*(\d{1,2})(?!\d)/i); return m ? 'PSA' + m[1] : 'PSA'; }
   function condText(p) { return p.kind === 'psa' ? psaLabel(p) + '（鑑定品）' : p.cond; }
   // 当たりなのに原価がマスタ価格の1/10以下（原価の登録ミスかもしれない）。使ってよいが目立たせて知らせる
-  function lowCost(p) { if (!p || p.kind === 'filler') return false; if (p.set) return p.set.some(lowCost); return p.sell > 0 && p.cost <= p.sell * 0.1; }
+  function tmpCost(p) { return !!(p && (p.costTmp || (p.set && p.set.some(tmpCost)))); }
+  function lowCost(p) { if (!p || p.kind === 'filler') return false; if (p.set) return p.set.some(lowCost); return !!p.costTmp || (p.sell > 0 && p.cost <= p.sell * 0.1); }
   function lowCostNote(pt) {
     var l = flatHits(pt.hits).filter(function (h) { return lowCost(h.p); });
     if (!l.length) return '';
-    return '<div class="warn lowcw">⚠️ 原価がマスタ価格の10分の1以下の当たりがあります（原価の登録ミスかもしれません。使ってかまいませんが、確認してください）<br>' + l.map(function (h) { return '・' + esc(h.role) + '：' + esc(h.p.name) + '（原価 ' + yen(h.p.cost) + '／マスタ ' + yen(h.p.sell) + '）'; }).join('<br>') + '</div>';
+    return '<div class="warn lowcw">⚠️ 原価がマスタ価格の10分の1以下の当たりがあります（原価の登録ミスかもしれません）。原価率・粗利は<b>マスタ価格の70%を仮の原価</b>にして計算しています。マイカの原価を確認・修正してください<br>' + l.map(function (h) { return '・' + esc(h.role) + '：' + esc(h.p.name) + '（マイカの原価 ' + yen(h.p.costRaw != null ? h.p.costRaw : h.p.cost) + '→仮の原価 ' + yen(h.p.cost) + '／マスタ ' + yen(h.p.sell) + '）'; }).join('<br>') + '</div>';
   }
   function card(h, big, attrs) {
     var im1 = function (u, nm) { return u ? '<img src="' + esc(u) + '" loading="lazy">' : '<div class="noimg">' + esc(String(nm).slice(0, 14)) + '</div>'; };
     var img = h.p.set ? im1(h.p.set[0].img, h.p.set[0].name) + im1(h.p.set[1].img, h.p.set[1].name) : im1(h.p.img, h.p.name);
     var tag = attrs ? 'button' : 'div';
-    return '<' + tag + ' class="cd ' + (big ? 'big ' : '') + (attrs ? 'swap' : '') + '" ' + (attrs || '') + '><div class="im' + (h.p.set ? ' duo' : '') + '">' + img + (h.p.set ? '<span class="settag">セット</span>' : '') + (h.role !== '下枠' && lowCost(h.p) ? '<span class="lowc">原価要確認</span>' : '') + (h.n > 1 ? '<span class="cnt">×' + h.n + '</span>' : '') + '<span class="role r-' + esc(h.role) + '">' + esc(h.role) + '</span>' +
+    return '<' + tag + ' class="cd ' + (big ? 'big ' : '') + (attrs ? 'swap' : '') + '" ' + (attrs || '') + '><div class="im' + (h.p.set ? ' duo' : '') + '">' + img + (h.p.set ? '<span class="settag">セット</span>' : '') + (h.role !== '下枠' && lowCost(h.p) ? '<span class="lowc">原価は仮（マスタの70%）</span>' : '') + (h.n > 1 ? '<span class="cnt">×' + h.n + '</span>' : '') + '<span class="role r-' + esc(h.role) + '">' + esc(h.role) + '</span>' +
       (h.p.kind === 'psa' ? '<span class="psa">' + esc(psaLabel(h.p)) + '</span>' : '') +
       (attrs ? '<span class="edit">入れ替え</span>' : '') + '</div>' +
       (ALL && h.p.sname ? '<div class="sttag">' + esc(h.p.sname) + '</div>' : '') + '<div class="nm">' + (h.p.kind === 'psa' ? '《' + esc(psaLabel(h.p)) + '》' : '') + esc(h.p.name) + '</div>' + (h.p.kind === 'psa' ? '<div class="cond psa2">PSA鑑定品</div>' : (h.p.cond && !h.p.set ? '<div class="cond' + (h.p.noShrink ? ' nosh' : '') + '">' + esc(h.p.cond) + '</div>' : '')) +
-      (h.p.set ? '<div class="cond">' + esc(h.p.set.map(function (m) { return m.kind === 'psa' ? psaLabel(m) : (m.cond || ''); }).join('＋')) + '</div>' : '') + '<div class="pr">マスタ ' + yen(h.p.sell) + (h.p.set ? '（2枚合計）' : '') + '</div>' + (h.p.shop != null ? '<div class="cs">店頭 ' + yen(h.p.shop) + '</div>' : '') + '<div class="cs">原価 ' + yen(h.p.cost) + '</div></' + tag + '>';
+      (h.p.set ? '<div class="cond">' + esc(h.p.set.map(function (m) { return m.kind === 'psa' ? psaLabel(m) : (m.cond || ''); }).join('＋')) + '</div>' : '') + '<div class="pr">マスタ ' + yen(h.p.sell) + (h.p.set ? '（2枚合計）' : '') + '</div>' + (h.p.shop != null ? '<div class="cs">店頭 ' + yen(h.p.shop) + '</div>' : '') + '<div class="cs">原価 ' + yen(h.p.cost) + (tmpCost(h.p) ? '<b style="color:#c0392b">（仮）</b>' : '') + '</div></' + tag + '>';
   }
 
   /* ---------- 入れ替え・追加・外す ---------- */
@@ -1406,7 +1408,7 @@
       ok.onclick = async function () {
         ok.disabled = true; ok.textContent = '書き出し中…';
         try {
-          var rows = flatHits(pt.hits).map(function (h) { return { role: h.role.replace('（セット）', ''), name: h.p.name + (h.setOf ? '（セット）' : ''), cond: sheetCond(h.p), cost: h.p.cost, n: h.n }; });
+          var rows = flatHits(pt.hits).map(function (h) { return { role: h.role.replace('（セット）', ''), name: h.p.name + (h.setOf ? '（セット）' : '') + (h.p.costTmp ? '（原価は仮：マスタの70%）' : ''), cond: sheetCond(h.p), cost: h.p.cost, n: h.n }; });
           var fN = pt.filler.reduce(function (s, f) { return s + f.n; }, 0), fC = pt.filler.reduce(function (s, f) { return s + f.p.cost * f.n; }, 0);
           var isNew = (m.querySelector('[name=wm]:checked') || {}).value === 'new', ntn = m.querySelector('#nt').value.trim();
           if (isNew && !ntn) throw new Error('タブの名前を入れてください');
