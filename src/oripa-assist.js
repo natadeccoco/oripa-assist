@@ -61,12 +61,15 @@
     return (histCache[ck] = n);
   }
 
+  /* 初代（カントー図鑑 No.1〜151）のポケモン。名前は単語ごとに見る（ジバコイル・ドサイドン・ブーバーン・ブラッキー・ププリン・ラッキーヘルメットなどは入れない） */
+  var K151 = new RegExp('(?<![ァ-ヺー])(' + 'フシギダネ|フシギソウ|フシギバナ|リザードン|カメックス|キャタピー|トランセル|バタフリー|ピジョット|オニスズメ|オニドリル|アーボック|ピカチュウ|ライチュウ|サンドパン|ニドリーナ|ニドクイン|ニドリーノ|ニドキング|キュウコン|ゴルバット|ナゾノクサ|クサイハナ|ラフレシア|パラセクト|モルフォン|ダグトリオ|ペルシアン|ゴルダック|オコリザル|ウインディ|ニョロボン|ユンゲラー|フーディン|ワンリキー|ゴーリキー|カイリキー|マダツボミ|ウツボット|メノクラゲ|ドククラゲ|イシツブテ|ゴローニャ|ギャロップ|レアコイル|ドードリオ|ベトベター|ベトベトン|シェルダー|パルシェン|スリーパー|キングラー|ビリリダマ|マルマイン|サワムラー|エビワラー|ベロリンガ|マタドガス|サイホーン|モンジャラ|トサキント|アズマオウ|ヒトデマン|スターミー|バリヤード|ストライク|ルージュラ|ケンタロス|コイキング|ギャラドス|シャワーズ|サンダース|ブースター|オムナイト|オムスター|カブトプス|フリーザー|ファイヤー|ミニリュウ|ハクリュー|カイリュー|ミュウツー|ヒトカゲ|リザード|ゼニガメ|カメール|ビードル|コクーン|スピアー|ピジョン|コラッタ|ニドラン|ピクシー|プクリン|ズバット|コンパン|ディグダ|ニャース|コダック|マンキー|ガーディ|ニョロモ|ニョロゾ|ケーシィ|ウツドン|ゴローン|ポニータ|ヤドラン|カモネギ|ドードー|パウワウ|ジュゴン|ゴースト|ゲンガー|イワーク|スリープ|タマタマ|ナッシー|カラカラ|ガラガラ|ドガース|サイドン|ラッキー|ガルーラ|タッツー|シードラ|エレブー|ブーバー|カイロス|ラプラス|メタモン|イーブイ|ポリゴン|カビゴン|サンダー|ポッポ|ラッタ|アーボ|サンド|ピッピ|ロコン|プリン|パラス|ヤドン|コイル|ゴース|クラブ|カブト|プテラ|ミュウ' + ')(?![ァ-ヺー])');
+  function is151(nm) { var n = String(nm || '').replace(/アローラ|ガラル|ヒスイ|パルデア|メガ|ゲンシ/g, ' ').replace(/ポリゴン\s*[2２ZＺ]/g, ' '); return K151.test(n); }
   /* ---------- テーマで絞る（全店オリパ）：ピカチュウ系・ブイズ系など。チェックした複数のテーマを混ぜられる ---------- */
   var THEMES = [
     { k: 'pika', label: 'ピカチュウ系', re: /ピカチュウ|ピチュー|ライチュウ/ },
     { k: 'eevee', label: 'ブイズ系', re: /イーブイ|シャワーズ|サンダース|ブースター|エーフィ|ブラッキー|リーフィア|グレイシア|ニンフィア/ },
     { k: 'girls', label: 'ガールズ系', re: /リーリエ|ナンジャモ|マリィ|シロナ|カトレア|アセロラ|エリカ|カスミ|カンナ|スイレン|マオ|ルザミーネ|サナ(?!ギ)|セレナ|ミモザ|ボタン|ネモ|ゼイユ|ルチア|アイリス|フウロ|コルニ|ナタネ|ヒカリ|メイ|ベル|スズナ|ミカン|アカネ|ハルカ|ユウリ|ソニア|ルリナ|サイトウ|メロン|ポプラ|クララ|ヒガナ|カリン|アズサ|オモダカ|チリ(?!ー)|ポピー|ライム|リップ|タロ|カキツバタ|スグリ|ミニスカート|おねえさん|おじょうさま|かんこうきゃく|ガールズ|センパイとコウハイ|モノマネむすめ|ブルーの|ナツメ|マーシャ(?!ドー)|イリマ|ライチ(?!ュウ)|アローラの仲間/ },
-    { k: 's151', label: '151', re: /SV2a|sv2a|(?<![\d\/])151(?![\d\/])/, exp: /^sv2a$/i } // 151（拡張パック sv2a）
+    { k: 's151', label: '151のポケモン', re: /(?!)/, fn: is151 } // 初代の151匹（弾の「151」ではない）
   ];
   var RARES = [ // レアリティで絞る（テーマと一緒に使うと「テーマ かつ レアリティ」）
     { k: 'SAR', label: 'SAR', re: /^SAR$/i, nm: /\bSAR\b/ },
@@ -78,7 +81,7 @@
     var t = S.themes || [], rr = S.rares || []; if (!t.length && !rr.length) return true;
     if (p.kind !== 'card' && p.kind !== 'psa') return false;
     var nm = String(p.name || ''), ex = String(p.exp || ''), ra = String(p.rarity || '');
-    if (t.length && !THEMES.some(function (x) { return t.indexOf(x.k) >= 0 && (x.re.test(nm) || (x.exp && x.exp.test(ex))); })) return false;
+    if (t.length && !THEMES.some(function (x) { return t.indexOf(x.k) >= 0 && (x.fn ? x.fn(nm) : x.re.test(nm) || (x.exp && x.exp.test(ex))); })) return false;
     if (rr.length && !RARES.some(function (x) { return rr.indexOf(x.k) >= 0 && (ra ? x.re.test(ra) || (x.exp && x.exp.test(ex)) : x.nm.test(nm) || (x.exp && x.exp.test(ex))); })) return false;
     return true;
   }
@@ -117,7 +120,7 @@
   document.body.appendChild(host);
   var root = host.attachShadow({ mode: 'open' });
   root.innerHTML = '<style>' + CSS() + '</style><div class="wrap"><div class="win">' +
-    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-10-31 版BE</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
+    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-10-31 版BF</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
     (ALL ? '' : '<div class="tabs"><button data-tab="make" class="on">新しく作る</button><button data-tab="refill">補充する</button></div>') +
     '<button class="x" id="close" title="閉じる">×</button></div>' +
     '<div class="bd" id="body"><div class="msg">読み込み中…</div></div></div></div>';
