@@ -115,7 +115,8 @@ function kSplit(t) { var parts = []; t = String(t || ''); while (t.length > 1900
 function kaitoriPost(d) {
   if (/^daily/.test(d.kind || '')) return kDaily(d); // 全店買取チェック（全店買取チェック.gs）
   if (d.kind === 'check') return kCheck(d);
-  var ch = CH[d.store]; if (!ch) return json({ ok: false, error: '店舗「' + d.store + '」のLINE WORKSグループが登録されていません' });
+  var ch = d.store === 'テスト' ? P.getProperty('K_WARN_CHANNEL') : CH[d.store]; // 店舗「テスト」は役員の買取警告グループ（動作確認用）
+  if (!ch) return json({ ok: false, error: '店舗「' + d.store + '」のLINE WORKSグループが登録されていません' });
   if (!d.requester) return json({ ok: false, error: '名前を入れてください' });
   var approval = d.kind === 'approval';
   var lock = LockService.getScriptLock(), id; lock.waitLock(20000);
