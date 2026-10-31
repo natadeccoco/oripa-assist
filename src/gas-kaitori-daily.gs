@@ -3,7 +3,7 @@
  * 雄司のPC（myca_import の kaitori_check.ps1、毎晩22:10・23:40）から、その日の全店の買取明細が届く。
  *   POST {action:'kaitori', kind:'dailyjudge', key, lines:[…]} … 買取表より高く買った行のキーを返す（書き込みはしない）
  *   POST {action:'kaitori', kind:'dailywrite', key, lines:[…]} … 該当行に状態・お客様名を付けて送り直す → スプレッドシートに追記
- *   あわせて、最終チェック（買取チェックの「確認しました」）が無い買取を「チェック漏れ」タブにためる
+ *   あわせて、承認ライン以上なのに本部承認がない買取・最終チェック（確認サイン）がない買取を「承認・チェック漏れ」タブにため、役員の買取警告グループに送る
  * 合言葉はスクリプト プロパティ LOSS_KEY（PCの config.json の LOSS_KEY と同じ。ロスのチェックと共用）
  * 書き込み先：スプレッドシート「買取表チェック（全店）」（初回に自動作成、IDはスクリプト プロパティ K_DAILY_SHEET）
  */
@@ -192,57 +192,96 @@ function kdWarnSetup() {
   Logger.log('買取警告グループ: ' + ch);
 }
 
-/* ---------- チェック漏れ：その日の買取のうち、最終チェックが無いもの ---------- */
-var KD_UC_COLS = ['状況', '社員への確認メモ', '買取日時', '店舗', '受付番号', '買取合計', '行数', 'マイカ取引ID', '最終チェック', 'チェックした人'];
+/* ---------- ツールを通していない買取：①承認ライン以上なのに本部承認なし ②最終チェック（確認サイン）なし ---------- */
+// 毎晩の全店チェック（dailyjudge）でその日の全買取を受け取り、「承認・チェック漏れ」タブにため、新しく見つかった分を役員の買取警告グループに送る
+var KD_UC_COLS = ['状況', '社員への確認メモ', '種類', '買取日時', '店舗', '受付番号', '買取合計', '承認ライン', '行数', '最終チェック（査定者）', '本部承認', 'マイカ取引ID'];
+var KD_UC_SHEET = '承認・チェック漏れ';
+function kdLineFor(cfg, store, who) { // 買取チェックのツールと同じ決め方：スタッフ別 → 店舗と雇用区分の低い方
+  var nm = String(who || '').replace(/\s+/g, '');
+  if (nm && (cfg.staff || {})[nm] != null) return cfg.staff[nm];
+  var line = (cfg.stores || {})[store]; if (line == null) line = cfg.def || 50000;
+  var ty = (cfg.staffType || {})[nm] || 'アルバイト', tl = (cfg.types || {})[ty];
+  if (nm && tl != null && tl < line) line = tl;
+  return line;
+}
 function kdUnchecked(lines) {
-  var tx = {}, from = new Date((P.getProperty('K_CHECK_FROM') || '2026-11-01') + 'T00:00:00+09:00'); // この日より前の買取は数えない（スクリプト プロパティ K_CHECK_FROM で変更）
+  var from = new Date((P.getProperty('K_CHECK_FROM') || '2026-11-01') + 'T00:00:00+09:00'); // この日より前の買取は数えない（スクリプト プロパティ K_CHECK_FROM）
+  var tx = {};
   lines.forEach(function (l) {
     if (!l.tx || new Date(l.at) < from) return;
     var o = tx[l.tx] || (tx[l.tx] = { store: l.store, rec: l.rec || '', at: l.at, total: 0, n: 0 });
     o.total += (Number(l.unit) || 0) * (Number(l.cnt) || 0); o.n++;
   });
-  var done = {}, fs = kBook().getSheetByName('最終チェック');
+  var book = kBook(), done = {}, appr = {};
+  var fs = book.getSheetByName('最終チェック');
   if (fs && fs.getLastRow() >= 2) fs.getRange(2, 1, fs.getLastRow() - 1, 6).getValues().forEach(function (v) { if (v[4]) done[String(v[4])] = { at: v[1], by: v[5] }; });
-  var ss = kdBook(), sh = ss.getSheetByName('チェック漏れ');
-  if (!sh) { sh = ss.insertSheet('チェック漏れ'); sh.getRange(1, 1, 1, KD_UC_COLS.length).setValues([KD_UC_COLS]).setFontWeight('bold').setBackground('#efede7'); sh.setFrozenRows(1); sh.setColumnWidth(2, 220); }
+  var kv = kSheet().getDataRange().getValues(); // 買取タブ：承認依頼の状態（承認待ち・承認・差し戻し）
+  for (var i = 1; i < kv.length; i++) if (kv[i][2] === '承認依頼' && kv[i][15]) { var k = String(kv[i][15]); if (!appr[k] || kv[i][12] === '承認') appr[k] = kv[i][12]; }
+  var cfg = kConfig();
+  Object.keys(tx).forEach(function (id) {
+    var o = tx[id], c = done[id]; o.by = c ? c.by : ''; o.line = kdLineFor(cfg, o.store, o.by);
+    o.need = o.total >= o.line; o.appr = appr[id] || '';
+    o.kind = o.need && o.appr !== '承認' ? '⛔承認なし' : (!c ? '⚠️確認サインなし' : '');
+  });
+  var ss = kdBook(), sh = ss.getSheetByName(KD_UC_SHEET);
+  if (!sh) { sh = ss.insertSheet(KD_UC_SHEET); sh.setFrozenRows(1); sh.setColumnWidth(2, 220); }
+  sh.getRange(1, 1, 1, KD_UC_COLS.length).setValues([KD_UC_COLS]).setFontWeight('bold').setBackground('#efede7');
   var last = sh.getLastRow(), have = {};
   if (last >= 2) {
     var vals = sh.getRange(2, 1, last - 1, KD_UC_COLS.length).getValues();
-    vals.forEach(function (v, i) { // あとからチェックした分は「あとでチェック済み」に
-      have[String(v[7])] = 1;
-      var c = done[String(v[7])];
-      if (c && !v[8]) sh.getRange(i + 2, 9, 1, 2).setValues([[c.at, c.by]]);
+    vals.forEach(function (v, r) { // あとで最終チェック・承認されたものは書き足す
+      var id = String(v[11]); have[id] = 1;
+      var c = done[id], a = appr[id] || '';
+      var ck = c ? c.by + '（' + Utilities.formatDate(new Date(c.at), 'Asia/Tokyo', 'M/d HH:mm') + '）' : '';
+      if ((ck && ck !== v[9]) || a !== v[10]) sh.getRange(r + 2, 10, 1, 2).setValues([[ck || v[9], a]]);
     });
   }
   var rows = [];
   Object.keys(tx).forEach(function (id) {
-    if (done[id] || have[id]) return;
-    var o = tx[id]; rows.push(['未確認', '', new Date(o.at), o.store, o.rec, o.total, o.n, id, '', '']);
+    var o = tx[id]; if (!o.kind || have[id]) return;
+    rows.push(['未確認', '', o.kind, new Date(o.at), o.store, o.rec, o.total, o.line, o.n, o.by, o.appr, id]);
   });
   if (rows.length) {
-    rows.sort(function (a, b) { return b[2] - a[2]; });
+    rows.sort(function (a, b) { return (/^⛔/.test(b[2]) - /^⛔/.test(a[2])) || b[3] - a[3]; });
     sh.insertRowsBefore(2, rows.length);
     sh.getRange(2, 1, rows.length, KD_UC_COLS.length).setValues(rows);
-    sh.getRange(2, 3, rows.length, 1).setNumberFormat('yyyy/MM/dd(ddd) HH:mm');
-    sh.getRange(2, 6, rows.length, 1).setNumberFormat('#,##0"円"');
-    sh.getRange(2, 1, rows.length, 1).setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(['未確認', '確認済み', '要対応'], true).build());
+    sh.getRange(2, 4, rows.length, 1).setNumberFormat('yyyy/MM/dd(ddd) HH:mm');
+    sh.getRange(2, 7, rows.length, 2).setNumberFormat('#,##0"円"');
+    sh.getRange(2, 1, rows.length, 1).setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(['未確認', '確認済み（問題なし）', '確認済み（注意した）', '要対応'], true).build());
+    rows.forEach(function (r, k) { sh.getRange(2 + k, 3).setBackground(/^⛔/.test(r[2]) ? '#ffd9de' : '#fff4c2'); });
+    try { kdUncheckedWarn(rows, ss); } catch (e) { console.error('承認・チェック漏れの警告: ' + e); }
   }
-  kdCheckSummary(ss, tx, done);
+  kdCheckSummary(ss, tx);
 }
-// 日別・店舗別：買取件数／最終チェック済み／チェック漏れ（PCから届いた期間の分を上書き）
-function kdCheckSummary(ss, tx, done) {
+function kdUncheckedWarn(rows, ss) {
+  var ch = kdWarnChannel(), yen = function (n) { return Number(n || 0).toLocaleString() + '円'; };
+  var ng = rows.filter(function (r) { return /^⛔/.test(r[2]); }), ck = rows.filter(function (r) { return !/^⛔/.test(r[2]); });
+  var line = function (r) {
+    var d = Utilities.formatDate(new Date(r[3]), 'Asia/Tokyo', 'M/d HH:mm');
+    return r[2].slice(0, 1) === '⛔' ? '⛔ ' + r[4] + '　' + d + '　受付' + r[5] + '　' + yen(r[6]) + '（承認ライン ' + yen(r[7]) + '）' + (r[9] ? '　査定者：' + r[9] : '　ツール未使用') + (r[10] ? '　本部：' + r[10] : '')
+      : '⚠️ ' + r[4] + '　' + d + '　受付' + r[5] + '　' + yen(r[6]);
+  };
+  var head = '【ツールを通していない買取】⛔承認なしで支払い ' + ng.length + '件・⚠️確認サインなし ' + ck.length + '件';
+  var body = ng.map(line).join('\n') + (ng.length && ck.length ? '\n\n' : '') + ck.slice(0, 40).map(line).join('\n') + (ck.length > 40 ? '\nほか ' + (ck.length - 40) + '件' : '');
+  kSplit(head + '\n\n' + body + '\n\n一覧・確認メモはこちら（「' + KD_UC_SHEET + '」タブ）：\n' + ss.getUrl()).forEach(function (x) { send(ch, { type: 'text', text: x }); });
+}
+// 日別・店舗別：買取件数／承認が必要／⛔承認なし／⚠️確認サインなし／確認サイン率（PCから届いた日の分を上書き）
+function kdCheckSummary(ss, tx) {
   var sh = ss.getSheetByName('チェック集計');
-  var head = ['日付', '店舗', '買取件数', '最終チェック済み', 'チェック漏れ', 'チェック率'];
-  if (!sh) { sh = ss.insertSheet('チェック集計'); sh.getRange(1, 1, 1, head.length).setValues([head]).setFontWeight('bold').setBackground('#efede7'); sh.setFrozenRows(1); }
+  var head = ['日付', '店舗', '買取件数', '確認サインあり', '承認が必要', 'うち本部承認あり', '⛔承認なしで支払い', '⚠️確認サインなし', '確認サイン率'];
+  if (!sh) { sh = ss.insertSheet('チェック集計'); sh.setFrozenRows(1); }
+  sh.getRange(1, 1, 1, head.length).setValues([head]).setFontWeight('bold').setBackground('#efede7');
   var g = {};
   Object.keys(tx).forEach(function (id) {
     var o = tx[id], day = Utilities.formatDate(new Date(o.at), 'Asia/Tokyo', 'yyyy/MM/dd'), k = day + '|' + o.store;
-    var x = g[k] || (g[k] = [day, o.store, 0, 0, 0, 0]); x[2]++; if (done[id]) x[3]++; else x[4]++;
+    var x = g[k] || (g[k] = [day, o.store, 0, 0, 0, 0, 0, 0, 0]);
+    x[2]++; if (o.by) x[3]++; if (o.need) { x[4]++; if (o.appr === '承認') x[5]++; else x[6]++; } else if (!o.by) x[7]++;
   });
+  var fmt = function (v) { return v instanceof Date ? Utilities.formatDate(v, 'Asia/Tokyo', 'yyyy/MM/dd') : String(v); };
   var last = sh.getLastRow(), old = last >= 2 ? sh.getRange(2, 1, last - 1, head.length).getValues() : [];
-  var keep = old.filter(function (v) { var day = v[0] instanceof Date ? Utilities.formatDate(v[0], 'Asia/Tokyo', 'yyyy/MM/dd') : String(v[0]); return !g[day + '|' + v[1]]; });
-  var rows = keep.concat(Object.keys(g).map(function (k) { var x = g[k]; x[5] = x[2] ? x[3] / x[2] : 0; return x; }))
-    .sort(function (a, b) { var da = String(a[0] instanceof Date ? Utilities.formatDate(a[0], 'Asia/Tokyo', 'yyyy/MM/dd') : a[0]), db = String(b[0] instanceof Date ? Utilities.formatDate(b[0], 'Asia/Tokyo', 'yyyy/MM/dd') : b[0]); return da < db ? 1 : da > db ? -1 : String(a[1]).localeCompare(String(b[1])); });
-  if (last >= 2) sh.getRange(2, 1, last - 1, head.length).clearContent();
-  if (rows.length) { sh.getRange(2, 1, rows.length, head.length).setValues(rows); sh.getRange(2, 6, rows.length, 1).setNumberFormat('0%'); }
+  var keep = old.filter(function (v) { return v[0] && !g[fmt(v[0]) + '|' + v[1]]; });
+  var rows = keep.concat(Object.keys(g).map(function (k) { var x = g[k]; x[8] = x[2] ? x[3] / x[2] : 0; return x; }))
+    .sort(function (a, b) { var da = fmt(a[0]), db = fmt(b[0]); return da < db ? 1 : da > db ? -1 : String(a[1]).localeCompare(String(b[1])); });
+  if (last >= 2) sh.getRange(2, 1, last - 1, Math.max(head.length, sh.getLastColumn())).clearContent();
+  if (rows.length) { sh.getRange(2, 1, rows.length, head.length).setValues(rows); sh.getRange(2, 9, rows.length, 1).setNumberFormat('0%'); }
 }
