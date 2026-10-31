@@ -10,13 +10,14 @@
  */
 var KAITORI_SHEET_ID = '1gtUjjGDQvFAE2PR_QDe343wFHS48PbqcHuuLTmT-4YQ'; // ナタデココ買取表(MM/DD)
 var K_SKIP_TABS = /バックアップ|^シート\d+$|最低保証/;
-var K_COLS = ['依頼番号', '日時', '種類', '店舗', '依頼者', 'お客様', '買取合計', '承認ライン', '警告数', '内容', '警告', 'コメント', '状態', '判断した人', '判断日時', 'マイカ取引ID', '担当スタッフ'];
+var K_COLS = ['依頼番号', '日時', '種類', '店舗', '依頼者', 'お客様', '買取合計', '承認ライン', '警告数', '内容', '警告', 'コメント', '状態', '判断した人', '判断日時', 'マイカ取引ID', '担当スタッフ', '明細データ', '差し戻し内容', '差し戻しキー'];
 var K_DEFAULT_LINE = 50000;
 
 function kBook() { return SpreadsheetApp.openById(prop('SHEET_ID')); }
 function kSheet() {
   var ss = kBook(), sh = ss.getSheetByName('買取');
   if (!sh) { sh = ss.insertSheet('買取'); sh.appendRow(K_COLS); sh.setFrozenRows(1); }
+  if (sh.getRange(1, 18).getValue() !== K_COLS[17]) sh.getRange(1, 18, 1, 3).setValues([K_COLS.slice(17, 20)]); // 差し戻し用の列（あとから追加）
   return sh;
 }
 function kSettingSheet() {
@@ -79,6 +80,7 @@ function kConfig() {
 }
 
 function kaitoriGet(p) {
+  if (p.action === 'kreject') return kRejectPage(p); // 差し戻しの内容を書くページ（役員に個別に届くリンク）
   try {
     if (p.action === 'kprices') return json({ ok: true, at: new Date().toISOString(), rows: kPrices() });
     if (p.action === 'kconfig') return json({ ok: true, config: kConfig() });
@@ -87,7 +89,7 @@ function kaitoriGet(p) {
       var vals = kSheet().getDataRange().getValues(), ap = null, cf = null;
       for (var i = vals.length - 1; i >= 1 && (!ap || !cf); i--) {
         if (String(vals[i][15]) !== String(p.tx)) continue;
-        var v = vals[i], o = { id: v[0], status: v[12], by: v[13] || v[4], at: v[14] ? String(v[14]) : '', requester: v[4] };
+        var v = vals[i], o = { id: v[0], status: v[12], by: v[13] || v[4], at: v[14] ? String(v[14]) : '', requester: v[4], fb: kParse(v[18]) };
         if (v[2] === '承認依頼' && !ap) ap = o; else if (v[2] === '警告の確認' && !cf) cf = o;
       }
       var ck = null, fs = kBook().getSheetByName('最終チェック');
@@ -96,7 +98,7 @@ function kaitoriGet(p) {
     }
     if (p.action === 'kstatus') {
       var row = kFind(p.id); if (!row) return json({ ok: false, error: '依頼が見つかりません' });
-      return json({ ok: true, id: row.values[0], status: row.values[12], by: row.values[13], at: row.values[14] ? String(row.values[14]) : '' });
+      return json({ ok: true, id: row.values[0], status: row.values[12], by: row.values[13], at: row.values[14] ? String(row.values[14]) : '', fb: kParse(row.values[18]) });
     }
     return json({ ok: false, error: '不明な操作です' });
   } catch (e) { return json({ ok: false, error: String(e.message || e) }); }
@@ -127,7 +129,7 @@ function kaitoriPost(d) {
     }
     id = (approval ? 'K' : 'C') + Utilities.formatDate(new Date(), 'Asia/Tokyo', 'MMdd-HHmmss') + '-' + Math.floor(Math.random() * 90 + 10);
     kSheet().appendRow([id, new Date(), approval ? '承認依頼' : '警告の確認', d.store, d.requester, d.customer || '', Number(d.total) || 0, Number(d.line) || '', Number(d.warnCount) || 0,
-      String(d.text || '').slice(0, 45000), String(d.warnText || '').slice(0, 45000), d.comment || '', approval ? '承認待ち' : '確認済み', approval ? '' : d.requester, approval ? '' : new Date(), d.txId || '', d.staff || '']);
+      String(d.text || '').slice(0, 45000), String(d.warnText || '').slice(0, 45000), d.comment || '', approval ? '承認待ち' : '確認済み', approval ? '' : d.requester, approval ? '' : new Date(), d.txId || '', d.staff || '', approval ? kLinesJson(d.lines) : '', '', '']);
   } finally { lock.releaseLock(); }
   if (!approval) return json({ ok: true, id: id }); // 警告の確認は査定者向け：記録だけ残し、グループには送らない
   try { kLogLines(id, d); } catch (e) { console.error('査定ログ: ' + e); }
@@ -157,6 +159,21 @@ function kaitoriCallback(ev, data) {
     var row = kFind(m[2]); if (!row) return;
     var name = userName(userId);
     if (row.values[12] !== '承認待ち') { if (ch) send(ch, { type: 'text', text: '依頼番号 ' + m[2] + ' はすでに「' + row.values[12] + '」です（' + row.values[13] + '）。' }); return; }
+    if (m[1] === 'reject') { // 差し戻しは、押した役員に個別のリンクを送り、カードごとの指示を書いてもらう
+      var key = Utilities.getUuid().replace(/-/g, '').slice(0, 16);
+      kSheet().getRange(row.r, 20).setValue(key + '|' + userId);
+      var url = WEBAPP_URL + '?action=kreject&id=' + encodeURIComponent(m[2]) + '&k=' + key;
+      try {
+        sendUser(userId, { type: 'button_template', contentText: '依頼番号 ' + m[2] + '（' + row.values[3] + '店・' + Number(row.values[6] || 0).toLocaleString() + '円）の差し戻し内容を書いてください。どのカードをどうするか、カードごとに指示できます。',
+          actions: [{ type: 'uri', label: '差し戻し内容を書く', uri: url }] });
+        if (ch) send(ch, { type: 'text', text: '（' + name + 'さんが依頼番号 ' + m[2] + ' の差し戻し内容を書いています）' });
+      } catch (e) { // 個別に送れないときは、今までどおりすぐ差し戻す
+        console.error('差し戻しリンク: ' + e);
+        kSheet().getRange(row.r, 13, 1, 3).setValues([['差し戻し', name, new Date()]]);
+        if (ch) send(ch, { type: 'text', text: '↩️ 買取を差し戻しました（依頼番号 ' + m[2] + '・' + name + '）\n直してほしい点をこのトークで伝えてください。' });
+      }
+      return;
+    }
     var st = m[1] === 'approve' ? '承認' : '差し戻し';
     kSheet().getRange(row.r, 13, 1, 3).setValues([[st, name, new Date()]]);
     try { kSummary(); } catch (e) { console.error('査定集計: ' + e); }
@@ -208,6 +225,145 @@ function kCheck(d) {
   } finally { lock.releaseLock(); }
   return json({ ok: true, id: id });
 }
+
+/* ---------- 差し戻し：カードごとの指示（価格・買取しない・状態・枚数）を画像付きで店舗に送る ---------- */
+function kParse(s) { try { return s ? JSON.parse(s) : null; } catch (e) { return null; } }
+function kLinesJson(lines) {
+  var ls = (lines || []).map(function (q) { return { n: q.n, cond: q.cond || '', cnt: q.cnt, unit: q.unit, ref: q.ref || '', pid: q.pid || '', img: q.img || '' }; });
+  var t = JSON.stringify(ls); if (t.length > 45000) { ls.forEach(function (q) { q.img = ''; }); t = JSON.stringify(ls).slice(0, 45000); }
+  return t;
+}
+function sendUser(userId, content) {
+  var r = UrlFetchApp.fetch('https://www.worksapis.com/v1.0/bots/' + prop('LW_BOT_ID') + '/users/' + encodeURIComponent(userId) + '/messages', {
+    method: 'post', contentType: 'application/json', muteHttpExceptions: true,
+    headers: { Authorization: 'Bearer ' + token() }, payload: JSON.stringify({ content: content })
+  });
+  if (r.getResponseCode() >= 300) throw new Error('個別に送れませんでした（' + r.getResponseCode() + '）: ' + r.getContentText());
+}
+function kRejectCheck(id, key) {
+  var row = kFind(id); if (!row) throw new Error('依頼が見つかりません');
+  var kk = String(row.values[19] || '').split('|');
+  if (!key || kk[0] !== key) throw new Error('このリンクは使えません（新しいリンクをLINE WORKSで受け取ってください）');
+  return { row: row, userId: kk[1] };
+}
+function kRejectPage(p) {
+  var esc = function (x) { return String(x == null ? '' : x).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); };
+  var out = function (html) { return HtmlService.createHtmlOutput(html).setTitle('買取の差し戻し').addMetaTag('viewport', 'width=device-width, initial-scale=1'); };
+  try {
+    var c = kRejectCheck(p.id, p.k), v = c.row.values;
+    if (v[12] !== '承認待ち') return out('<div style="font:16px sans-serif;padding:24px">依頼番号 ' + esc(v[0]) + ' はすでに「' + esc(v[12]) + '」です（' + esc(v[13]) + '）。</div>');
+    var data = { id: v[0], k: p.k, store: v[3], requester: v[4], cust: v[5], total: v[6], lines: kParse(v[17]) || [], text: v[9] };
+    return out(K_REJECT_HTML.replace('__DATA__', JSON.stringify(data).replace(/</g, '\\u003c')));
+  } catch (e) { return out('<div style="font:16px sans-serif;padding:24px">' + esc(e.message || e) + '</div>'); }
+}
+function kImgB64(u) { // ページで画像を描くために、マイカの商品画像を中継する
+  if (!/^https:\/\/[^\/]*mycalinks\.(io|com)\//.test(u || '')) return null;
+  try { var r = UrlFetchApp.fetch(u, { muteHttpExceptions: true }); if (r.getResponseCode() >= 300) return null; var b = r.getBlob(); return 'data:' + (b.getContentType() || 'image/png') + ';base64,' + Utilities.base64Encode(b.getBytes()); } catch (e) { return null; }
+}
+function kRejectSubmit(id, key, d) {
+  var lock = LockService.getScriptLock(); lock.waitLock(20000);
+  var c, v, name;
+  try {
+    c = kRejectCheck(id, key); v = c.row.values;
+    if (v[12] !== '承認待ち') throw new Error('依頼番号 ' + id + ' はすでに「' + v[12] + '」です');
+    name = userName(c.userId);
+    var fb = { by: name, at: new Date().toISOString(), comment: String(d.comment || '').slice(0, 2000), items: (d.items || []).slice(0, 80) };
+    kSheet().getRange(c.row.r, 13, 1, 3).setValues([['差し戻し', name, new Date()]]);
+    kSheet().getRange(c.row.r, 19, 1, 2).setValues([[JSON.stringify(fb).slice(0, 45000), '']]);
+  } finally { lock.releaseLock(); }
+  try { kSummary(); } catch (e) { console.error('査定集計: ' + e); }
+  var ch = CH[v[3]], yen = function (n) { return Number(n || 0).toLocaleString() + '円'; };
+  var nums = '①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳';
+  var txt = '↩️ 買取を差し戻しました（依頼番号 ' + id + '・' + name + '）\n' + v[3] + '店　' + (v[5] ? v[5] + ' 様　' : '') + yen(v[6]) + '\n' +
+    (fb.items.length ? '\n' + fb.items.map(function (it, k) { return (nums[k] || '・') + ' ' + it.n + (it.cond ? '《' + it.cond + '》' : '') + '\n　' + kFbText(it, yen); }).join('\n') : '') +
+    (fb.comment ? '\n\nコメント：' + fb.comment : '') + '\n\nマイカを直したら、買取チェックで「更新」→ もう一度承認を依頼してください。';
+  if (ch) {
+    kSplit(txt).forEach(function (x) { send(ch, { type: 'text', text: x }); });
+    if (d.image) try { send(ch, { type: 'image', fileId: uploadImage(d.image, 'kaitori_back_' + id + '.jpg') }); } catch (e) { console.error(e); }
+    (d.photos || []).slice(0, 5).forEach(function (b, k) { try { send(ch, { type: 'image', fileId: uploadImage(b, 'kaitori_back_' + id + '_photo' + (k + 1) + '.jpg') }); } catch (e) { console.error(e); } });
+  }
+  return { ok: true };
+}
+function kFbText(it, yen) {
+  var t = it.kind === 'price' ? '単価 ' + yen(it.unit) + ' → ' + yen(it.price) + ' に' : it.kind === 'none' ? '買取しない（お客様に返却）' : it.kind === 'cond' ? '状態を見直してください' : it.kind === 'count' ? '枚数を確認してください（今 ×' + it.cnt + '）' : '確認してください';
+  return t + (it.memo ? '　' + it.memo : '');
+}
+var K_REJECT_HTML = `<!doctype html><html><head><meta charset="utf-8"><style>
+body{margin:0;font-family:"Hiragino Sans","Noto Sans JP",Meiryo,sans-serif;background:#f4f3ef;color:#1f1d1a;font-size:15px}
+.hd{background:#1f1d1a;color:#fff;padding:12px 16px;position:sticky;top:0;z-index:2}.hd b{color:#e8c23a}.hd .s{font-size:12px;color:#ccc;margin-top:2px}
+.w{padding:12px 12px 120px;max-width:720px;margin:0 auto}.sub{color:#6a655c;font-size:12.5px}
+.c{background:#fff;border:1.5px solid #e2ded4;border-radius:12px;padding:10px;margin:8px 0;display:flex;gap:10px}.c.on{border-color:#c8102e;background:#fff7f8}
+.c img{width:64px;height:90px;object-fit:contain;flex:none;background:#eee;border-radius:4px}.c .b{flex:1;min-width:0}.c .n{font-weight:700;font-size:14px}
+.pill{display:inline-block;font-size:11px;background:#1f1d1a;color:#fff;border-radius:6px;padding:0 6px;margin-left:4px}
+.k{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}.k button{border:1.5px solid #d6d2c8;background:#fff;border-radius:999px;padding:5px 10px;font:inherit;font-size:13px;font-weight:700}
+.k button.on{background:#c8102e;border-color:#c8102e;color:#fff}.x{margin-top:6px;display:none;gap:6px;flex-wrap:wrap}.c.on .x{display:flex}
+input,textarea{font:inherit;font-size:15px;padding:7px 9px;border:1.5px solid #d6d2c8;border-radius:8px}input.p{width:120px}input.m{flex:1;min-width:160px}textarea{width:100%;box-sizing:border-box}
+.ft{position:fixed;left:0;right:0;bottom:0;background:#fff;border-top:1px solid #e2ded4;padding:10px 12px;display:flex;gap:8px;justify-content:center}
+.btn{border:0;border-radius:10px;padding:12px 18px;font:inherit;font-weight:800;font-size:15px;background:#c8102e;color:#fff}.btn.g{background:#fff;color:#1f1d1a;border:1.5px solid #d6d2c8}
+.msg{padding:30px 16px;font-size:16px;text-align:center}.err{color:#c8102e;font-weight:700}
+</style></head><body><div class="hd"><b>買取の差し戻し</b><div class="s" id="hs"></div></div><div class="w" id="w"></div>
+<div class="ft" id="ft"><button class="btn" id="go">差し戻す</button></div>
+<script>
+var D=__DATA__, ST={}, PH=[];
+function yen(n){return Number(n||0).toLocaleString()+'円'}
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
+document.getElementById('hs').textContent=D.store+'店　'+(D.cust?D.cust+' 様　':'')+yen(D.total)+'　依頼番号 '+D.id+'　依頼者 '+D.requester;
+var KINDS=[['price','この価格に'],['none','買取しない'],['cond','状態を見直し'],['count','枚数を確認'],['other','その他']];
+function draw(){
+  var h='<div class="sub" style="margin:4px 0 8px">直してほしいカードの指示を選んでください（複数OK）。何も選ばずにコメントだけでも差し戻せます。</div>';
+  if(!D.lines.length) h+='<div class="sub">（この依頼にはカードの明細が保存されていません。コメントで指示してください）</div>';
+  D.lines.forEach(function(q,i){var s=ST[i]||{};
+    h+='<div class="c'+(s.kind?' on':'')+'" data-i="'+i+'">'+(q.img?'<img src="'+esc(q.img)+'">':'<img>')+'<div class="b"><div class="n">'+esc(q.n)+(q.cond?'<span class="pill">'+esc(q.cond)+'</span>':'')+'</div>'+
+    '<div class="sub">×'+q.cnt+'　単価 <b>'+yen(q.unit)+'</b>'+(q.ref?'　買取表 '+yen(q.ref)+'（'+Math.round(q.unit/q.ref*100)+'%）':'')+'</div>'+
+    '<div class="k">'+KINDS.map(function(k){return '<button data-k="'+k[0]+'" class="'+(s.kind===k[0]?'on':'')+'">'+k[1]+'</button>'}).join('')+'</div>'+
+    '<div class="x">'+(s.kind==='price'?'<input class="p" type="number" inputmode="numeric" placeholder="指示する単価" value="'+(s.price||'')+'">':'')+'<input class="m" placeholder="ひとこと（任意）" value="'+esc(s.memo||'')+'"></div></div></div>';
+  });
+  h+='<div style="margin-top:14px"><b>全体へのコメント</b><textarea id="cm" rows="3" placeholder="例：傷があるものは減額でお願いします">'+esc(ST.cm||'')+'</textarea></div>'+
+    '<div style="margin-top:10px"><b>写真を添付（任意）</b><div><input type="file" id="ph" accept="image/*" multiple></div><div class="sub" id="phn">'+(PH.length?PH.length+'枚':'')+'</div></div><div class="err" id="er"></div>';
+  document.getElementById('w').innerHTML=h;
+  document.querySelectorAll('.c').forEach(function(el){var i=+el.dataset.i;
+    el.querySelectorAll('.k button').forEach(function(b){b.onclick=function(){var s=ST[i]=ST[i]||{};s.kind=s.kind===b.dataset.k?'':b.dataset.k;save();draw()}});
+    var p=el.querySelector('input.p');if(p)p.oninput=function(){ST[i].price=this.value};
+    var m=el.querySelector('input.m');if(m)m.oninput=function(){ST[i].memo=this.value};
+  });
+  document.getElementById('cm').oninput=function(){ST.cm=this.value};
+  document.getElementById('ph').onchange=function(){var fs=Array.prototype.slice.call(this.files||[],0,5);PH=[];var n=fs.length;if(!n)return;fs.forEach(function(f){shrink(f,function(b){if(b)PH.push(b);if(--n===0)document.getElementById('phn').textContent=PH.length+'枚'})})};
+}
+function save(){document.querySelectorAll('.c').forEach(function(el){var i=+el.dataset.i,s=ST[i];if(!s)return;var p=el.querySelector('input.p'),m=el.querySelector('input.m');if(p)s.price=p.value;if(m)s.memo=m.value})}
+function shrink(f,cb){var r=new FileReader();r.onload=function(){var im=new Image();im.onload=function(){var k=Math.min(1,1400/Math.max(im.width,im.height)),c=document.createElement('canvas');c.width=im.width*k;c.height=im.height*k;c.getContext('2d').drawImage(im,0,0,c.width,c.height);cb(c.toDataURL('image/jpeg',.8).split(',')[1])};im.onerror=function(){cb('')};im.src=r.result};r.readAsDataURL(f)}
+function items(){var out=[];D.lines.forEach(function(q,i){var s=ST[i];if(!s||!s.kind)return;out.push({i:i,n:q.n,cond:q.cond,pid:q.pid,cnt:q.cnt,unit:q.unit,ref:q.ref,img:q.img,kind:s.kind,price:s.kind==='price'?Number(s.price)||0:'',memo:(s.memo||'').trim()})});return out}
+function txt(it){return it.kind==='price'?yen(it.unit)+' → '+yen(it.price)+' に':it.kind==='none'?'買取しない（返却）':it.kind==='cond'?'状態を見直し':it.kind==='count'?'枚数を確認（今 ×'+it.cnt+'）':'確認してください'}
+function load(u){return new Promise(function(ok){if(!u)return ok(null);google.script.run.withSuccessHandler(function(d){if(!d)return ok(null);var im=new Image();im.onload=function(){ok(im)};im.onerror=function(){ok(null)};im.src=d}).withFailureHandler(function(){ok(null)}).kImgB64(u)})}
+function sheet(its){return Promise.all(its.map(function(it){return load(it.img)})).then(function(ims){
+  var COLS=Math.min(3,Math.max(1,its.length)),CW=300,CH=470,G=12,P=20,W=P*2+COLS*CW+(COLS-1)*G,rows=Math.ceil(its.length/COLS),HEAD=96,H=HEAD+P+rows*(CH+G)+(ST.cm?90:10);
+  var cv=document.createElement('canvas');cv.width=W;cv.height=H;var c=cv.getContext('2d'),F='"Hiragino Sans","Noto Sans JP",Meiryo,sans-serif';
+  function fit(s,w){if(c.measureText(s).width<=w)return s;while(s.length>1&&c.measureText(s+'…').width>w)s=s.slice(0,-1);return s+'…'}
+  function wrap(s,w,max){var out=[];while(s&&out.length<max){var k=s.length;while(k>1&&c.measureText(s.slice(0,k)).width>w)k--;out.push(s.slice(0,k));s=s.slice(k)}if(s&&out.length)out[out.length-1]=fit(out[out.length-1]+s,w);return out}
+  c.fillStyle='#f6f5f2';c.fillRect(0,0,W,H);c.fillStyle='#c8102e';c.fillRect(0,0,W,HEAD-8);c.textBaseline='top';
+  c.fillStyle='#fff';c.font='bold 30px '+F;c.fillText(fit('↩ 差し戻し　'+D.store+'店　'+yen(D.total),W-P*2),P,14);c.font='bold 18px '+F;c.fillText(fit('依頼番号 '+D.id+'　直すカード '+its.length+'枚',W-P*2),P,56);
+  its.forEach(function(it,k){var x=P+(k%COLS)*(CW+G),y=HEAD+P-8+Math.floor(k/COLS)*(CH+G);c.fillStyle='#fff';c.fillRect(x,y,CW,CH);c.strokeStyle='#c8102e';c.lineWidth=4;c.strokeRect(x+2,y+2,CW-4,CH-4);
+    var im=ims[k],ih=250;if(im){var r=Math.min((CW-24)/im.width,ih/im.height),dw=im.width*r,dh=im.height*r;c.drawImage(im,x+(CW-dw)/2,y+12+(ih-dh)/2,dw,dh)}else{c.fillStyle='#eee';c.fillRect(x+12,y+12,CW-24,ih)}
+    c.fillStyle='#c8102e';c.beginPath();c.arc(x+26,y+26,20,0,7);c.fill();c.fillStyle='#fff';c.font='bold 22px '+F;var nn=String(k+1);c.fillText(nn,x+26-c.measureText(nn).width/2,y+14);
+    var ty=y+272;c.fillStyle='#1f1d1a';c.font='bold 16px '+F;wrap(it.n+(it.cond?'《'+it.cond+'》':''),CW-24,2).forEach(function(l,j){c.fillText(l,x+12,ty+j*20)});
+    c.font='15px '+F;c.fillStyle='#555';c.fillText(fit('×'+it.cnt+'　単価 '+yen(it.unit)+(it.ref?'　買取表 '+yen(it.ref):''),CW-24),x+12,ty+46);
+    c.fillStyle='#c8102e';c.fillRect(x+12,ty+72,CW-24,48);c.fillStyle='#fff';c.font='bold 22px '+F;c.fillText(fit(txt(it),CW-40),x+20,ty+84);
+    if(it.memo){c.fillStyle='#1f1d1a';c.font='bold 15px '+F;wrap(it.memo,CW-24,3).forEach(function(l,j){c.fillText(l,x+12,ty+130+j*19)})}
+  });
+  if(ST.cm){c.fillStyle='#1f1d1a';c.font='bold 18px '+F;wrap('コメント：'+ST.cm,W-P*2,3).forEach(function(l,j){c.fillText(l,P,HEAD+P+rows*(CH+G)+j*24)})}
+  return cv.toDataURL('image/jpeg',.86).split(',')[1];
+})}
+document.getElementById('go').onclick=function(){save();var b=this,its=items(),er=document.getElementById('er');ST.cm=(document.getElementById('cm').value||'').trim();
+  var bad=its.filter(function(it){return it.kind==='price'&&!(it.price>0)});if(bad.length){er.textContent='「この価格に」の単価を入れてください';return}
+  if(!its.length&&!ST.cm){er.textContent='カードの指示かコメントを入れてください';return}
+  b.disabled=true;b.textContent='画像を作成中…';
+  (its.length?sheet(its):Promise.resolve('')).then(function(img){b.textContent='送信中…';
+    google.script.run.withSuccessHandler(function(){document.getElementById('w').innerHTML='<div class="msg">✅ 差し戻しを店舗に送りました。<br>このページは閉じて大丈夫です。</div>';document.getElementById('ft').style.display='none'})
+      .withFailureHandler(function(e){b.disabled=false;b.textContent='差し戻す';er.textContent='送れませんでした：'+(e&&e.message||e)})
+      .kRejectSubmit(D.id,D.k,{items:its.map(function(it){var o={};for(var x in it)if(x!=='img')o[x]=it[x];return o}),comment:ST.cm,image:img,photos:PH});
+  });
+};
+draw();
+</script></body></html>`;
 
 /* ---------- 査定ログ（承認ライン以上の買取の明細を、査定者つきで1行ずつためる） ---------- */
 var K_LOG_COLS = ['日時', '店舗', '受付番号', '査定者', '依頼番号', 'マイカ取引ID', 'お客様', '買取合計', '商品', '状態', '種類', '枚数', '単価', '小計', '買取表', '買取表比', '買取表のタブ', '警告', '枚数確認'];

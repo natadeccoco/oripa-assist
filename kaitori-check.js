@@ -6,7 +6,7 @@
   if (location.hostname !== 'pos.mycalinks.com') { alert('マイカ（pos.mycalinks.com）を開いてから押してください'); return; }
   var old = document.getElementById('ndk-kaitori-host'); if (old) old.remove();
 
-  var VERSION = '2026-10-31 版O';
+  var VERSION = '2026-10-31 版P';
   var GAS = 'https://script.google.com/macros/s/AKfycbwXHuu-X3L0qzJhvaszEIm-1xdeNIqJACQ0uM7mz5Q0hvwfdF9IuQiTKr3qmscNVmnhcQ/exec';
   var FB_URL = 'https://script.google.com/macros/s/AKfycbwl-ZCZ1LyefvSzEGkBEpTFTuFyvW0p-AYye6jBWaLP9t7-bC9_Owfeh4jKScNkFys6Fw/exec';
   var SHORT = { 322: '柏', 323: '津田沼', 324: '松戸', 325: '横浜', 326: '中野', 327: '町田', 328: '千葉中央', 390: '通販', 409: 'お台場' };
@@ -86,6 +86,7 @@
     '.thumbs{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}.thumbs img{width:70px;height:70px;object-fit:cover;border-radius:6px}' +
     '.pick{font:inherit;font-size:14px;font-weight:700;padding:5px 8px;border:1.5px solid #1f1d1a;border-radius:8px;width:220px;background:#fff}' +
     '.fin{background:#fff;border:2px solid #1f1d1a;border-radius:12px;padding:12px 14px;margin:10px 0;display:flex;flex-wrap:wrap;gap:10px;align-items:center}.fin .t{flex:1 1 320px}.fin .who{order:2}.fin #fin{order:3}.fin input{padding:8px 10px;border:1.5px solid #d6d2c8;border-radius:8px;font:inherit;width:150px}.fin .b{font-size:15px}' +
+    '.fbbox{background:#fff;border:2px solid #c8102e;border-radius:12px;padding:8px 12px;margin:-4px 0 10px}.fbi{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;padding:5px 0;border-bottom:1px dashed #eee}.fbi .mk{font-size:16px}.fbc{padding-top:6px;font-weight:700}.f.fb{background:#c8102e;color:#fff}tr.fbrow td{background:#fff0f2}td .f.fb{display:inline-block;background:#c8102e;color:#fff;padding:2px 8px;border-radius:6px}' +
     '.st{padding:10px 14px;border-radius:10px;font-weight:800;margin:10px 0}.st.wait{background:#fff4c2}.st.ok{background:#e3f4e6;color:#15803d}.st.ng{background:#fff0f2;color:#c8102e}' +
     '.fb{position:absolute;right:18px;bottom:18px}' +
     '.photo{margin:10px 0;padding:10px 12px;border-radius:8px;background:#e3f4e6;color:#14532d;font-weight:700;font-size:13px}' +
@@ -252,7 +253,7 @@
     if (m.ref && m.isPsa && unit < m.ref * RULE.psaLow) f.push({ lv: 'yel', t: 'PSAが買取表の' + Math.round(unit / m.ref * 100) + '%です。減額が大きすぎないかご確認ください', d: label + '　買取表 ' + yen(m.ref) + ' → 入力 ' + yen(unit) });
     if (m.ref && m.isBox && unit < m.ref * RULE.boxLow) f.push({ lv: 'yel', t: 'BOXが買取表の' + Math.round(unit / m.ref * 100) + '%です。減額が大きすぎないかご確認ください', d: label + '　買取表 ' + yen(m.ref) + ' → 入力 ' + yen(unit) });
     if (!m.isBox && !m.hanyo && cnt >= RULE.sameCard && unit >= RULE.sameCardMin) f.push({ lv: 'yel', t: '同じカードが' + cnt + '枚です。枚数をご確認ください', d: label + ' × ' + cnt + '（' + yen(unit) + ' × ' + cnt + ' ＝ ' + yen(unit * cnt) + '）' });
-    m.flags = f; m.unitIn = unit; m.cntIn = cnt; gradeFlag(m); return m;
+    m.flags = f; m.unitIn = unit; m.cntIn = cnt; m.pid = c.product_id; gradeFlag(m); return m;
   }
   // 状態（ギズランク）に対して高すぎないか：状態は商品名の《》か、あとから読む商品情報で分かる
   function gradeFlag(m) {
@@ -319,7 +320,7 @@
     try {
       var j = await gas({ action: 'kstatus', tx: t.id });
       if (S.tx !== t) return;
-      if (j.approval) saveReq({ kind: 'approval', id: j.approval.id, status: j.approval.status, by: j.approval.status === '承認待ち' ? '' : j.approval.by });
+      if (j.approval) saveReq({ kind: 'approval', id: j.approval.id, status: j.approval.status, by: j.approval.status === '承認待ち' ? '' : j.approval.by, fb: j.approval.fb || null });
       if (j.confirm) saveConf({ id: j.confirm.id, by: j.confirm.by });
       if (j.check) saveChk({ id: j.check.id, by: j.check.by, at: j.check.at });
     } catch (e) { }
@@ -334,6 +335,37 @@
     if (S.tx !== t) return;
     S.lines.forEach(function (m, i) { var x = map[(t.transaction_carts[i] || {}).product_id] || {}; m.img = x.img || ''; if (!m.cond && x.cond) m.cond = x.cond; gradeFlag(m); });
     renderDetail();
+  }
+  // 差し戻し：本部の指示（カードごと）を今のマイカの明細と照らし合わせる
+  function fbMatch(ri) {
+    var res = { items: [], byLine: {} };
+    if (!ri || ri.kind !== 'approval' || ri.status !== '差し戻し' || !ri.fb) return res;
+    var used = {};
+    (ri.fb.items || []).forEach(function (it, k) {
+      var li = -1;
+      S.lines.forEach(function (m, i) { if (li < 0 && !used[i] && it.pid && m.pid === it.pid && (!it.cond || m.cond === it.cond)) li = i; });
+      if (li < 0) S.lines.forEach(function (m, i) { if (li < 0 && !used[i] && m.dn === it.n) li = i; });
+      if (li >= 0) used[li] = 1;
+      var m = li >= 0 ? S.lines[li] : null, ok = null, now = '';
+      if (it.kind === 'price') { ok = !!m && m.unit === Number(it.price); now = m ? '今 ' + yen(m.unit) : '明細にありません'; }
+      else if (it.kind === 'none') { ok = !m; now = m ? 'まだ明細にあります' : '明細から外れています'; }
+      else if (it.kind === 'count') { now = m ? '今 ×' + m.cnt : ''; }
+      var text = it.kind === 'price' ? yen(it.unit) + ' → ' + yen(it.price) + ' に' : it.kind === 'none' ? '買取しない（お客様に返却）' : it.kind === 'cond' ? '状態を見直してください' : it.kind === 'count' ? '枚数を確認してください' : '確認してください';
+      if (it.memo) text += '（' + it.memo + '）';
+      var o = { no: '①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳'.charAt(k) || '', it: it, ok: ok, now: now, text: text };
+      res.items.push(o); if (li >= 0) res.byLine[li] = o;
+    });
+    return res;
+  }
+  function fbPanel(ri, fbm) {
+    var fb = ri.fb || {};
+    var h = '<div class="st ng">↩️ 差し戻されました（' + esc(ri.by || fb.by || '') + '）。' + (fb.items || fb.comment ? '本部の指示どおりにマイカを直して「更新」を押し、もう一度承認を依頼してください。' : 'LINE WORKSのグループで理由を確認してください') + '</div>';
+    if (fbm.items.length || fb.comment) {
+      h += '<div class="fbbox">' + fbm.items.map(function (o) {
+        return '<div class="fbi"><span class="mk">' + (o.ok === true ? '✅' : o.ok === false ? '❌' : '👀') + '</span><b>' + o.no + ' ' + esc(o.it.n) + (o.it.cond ? '《' + esc(o.it.cond) + '》' : '') + '</b><div>' + esc(o.text) + (o.now ? '　<span class="sub">' + esc(o.now) + '</span>' : '') + '</div></div>';
+      }).join('') + (fb.comment ? '<div class="fbc">本部のコメント：' + esc(fb.comment) + '</div>' : '') + '</div>';
+    }
+    return h;
   }
   function stKey() { return 'ndk_kaitori_req_' + S.tx.id; }
   function reqInfo() { try { return JSON.parse(localStorage.getItem(stKey()) || 'null'); } catch (e) { return null; } }
@@ -360,17 +392,20 @@
     if (ri && ri.kind === 'confirm') { ci = ri; ri = null; }
     var st = '';
     var apSt = ri && ri.kind === 'approval' ? ri.status : ''; // 承認の結果は上の「本部承認」の枠に出す
-    if (ri && ri.kind === 'approval' && ri.status !== '承認') st = ri.status === '差し戻し' ? '<div class="st ng">↩️ 差し戻されました（' + esc(ri.by || '') + '）。LINE WORKSのグループで理由を確認してください</div>' : '<div class="st wait">承認待ち（依頼番号 ' + esc(ri.id) + '）… 結果は自動で反映されます</div>';
+    var fbm = fbMatch(ri);
+    if (ri && ri.kind === 'approval' && ri.status !== '承認') st = ri.status === '差し戻し' ? fbPanel(ri, fbm) : '<div class="st wait">承認待ち（依頼番号 ' + esc(ri.id) + '）… 結果は自動で反映されます</div>';
     if (ci && flags.length) st = '<div class="st ok">✅ 警告を確認しました（' + esc(ci.by || '') + '）</div>' + st;
     var mustConf = flags.length && !ci, ck = chkInfo();
     if (ck && !S.pick && ck.by) { S.pick = S.staff = ck.by; }
     var fin = ck ? '<div class="st ok">✅ 最終チェック済み（' + esc(ck.by || '') + (ck.at ? '・' + hm(ck.at) : '') + '）</div>'
       : '<div class="fin"><div class="t"><b>最終チェック（すべての買取で必ず）</b><div class="sub">明細・枚数・金額・状態をマイカと実物で確かめたら、押してください。' + (need ? '本部への承認依頼はそのあとです。' : '') + '</div></div>' +
         '<div class="who"><span class="sub">査定した人：</span><b>' + esc(S.pick) + '</b> <button class="b g s" id="chgName">名前を変える</button></div><button class="b" id="fin"' + (mustConf || S.syncing ? ' disabled title="先に警告を見直してください"' : '') + '>最終チェックをする</button></div>';
-    var rows = S.lines.map(function (m) {
+    var rows = S.lines.map(function (m, li) {
       var lv = m.flags.some(function (f) { return f.lv === 'red'; }) ? 'red' : m.flags.length ? 'yel' : '';
+      var fbi = fbm.byLine[li];
       var ref = m.ref ? yen(m.ref) + '<div class="sub">' + esc((m.refs[0] || {}).r ? m.refs[0].r.t : '') + '</div>' : '<span class="sub">' + esc(m.note || (m.hanyo ? '汎用' : '買取表になし')) + '</span>';
-      return '<tr class="' + lv + '"><td class="th">' + thumb(m) + '</td><td class="l nm"><b>' + esc(m.dn) + '</b>' + (m.cond ? ' <span class="pill cond">' + esc(m.cond) + '</span>' : '') +
+      return '<tr class="' + lv + (fbi ? ' fbrow' : '') + '"><td class="th">' + thumb(m) + '</td><td class="l nm"><b>' + esc(m.dn) + '</b>' + (m.cond ? ' <span class="pill cond">' + esc(m.cond) + '</span>' : '') +
+        (fbi ? '<span class="f fb">' + (fbi.ok ? '✅' : '↩️') + ' 本部の指示' + (fbi.no ? '（' + fbi.no + '）' : '') + '：' + esc(fbi.text) + '</span>' : '') +
         m.flags.map(function (f) { return '<span class="f ' + f.lv + '">' + (f.lv === 'red' ? '🚨 ' : '⚠️ ') + esc(f.t) + '</span>'; }).join('') + '</td>' +
         '<td class="cnt' + (m.cnt >= 2 ? ' many' : '') + '">×' + m.cnt + '</td><td><b>' + yen(m.unit) + '</b></td><td>' + ref + '</td>' +
         '<td><span class="ratio' + (m.ratio && m.ratio >= RULE.high ? ' red' : '') + '">' + (m.ratio ? Math.round(m.ratio * 100) + '%' : '-') + '</span></td><td><b>' + yen(m.unit * m.cnt) + '</b></td></tr>';
@@ -495,7 +530,7 @@
           total: t.total_price, line: ap.line, reason: approval ? m.querySelector('#rs').value : '', warnCount: flags.length, warnText: warnText(),
           text: S.lines.slice(0, 60).map(lineText).join('\n') + (S.lines.length > 60 ? '\nほか' + (S.lines.length - 60) + '行' : ''),
           comment: m.querySelector('#cm').value.trim(), countChecked: S.countOk === t.id, image: sheet, reception: t.reception_number || '',
-          lines: approval ? S.lines.map(function (q) { return { n: q.dn, cond: q.cond || '', cat: q.cat || '', cnt: q.cnt, unit: q.unit, ref: q.ref || '', tab: (q.refs[0] || {}).r ? q.refs[0].r.t : '', flags: q.flags.map(function (f) { return (f.lv === 'red' ? '🚨' : '⚠️') + f.t; }).join(' / ') }; }) : [], images: images, txId: t.id, staff: S.staff };
+          lines: approval ? S.lines.map(function (q) { return { n: q.dn, cond: q.cond || '', cat: q.cat || '', cnt: q.cnt, unit: q.unit, ref: q.ref || '', pid: q.pid || '', img: q.img || '', tab: (q.refs[0] || {}).r ? q.refs[0].r.t : '', flags: q.flags.map(function (f) { return (f.lv === 'red' ? '🚨' : '⚠️') + f.t; }).join(' / ') }; }) : [], images: images, txId: t.id, staff: S.staff };
         var j = await fetch(GAS, { method: 'POST', body: JSON.stringify(body) }).then(function (r) { return r.json(); });
         if (!j.ok) throw new Error(j.error || '送信できませんでした');
         if (approval) saveReq({ kind: kind, id: j.id, status: j.status || '承認待ち', by: j.by || '' }); else saveConf({ id: j.id, by: name });
@@ -566,7 +601,7 @@
       if (S.tx !== tx) { clearInterval(S.pollT); return; }
       try {
         var j = await gas({ action: 'kstatus', id: ri.id });
-        if (j.status && j.status !== '承認待ち') { ri.status = j.status; ri.by = j.by; saveReq(ri); clearInterval(S.pollT); renderDetail(); }
+        if (j.status && j.status !== '承認待ち') { ri.status = j.status; ri.by = j.by; ri.fb = j.fb || null; saveReq(ri); clearInterval(S.pollT); renderDetail(); }
       } catch (e) { }
     }, 8000);
   }
