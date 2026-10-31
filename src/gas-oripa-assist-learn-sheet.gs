@@ -1,4 +1,33 @@
-/** オリパ作成アシスト用（学習・店舗オリパシートへの書き出し）。呼び出しはコード.gsの doGet / doPost にある action=learn / oripatabs / oripasheet から */
+/**
+ * オリパ作成アシスト専用（2026/10/31〜）
+ *  ・スタッフの手直しの学習（action=learn）… 記録先はスプレッドシート「オリパ承認履歴」の「オリパ学習」タブ
+ *  ・店舗オリパシートへの書き出し（action=oripatabs / oripasheet）
+ * ほかのツールのGAS（オリパ本部承認など）とは別のプロジェクトにして、上書きで消えないようにしている。
+ * 店舗オリパシートを足すときは、スクリプト プロパティ ORIPA_SHEETS に {"柏":"シートID", ...} を入れる。
+ */
+var P = PropertiesService.getScriptProperties();
+var LEARN_BOOK = '1z6wyeti5dCLpo78bbuT-WUa_5PpSSdRuI6boRHig5EE'; // オリパ承認履歴
+function json(o) { return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON); }
+function doGet(e) {
+  var p = (e && e.parameter) || {};
+  try {
+    if (p.action === 'learn') return json({ ok: true, scores: learnScores() });
+    if (p.action === 'oripatabs') return json(oripaTabs(String(p.store || '')));
+    return json({ ok: true, app: 'オリパ作成アシスト' });
+  } catch (err) { return json({ ok: false, error: String(err && err.message || err) }); }
+}
+function doPost(e) {
+  try {
+    var d = JSON.parse(e.postData.contents);
+    if (d.action === 'learn') return json(learnPost(d));
+    if (d.action === 'oripasheet') return json(oripaWrite(d));
+    if (d.action === 'tiktoksheet') return json(tiktokWrite(d));
+    return json({ ok: false, error: 'unknown action' });
+  } catch (err) { return json({ ok: false, error: String(err && err.message || err) }); }
+}
+/** 最初に1回だけ実行して、権限を許可する（シートが読めるか確かめる） */
+function setupCheck() { Logger.log(SpreadsheetApp.openById(LEARN_BOOK).getName()); Logger.log(oripaTabs('津田沼').name); Logger.log(SpreadsheetApp.openById(TIKTOK_BOOK).getName()); }
+
 /* ---------- 店舗オリパシートへの書き出し（オリパ作成アシスト）：店舗ごとのスプレッドシート（スクリプト プロパティ ORIPA_SHEETS に {"津田沼":"シートID"}）の指定タブに、ほかのオリパと同じ形でブロックを足す ---------- */
 function oripaSheets() { var o = { '津田沼': '1ViS8Der6dWCMNi8Z6mx35MAybv11BDI6JTa6sC2YlZc' }; try { var x = JSON.parse(P.getProperty('ORIPA_SHEETS') || '{}'); Object.keys(x).forEach(function (k) { o[k] = x[k]; }); } catch (e) { } return o; } // 店舗名 → 店舗オリパシートのID（ほかの店はスクリプト プロパティ ORIPA_SHEETS で足せる）
 function oripaTabs(store) {
@@ -54,7 +83,7 @@ function oripaWrite(d) {
 
 /* ---------- オリパの学習：スタッフが提案から外した・足した・残したものを数え、次の提案に生かす ---------- */
 function learnSheet() {
-  var ss = SpreadsheetApp.openById(prop('SHEET_ID')), sh = ss.getSheetByName('オリパ学習');
+  var ss = SpreadsheetApp.openById(LEARN_BOOK), sh = ss.getSheetByName('オリパ学習');
   if (!sh) { sh = ss.insertSheet('オリパ学習'); sh.appendRow(['日時', '店舗', '価格帯', '値段', '結果', '商品キー', '商品名', 'メモ']); sh.setFrozenRows(1); }
   return sh;
 }
@@ -76,4 +105,36 @@ function learnPost(d) {
   learnSheet().getRange(learnSheet().getLastRow() + 1, 1, lr.length, 8).setValues(lr.map(function (r) { return [now, String(d.store || ''), String(d.base || ''), Number(d.price) || '', String(r.r || ''), String(r.k || ''), String(r.name || ''), '']; }));
   CacheService.getScriptCache().remove('learn1');
   return { ok: true };
+}
+
+/* ---------- 全店オリパ：「TikTokオリパシート」のいちばん左に、日付のタブを作って書き出す ---------- */
+var TIKTOK_BOOK = '1khTu7sDwIdup4OxbnYO-X02cCYXa3wORWYTD2zmTJ1o'; // TikTokオリパシート
+var TIKTOK_TPL = '千葉中央店　3000円オリパ'; // 見た目の元にするタブ
+function tiktokWrite(d) {
+  var ss = SpreadsheetApp.openById(TIKTOK_BOOK);
+  var base0 = String(d.tab || Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy.M.d')).replace(/[\[\]\*\?\/\\:]/g, '.'), nm = base0, k = 2;
+  while (ss.getSheetByName(nm)) nm = base0 + '（' + (k++) + '）';
+  var tpl = ss.getSheetByName(TIKTOK_TPL) || ss.getSheets()[0]; // ほかのタブと同じ見た目にするため、いつものタブを元にして作る
+  var sh = ss.insertSheet(nm, 0, { template: tpl });
+  var mr = sh.getMaxRows(), mc = sh.getMaxColumns();
+  sh.getRange(1, 1, 1, mc).clearContent();
+  if (mr > 1) sh.getRange(2, 1, mr - 1, mc).clearContent().clearDataValidations().clearFormat();
+  var yen = '[$¥-411]#,##0', yen2 = '¥#,##0;[Red]-¥#,##0';
+  var items = (d.rows || []).slice();
+  var lastOne = items.filter(function (r) { return r.role === 'ラストワン'; }), others = items.filter(function (r) { return r.role !== 'ラストワン'; });
+  var list = lastOne.map(function (r) { return { name: '【ラストワン】' + r.name, cond: r.cond, cost: r.cost, n: r.n, store: r.store }; }).concat(others);
+  if (d.fillerN > 0) list.push({ name: '下枠', cond: '', cost: Math.round((Number(d.fillerCost) || 0) / d.fillerN), n: d.fillerN, store: d.fillerStore || '' });
+  var out = [[String(d.title || ('TikTok' + d.price)), '商品名', '状態', '原価', '個数', '総額', '店舗', '到着チェック']];
+  list.forEach(function (r, i) { var row = i + 2; out.push(['', r.name || '', r.cond || '', Math.round(Number(r.cost) || 0), Number(r.n) || 0, '=D' + row + '*E' + row, r.store || '', false]); });
+  var end = list.length + 1;
+  sh.getRange(1, 1, out.length, 8).setValues(out);
+  sh.getRange(2, 4, list.length, 1).setNumberFormat(yen); sh.getRange(2, 6, list.length, 1).setNumberFormat(yen);
+  sh.getRange(2, 8, list.length, 1).insertCheckboxes();
+  sh.getRange(2, 1).setDataValidation(SpreadsheetApp.newDataValidation().requireDate().setAllowInvalid(false).setHelpText('販売日を入力（例: 2026/10/30）').build()).setNumberFormat('"販売日 "yyyy/mm/dd');
+  var b = end + 1;
+  var foot = [['原価合計', '=SUM(F2:F' + end + ')'], ['販売口数', Number(d.init) || 0], ['販売単価', Number(d.price) || 0], ['売上', '=F' + (b + 1) + '*F' + (b + 2)],
+    ['手数料(7%)', '=F' + (b + 3) + '*0.07'], ['利益', '=F' + (b + 3) + '-F' + b + '-F' + (b + 4)], ['粗利益率', '=IFERROR(F' + (b + 5) + '/F' + (b + 3) + ',0)']];
+  sh.getRange(b, 5, foot.length, 2).setValues(foot);
+  sh.getRange(b, 6, foot.length, 1).setNumberFormat(yen2); sh.getRange(b + 1, 6).setNumberFormat('0'); sh.getRange(b + 6, 6).setNumberFormat('0.00%');
+  return { ok: true, tab: sh.getName(), url: ss.getUrl() + '#gid=' + sh.getSheetId() };
 }

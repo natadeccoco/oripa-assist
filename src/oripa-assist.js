@@ -35,7 +35,7 @@
   }
   // スタッフの手直しから学ぶ：提案から外したものは下げ、足したものは上げる（本部のシート「オリパ学習」に記録）
   var LEARN = {};
-  function loadLearn() { if (!APPROVAL_URL) return; fetch(APPROVAL_URL + '?action=learn').then(function (r) { return r.json(); }).then(function (j) { if (j && j.ok && j.scores) LEARN = j.scores; }).catch(function () { }); }
+  function loadLearn() { if (!ASSIST_URL) return; fetch(ASSIST_URL + '?action=learn').then(function (r) { return r.json(); }).then(function (j) { if (j && j.ok && j.scores) LEARN = j.scores; }).catch(function () { }); }
   function learnScore(p, base) { var v = (LEARN[base] || {})[nk(p)] || 0; return Math.max(-3, Math.min(3, v)); }
   function sendLearn(pt) {
     try {
@@ -46,7 +46,7 @@
       Object.keys(org).forEach(function (k) { rows.push({ k: k, name: org[k], r: fin[k] ? '残した' : '外した' }); });
       Object.keys(fin).forEach(function (k) { if (!org[k]) rows.push({ k: k, name: fin[k], r: '足した' }); });
       if (!rows.length) return;
-      fetch(APPROVAL_URL, { method: 'POST', body: JSON.stringify({ action: 'learn', store: ALL ? '全店' : shortName(S.sname), base: pt.base || '', price: pt.price, rows: rows }) }).catch(function () { });
+      fetch(ASSIST_URL, { method: 'POST', body: JSON.stringify({ action: 'learn', store: ALL ? '全店' : shortName(S.sname), base: pt.base || '', price: pt.price, rows: rows }) }).catch(function () { });
     } catch (e) { }
   }
   var histCache = {};
@@ -120,7 +120,7 @@
   document.body.appendChild(host);
   var root = host.attachShadow({ mode: 'open' });
   root.innerHTML = '<style>' + CSS() + '</style><div class="wrap"><div class="win">' +
-    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-10-31 版BF</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
+    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-10-31 版BG</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
     (ALL ? '' : '<div class="tabs"><button data-tab="make" class="on">新しく作る</button><button data-tab="refill">補充する</button></div>') +
     '<button class="x" id="close" title="閉じる">×</button></div>' +
     '<div class="bd" id="body"><div class="msg">読み込み中…</div></div></div></div>';
@@ -1111,7 +1111,7 @@
           '<button class="addc" data-fadd="' + i + '">＋<br>下枠を<br>足す</button></div></div>' +
         '<div class="note2">当たりが先に出て補充すると、平均で原価率が <b>' + pct(after) + '</b> くらいまで上がります</div>' +
         (pt.warn.length ? '<div class="warn">' + pt.warn.map(esc).join('<br>') + (APPROVAL_URL && !ALL && needTotal(pt) ? '<div class="shareq"><button class="ghost" data-share="' + i + '">在庫共有で足りない当たりを募集する</button></div>' : '') + '</div>' : '') +
-        '<div class="acts"><button class="ghost" data-detail="' + i + '">中身を一覧で見る</button>' + (ALL ? '<button class="primary" data-picklist="' + i + '">店舗ごとの集め先リスト</button>' : (APPROVAL_URL ? '<button class="ghost" data-sheet="' + i + '">店舗オリパシートに書き出す</button>' : '') + saveButtons(pt, i)) + '</div>' + apprLine(pt) +
+        '<div class="acts"><button class="ghost" data-detail="' + i + '">中身を一覧で見る</button>' + (ALL ? '<button class="ghost" data-tts="' + i + '">スプレッドシートに飛ばす</button><button class="primary" data-picklist="' + i + '">店舗ごとの集め先リスト</button>' : (APPROVAL_URL ? '<button class="ghost" data-sheet="' + i + '">店舗オリパシートに書き出す</button>' : '') + saveButtons(pt, i)) + '</div>' + apprLine(pt) +
         '</div>';
     }).join('') + '</div>';
   }
@@ -1119,6 +1119,7 @@
   function bindPatternButtons() {
     root.querySelectorAll('[data-detail]').forEach(function (b) { b.onclick = function () { showDetail(S.patterns[Number(b.dataset.detail)]); }; });
     root.querySelectorAll('[data-save]').forEach(function (b) { b.onclick = function () { confirmSave(S.patterns[Number(b.dataset.save)]); }; });
+    root.querySelectorAll('[data-tts]').forEach(function (b) { b.onclick = function () { tiktokSheet(S.patterns[Number(b.dataset.tts)]); }; });
     root.querySelectorAll('[data-sheet]').forEach(function (b) { b.onclick = function () { exportSheet(S.patterns[Number(b.dataset.sheet)]); }; });
     root.querySelectorAll('[data-share]').forEach(function (b) { b.onclick = function () { requestShare(S.patterns[Number(b.dataset.share)]); }; });
     root.querySelectorAll('[data-req]').forEach(function (b) { b.onclick = function () { requestApproval(S.patterns[Number(b.dataset.req)]); }; });
@@ -1136,6 +1137,7 @@
   }
 
   /* ---------- 本部承認（LINE WORKS）：任意の金額で作ったオリパは、承認されてから一時保存 ---------- */
+  var ASSIST_URL = 'https://script.google.com/macros/s/AKfycbyXiHK42OpTDoHAFg5-9xxLuFT3XeWlFldaUgOdvD5hXBEhEe4ZKBiKH80t9PR4xceK/exec'; // オリパ作成アシスト専用のGAS（学習・シート書き出し）。デプロイ後にURLを入れる
   var APPROVAL_URL = 'https://script.google.com/macros/s/AKfycbwXHuu-X3L0qzJhvaszEIm-1xdeNIqJACQ0uM7mz5Q0hvwfdF9IuQiTKr3qmscNVmnhcQ/exec';
   function needsApproval(pt) { return !!(APPROVAL_URL && pt.L && pt.L.free); }   // 任意の金額：承認が必須
   function canApprove(pt) { return !!APPROVAL_URL; }                              // 本部ルール：承認は任意（依頼してもしなくてもよい）
@@ -1438,7 +1440,7 @@
     var st = shortName(S.sname);
     var m = modal('<div class="mh">店舗オリパシートに書き出す</div><div class="frm"><div class="sm" id="shs">' + esc(st) + '店のシートを読み込み中…</div></div><div class="acts"><button class="ghost" data-x>やめる</button><button class="primary" data-ok disabled>書き出す</button></div>');
     m.querySelector('[data-x]').onclick = function () { m.remove(); };
-    fetch(APPROVAL_URL + '?action=oripatabs&store=' + encodeURIComponent(st)).then(function (r) { return r.json(); }).then(function (j) {
+    fetch(ASSIST_URL + '?action=oripatabs&store=' + encodeURIComponent(st)).then(function (r) { return r.json(); }).then(function (j) {
       if (!j.ok) throw new Error(j.error || '読み込めませんでした');
       if (!j.tabs) throw new Error('本部の仕組みが書き出しに対応していない状態です（更新中かもしれません）。少し待ってもう一度押すか、本部に連絡してください');
       var g = guessTab(j.tabs, pt), dt = new Date(), defTab = (pt.saveName || defaultName(pt.price)) + ' ' + (dt.getMonth() + 1) + '.' + dt.getDate();
@@ -1458,7 +1460,7 @@
           var isNew = (m.querySelector('[name=wm]:checked') || {}).value === 'new', ntn = m.querySelector('#nt').value.trim();
           if (isNew && !ntn) throw new Error('タブの名前を入れてください');
           var withCond = rows.some(function (x) { return x.cond && !/^A-?$/.test(x.cond); });
-          var r = await fetch(APPROVAL_URL, { method: 'POST', body: JSON.stringify({ action: 'oripasheet', store: st, newTab: isNew ? ntn : '', withCond: withCond, tab: m.querySelector('#tb').value, label: m.querySelector('#lb').value.trim(), price: pt.price, init: pt.init, rows: rows, fillerN: fN, fillerCost: fC }) }).then(function (x) { return x.json(); });
+          var r = await fetch(ASSIST_URL, { method: 'POST', body: JSON.stringify({ action: 'oripasheet', store: st, newTab: isNew ? ntn : '', withCond: withCond, tab: m.querySelector('#tb').value, label: m.querySelector('#lb').value.trim(), price: pt.price, init: pt.init, rows: rows, fillerN: fN, fillerCost: fC }) }).then(function (x) { return x.json(); });
           if (!r.ok) throw new Error(r.error || '書き出せませんでした');
           m.querySelector('.mbox').innerHTML = '<div class="mh">書き出しました</div><div class="sm">「' + esc(r.tab) + '」の' + r.row + '行目に「' + esc(r.title) + '」を足しました。</div><div class="acts"><a class="ghost" href="' + esc(r.url) + '" target="_blank" rel="noopener" style="text-decoration:none;display:inline-flex;align-items:center">シートを開く</a><button class="primary" data-x>OK</button></div>';
           m.querySelector('[data-x]').onclick = function () { m.remove(); };
@@ -1466,6 +1468,30 @@
       };
     }).catch(function (e) { m.querySelector('#shs').textContent = e.message; m.querySelector('#shs').className = 'err'; });
   }
+  /* 全店オリパ：「TikTokオリパシート」のいちばん左に、今日の日付のタブを作って書き出す（ほかのタブと同じ形：商品名・状態・原価・個数・総額・店舗・到着チェック） */
+  function tiktokSheet(pt) {
+    var dt = new Date(), ymd = dt.getFullYear() + '.' + (dt.getMonth() + 1) + '.' + dt.getDate();
+    var m = modal('<div class="mh">スプレッドシートに飛ばす</div><div class="frm">' +
+      '<div class="sm">「TikTokオリパシート」のいちばん左に、新しいタブ「' + ymd + '」を作って書き出します（同じ日に2つ目なら「' + ymd + '（2）」）。当たりは1枚ずつ、店舗の名前と到着チェック付きで、下枠は「下枠」1行にまとめます。</div>' +
+      '<label>オリパの呼び名（左上に入ります） <input id="tl" value="' + esc('TikTok' + pt.price + '　' + ((S.themes || []).length || (S.rares || []).length ? themeLabel() : '')) + '"></label></div>' +
+      '<div class="acts"><button class="ghost" data-x>やめる</button><button class="primary" data-ok>書き出す</button></div>');
+    m.querySelector('[data-x]').onclick = function () { m.remove(); };
+    var ok = m.querySelector('[data-ok]');
+    ok.onclick = async function () {
+      ok.disabled = true; ok.textContent = '書き出し中…';
+      try {
+        if (!ASSIST_URL) throw new Error('本部の書き出しの仕組みがまだ準備中です。本部に連絡してください');
+        var rows = flatHits(pt.hits).map(function (h) { return { role: h.role.replace('（セット）', ''), name: h.p.name + (h.setOf ? '（セット）' : '') + (h.p.costTmp ? '（原価は仮：マスタの70%）' : ''), cond: sheetCond(h.p), cost: h.p.cost, n: h.n, store: h.p.sname || '' }; });
+        var fN = pt.filler.reduce(function (a, x) { return a + x.n; }, 0), fC = pt.filler.reduce(function (a, x) { return a + x.p.cost * x.n; }, 0);
+        var fS = []; pt.filler.forEach(function (x) { String(x.p.sname || '').split('・').forEach(function (k) { if (k && fS.indexOf(k) < 0) fS.push(k); }); });
+        var r = await fetch(ASSIST_URL, { method: 'POST', body: JSON.stringify({ action: 'tiktoksheet', tab: ymd, title: m.querySelector('#tl').value.trim(), price: pt.price, init: pt.init, rows: rows, fillerN: fN, fillerCost: fC, fillerStore: fS.join('・') }) }).then(function (x) { return x.json(); });
+        if (!r.ok) throw new Error(r.error || '書き出せませんでした');
+        m.querySelector('.mbox').innerHTML = '<div class="mh">書き出しました</div><div class="sm">「TikTokオリパシート」のタブ「' + esc(r.tab) + '」に書き出しました。</div><div class="acts"><a class="ghost" href="' + esc(r.url) + '" target="_blank" rel="noopener" style="text-decoration:none;display:inline-flex;align-items:center">シートを開く</a><button class="primary" data-x>OK</button></div>';
+        m.querySelector('[data-x]').onclick = function () { m.remove(); };
+      } catch (e) { ok.disabled = false; ok.textContent = '書き出す'; var er = m.querySelector('.err') || m.querySelector('.frm').appendChild(document.createElement('div')); er.className = 'err'; er.textContent = e.message; }
+    };
+  }
+  function themeLabel() { var a = []; THEMES.forEach(function (x) { if ((S.themes || []).indexOf(x.k) >= 0) a.push(x.label.replace(/系$/, '')); }); RARES.forEach(function (x) { if ((S.rares || []).indexOf(x.k) >= 0) a.push(x.label); }); return a.join('・'); }
   function defaultName(price) { return price.toLocaleString('ja-JP').replace(/,/g, '') + '円オリパ'; }
 
   function confirmSave(pt) {
