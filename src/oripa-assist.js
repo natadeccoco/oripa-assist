@@ -105,7 +105,7 @@
   document.body.appendChild(host);
   var root = host.attachShadow({ mode: 'open' });
   root.innerHTML = '<style>' + CSS() + '</style><div class="wrap"><div class="win">' +
-    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-10-31 版BB</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
+    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-10-31 版BC</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
     (ALL ? '' : '<div class="tabs"><button data-tab="make" class="on">新しく作る</button><button data-tab="refill">補充する</button></div>') +
     '<button class="x" id="close" title="閉じる">×</button></div>' +
     '<div class="bd" id="body"><div class="msg">読み込み中…</div></div></div></div>';
@@ -1569,7 +1569,7 @@
         '<div class="rfq"><span>まとめて提案：</span>当たり <input id="qh" type="number" min="0" value="' + Math.max(nHit, 1) + '"> 枚 ＋ 下枠 <input id="qf" type="number" min="0" value="' + fN + '"> 枚 <button class="ghost" id="qgo">この枚数で選び直す</button></div>' +
         '<div class="mh2 s">同じくらいの当たり' + (firstPick.length ? '' : '（ちょうどいいものが無いので、原価が近い順）') + '</div>' + (same.length ? '<div class="cards">' + same.map(function (p) { return cardSel(p, '近いもの'); }).join('') + '</div>' : '<div class="msg sub">候補がありません。下で探してください</div>') +
         (R.extra.length ? '<div class="mh2 s">探して足したもの</div><div class="cards">' + R.extra.map(function (p) { return cardSel(p, '探した'); }).join('') + '</div>' : '') +
-        '<div class="srch"><input id="rq" placeholder="カード名・BOX名で在庫から探す"><button class="ghost" id="rqs">探す</button></div><div id="rqr"></div>' +
+        '<div class="srch"><input id="rq" placeholder="カード名・BOX名で在庫から探す（空欄で押すと全部）"><button class="ghost" id="rqs">探す</button></div><div id="rqr"></div>' +
         (cheaper.length ? '<div class="mh2 s">原価を抑えたいとき（少し下の当たり）</div><div class="cards">' + cheaper.map(function (p) { return cardSel(p, '控えめ'); }).join('') + '</div>' : '') +
         '<div class="mh2 s">下枠（' + esc(RL.fill.at ? '【@' + RL.fill.at + '】' : RL.fill.packOnly ? 'パック' : 'マスタ' + yen(RL.fill.single) + '以上の' + fillKindName(RL)) + 'が基本。ほかのものも足せます）</div><div class="cards">' +
           R.fl.map(function (x, k) { return '<div class="rfc on">' + card({ p: x.p, n: x.n, role: '下枠' }, false) + '<div class="rfn"><button class="ghost" data-frm="' + k + '">−</button><b>' + x.n + '</b><button class="ghost" data-fad="' + k + '">＋</button></div></div>'; }).join('') +
@@ -1584,10 +1584,11 @@
       $('#rsug').querySelectorAll('[data-fad]').forEach(function (b) { b.onclick = function () { var x = R.fl[Number(b.dataset.fad)]; if (x.n < x.p.stock) x.n++; draw(); }; });
       $('#rsug').querySelectorAll('[data-frm]').forEach(function (b) { b.onclick = function () { var k = Number(b.dataset.frm); R.fl[k].n--; if (R.fl[k].n <= 0) R.fl.splice(k, 1); draw(); }; });
       var rsearch = function () {
-        var q = $('#rq').value.trim(); if (!q) return;
-        var t = target / Math.max(drawn.length, 1);
-        var r = S.inv.filter(function (p) { return p.kind !== 'filler' && p.stock > 0 && p.name.indexOf(q) >= 0; }).sort(function (x, y) { return Math.abs(Math.log(Math.max(x.cost, 1) / Math.max(t, 1))) - Math.abs(Math.log(Math.max(y.cost, 1) / Math.max(t, 1))); }).slice(0, 24);
-        $('#rqr').innerHTML = '<div class="sm">押すと補充に入ります（原価が近い順）</div>' + candHTML(r, -1);
+        var q = $('#rq').value.trim(); // 空欄なら在庫すべて（出た当たりと同じ種類を先に、原価が近い順）
+        var t = target / Math.max(drawn.length, 1), dk = drawn[0] && drawn[0].kind;
+        var sameK = function (p) { return dk === 'box' ? p.kind === 'box' : dk === 'pack' ? p.kind === 'pack' : (p.kind === 'card' || p.kind === 'psa'); };
+        var r = S.inv.filter(function (p) { return p.kind !== 'filler' && p.stock > 0 && (!q || p.name.indexOf(q) >= 0); }).sort(function (x, y) { return (sameK(y) ? 1 : 0) - (sameK(x) ? 1 : 0) || Math.abs(Math.log(Math.max(x.cost, 1) / Math.max(t, 1))) - Math.abs(Math.log(Math.max(y.cost, 1) / Math.max(t, 1))); }).slice(0, q ? 40 : 60);
+        $('#rqr').innerHTML = '<div class="sm">押すと補充に入ります（' + (q ? '「' + esc(q) + '」で' : '在庫すべてから') + '・同じ種類を先に、原価が近い順・' + r.length + '件）</div>' + candHTML(r, -1);
         $('#rqr').querySelectorAll('[data-pick]').forEach(function (b) { b.onclick = function () { var p = S.inv.find(function (x) { return x.id === Number(b.dataset.pick); }); if (!p) return; if (R.cands.indexOf(p) < 0) { R.cands.push(p); R.extra.push(p); } R.pick[p.id] = (R.pick[p.id] || 0) + 1; draw(); }; });
       };
       $('#rqs').onclick = rsearch; $('#rq').onkeydown = function (e) { if (e.key === 'Enter') rsearch(); };
