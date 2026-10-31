@@ -412,9 +412,9 @@ function kSnkrText(lines) { // 承認依頼の文章に付ける：PSA10のカ�
   (lines || []).filter(function (q) { return kIsPsa10(q.n); }).slice(0, 6).forEach(function (q) {
     var s; try { s = kSnkrPsa10(q.n); } catch (e) { s = { price: 0, why: '取得できませんでした' }; }
     var nm = String(q.n).replace(/《[^》]*》/g, '').slice(0, 30);
-    out.push('・' + nm + '\n　' + (s.price ? 'スニダン直近 ' + yen(s.price) + '（' + s.date + '）→ 買取 ' + yen(q.unit) + '（' + Math.round(q.unit / s.price * 100) + '%）' : 'スニダン：' + (s.why || '見つかりません')));
+    out.push('・' + nm + '\n　' + (s.url ? s.url : 'スニダン：' + (s.why || '見つかりません'))); // 金額は査定表の画像に載せるので、文章は売買履歴のURLだけ
   });
-  return out.length ? '\n\n［スニダン PSA10 直近の売買］\n' + out.join('\n') : '';
+  return out.length ? '\n\n［スニダン PSA10 売買履歴］\n' + out.join('\n') : '';
 }
 
 /* ---------- 査定ログ（承認ライン以上の買取の明細を、査定者つきで1行ずつためる） ---------- */
