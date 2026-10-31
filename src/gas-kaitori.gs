@@ -144,7 +144,10 @@ function kaitoriPost(d) {
   var snk = ''; try { snk = kSnkrText(d.lines); } catch (e) { console.error('スニダン: ' + e); }
   send(ch, { type: 'text', text: (head + (d.comment ? '\nコメント：' + d.comment : '') + snk).slice(0, 1990) });
   var sentSheet = false;
-  if (d.image) { try { send(ch, { type: 'image', fileId: uploadImage(d.image, 'kaitori_' + id + '.jpg') }); sentSheet = true; } catch (e) { imgErr = String(e.message || e); console.error(imgErr); } }
+  if (d.image) for (var tr = 0; tr < 3 && !sentSheet; tr++) { // 査定表の画像は必ず送る：失敗したら少し待って最大3回
+    try { send(ch, { type: 'image', fileId: uploadImage(d.image, 'kaitori_' + id + '.jpg') }); sentSheet = true; imgErr = ''; } catch (e) { imgErr = String(e.message || e); console.error(imgErr); Utilities.sleep(1500); }
+  }
+  if (d.image && !sentSheet) send(ch, { type: 'text', text: '※査定表の画像を送れませんでした。明細を文章で送ります（依頼番号 ' + id + '）' });
   if (!sentSheet && d.text) kSplit('［明細］\n' + d.text).forEach(function (x) { send(ch, { type: 'text', text: x }); });
   (d.images || []).slice(0, 10).forEach(function (b64, i) {
     try { send(ch, { type: 'image', fileId: uploadImage(b64, 'kaitori_' + id + '_photo' + (i + 1) + '.jpg') }); } catch (e) { imgErr = String(e.message || e); console.error(imgErr); }
