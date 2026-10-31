@@ -105,7 +105,7 @@
   document.body.appendChild(host);
   var root = host.attachShadow({ mode: 'open' });
   root.innerHTML = '<style>' + CSS() + '</style><div class="wrap"><div class="win">' +
-    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-10-31 版AZ</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
+    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-10-31 版BB</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
     (ALL ? '' : '<div class="tabs"><button data-tab="make" class="on">新しく作る</button><button data-tab="refill">補充する</button></div>') +
     '<button class="x" id="close" title="閉じる">×</button></div>' +
     '<div class="bd" id="body"><div class="msg">読み込み中…</div></div></div></div>';
@@ -1509,7 +1509,8 @@
       var cost = Number(p.average_wholesale_price) || 0, sell0 = Number(p.sell_price) || 0;
       if (!showAll && Math.max(sell0, cost) < item.sell_price) return; // 下枠（口単価未満）は出さない。小当たりまで全部出す
       var ex = hits.find(function (h) { return h.id === c.product_id; });
-      if (ex) ex.n += c.item_count; else hits.push({ id: c.product_id, name: c.product__displayNameWithMeta || c.product__display_name, img: c.product__image_url, n: c.item_count, cost: cost, sell: p.sell_price || 0 });
+      var hk = p.item_category_handle === 'BOX' ? 'box' : (p.item_category_handle === 'PACK' ? 'pack' : 'card'); // 出た当たりの種類（BOXが出たらBOXで補充を提案する）
+      if (ex) ex.n += c.item_count; else hits.push({ id: c.product_id, name: c.product__displayNameWithMeta || c.product__display_name, img: c.product__image_url, n: c.item_count, cost: cost, sell: p.sell_price || 0, kind: hk });
     });
     hits.sort(function (a, b) { return (b.sell || b.cost) - (a.sell || a.cost) || b.cost - a.cost; });
     hits.forEach(function (h, k) { h.role = k === 0 ? 'TOP' : Math.max(h.sell, h.cost) < item.sell_price ? '下枠' : roleOf(RL, item.sell_price, { sell: h.sell || h.cost }); });
@@ -1528,24 +1529,31 @@
 
   function suggestRefill(item, drawn) {
     if (!Array.isArray(drawn)) drawn = [drawn];
-    var hit = { name: drawn.map(function (h) { return h.name; }).join('・'), cost: drawn.reduce(function (a, h) { return a + h.cost; }, 0) };
+    var ref = function (h) { return h.cost > 0 ? h.cost : Math.round((h.sell || 0) * 0.7); }; // 原価が0のときはマスタの70%を目安にする
+    var tmpRef = drawn.some(function (h) { return !(h.cost > 0); });
+    var hit = { name: drawn.map(function (h) { return h.name; }).join('・'), cost: drawn.reduce(function (a, h) { return a + ref(h); }, 0) };
     var target = hit.cost, RL = learnFor(item.sell_price), price = item.sell_price;
     var dIds = drawn.map(function (h) { return h.id; }), seen = {}, same = [], cheaper = [], firstPick = [];
     drawn.forEach(function (h) { // 出た当たりごとに、同じくらい・少し下の候補を集める（重なりは1つに）
-      var t = h.cost;
-      var a = S.inv.filter(function (p) { return p.kind !== 'filler' && !isEnergy(p) && p.cost >= t * 0.6 && p.cost <= t * 1.15 && dIds.indexOf(p.id) < 0 && p.stock > 0; })
+      var t = ref(h), okK = function (p) { return h.kind === 'box' ? p.kind === 'box' : h.kind === 'pack' ? p.kind === 'pack' : (p.kind === 'card' || p.kind === 'psa'); }; // 出た当たりと同じ種類（BOX→BOX、シングル→シングル・PSA）
+      var a = S.inv.filter(function (p) { return p.kind !== 'filler' && okK(p) && !isEnergy(p) && p.cost >= t * 0.6 && p.cost <= t * 1.15 && dIds.indexOf(p.id) < 0 && p.stock > 0; })
         .map(function (p) { return { p: p, s: -Math.abs(Math.log(p.cost / t)) * 2 + Math.min(Math.log(Math.max(p.sell, 1) / Math.max(p.cost, 1)), 1.2) + Math.log(1 + stockOf(p)) * 0.3 }; })
         .sort(function (x, y) { return y.s - x.s; }).slice(0, drawn.length > 1 ? 5 : 8).map(function (x) { return x.p; });
-      var fp = a.find(function (p) { return firstPick.indexOf(p) < 0; }); if (fp) firstPick.push(fp);
+      var fpk = a.find(function (p) { return firstPick.indexOf(p) < 0; }); if (fpk) firstPick.push(fpk);
+      if (a.length < 6 && t > 0) a = a.concat(S.inv.filter(function (p) { return p.kind !== 'filler' && okK(p) && !isEnergy(p) && dIds.indexOf(p.id) < 0 && p.stock > 0 && p.cost > 0 && a.indexOf(p) < 0; }) // 少なければ、同じ種類で原価が近いものを足して出す（自動では選ばない）
+        .sort(function (x, y) { return Math.abs(Math.log(x.cost / t)) - Math.abs(Math.log(y.cost / t)); }).slice(0, 6 - a.length));
+      if (false) a = S.inv.filter(function (p) { return p.kind !== 'filler' && okK(p) && !isEnergy(p) && dIds.indexOf(p.id) < 0 && p.stock > 0 && p.cost > 0; }) // 範囲内に無ければ、原価がいちばん近いものを出す（自動では選ばない）
+        .sort(function (x, y) { return Math.abs(Math.log(x.cost / t)) - Math.abs(Math.log(y.cost / t)); }).slice(0, 8);
+
       a.forEach(function (p) { if (!seen[p.id]) { seen[p.id] = 1; same.push(p); } });
-      S.inv.filter(function (p) { return p.kind !== 'filler' && !isEnergy(p) && p.cost >= t * 0.35 && p.cost < t * 0.6 && p.stock > 0; })
+      S.inv.filter(function (p) { return p.kind !== 'filler' && okK(p) && !isEnergy(p) && p.cost >= t * 0.35 && p.cost < t * 0.6 && p.stock > 0; })
         .sort(function (x, y) { return (y.sell / Math.max(y.cost, 1)) - (x.sell / Math.max(x.cost, 1)); }).slice(0, drawn.length > 1 ? 3 : 6)
         .forEach(function (p) { if (!seen[p.id]) { seen[p.id] = 1; cheaper.push(p); } });
     });
     // 下枠：このオリパに入っている【@◯◯】を先に、つぎに店の【@◯◯】
     var inPack = {}; (item.original_pack_products || []).forEach(function (c) { inPack[c.product_id] = (inPack[c.product_id] || 0) + c.item_count; });
     var fills = S.inv.filter(function (p) { return p.kind === 'filler' && p.stock > 0; }).sort(function (a, b) { return (inPack[b.id] || 0) - (inPack[a.id] || 0) || a.fv - b.fv; });
-    var R = S.refill = { item: item, hit: hit, pick: {}, fl: [], cands: same.concat(cheaper), fills: fills, appr: null };
+    var R = S.refill = { item: item, hit: hit, pick: {}, fl: [], extra: [], cands: same.concat(cheaper), fills: fills, appr: null };
     function ruleFill(n) { // 新規作成と同じルールの下枠（1,000円＝【@20】、3,000円＝【@200】、1万円＝シングル、2.5万円＝BOX など）
       var left = {}; S.inv.forEach(function (x) { left[x.id] = x.stock - (R.pick[x.id] || 0); }); var used = {};
       R.cands.forEach(function (x) { if (R.pick[x.id]) markUsed(used, x); });
@@ -1557,9 +1565,11 @@
       var nHit = hitsSel.reduce(function (a, p) { return a + R.pick[p.id]; }, 0), fN = R.fl.reduce(function (a, x) { return a + x.n; }, 0);
       var cost = hitsSel.reduce(function (a, p) { return a + p.cost * R.pick[p.id]; }, 0) + R.fl.reduce(function (a, x) { return a + x.p.cost * x.n; }, 0), add = nHit + fN;
       var cardSel = function (p, tag) { var n = R.pick[p.id] || 0; return '<div class="rfc' + (n ? ' on' : '') + '">' + card({ p: p, n: Math.max(n, 1), role: tag }, false, 'data-rp="' + p.id + '"') + '<div class="rfn"><button class="ghost" data-rm1="' + p.id + '">−</button><b>' + n + '</b><button class="ghost" data-ad1="' + p.id + '">＋</button></div></div>'; };
-      var html = '<div class="mh2">出た当たり：' + esc(hit.name) + '（' + drawn.length + '枚・原価計 ' + yen(target) + '）の補充 — 足すものを選んでください</div>' +
+      var html = '<div class="mh2">出た当たり：' + esc(hit.name) + '（' + drawn.length + '枚・原価計 ' + yen(target) + (tmpRef ? '（原価0のものはマスタの70%で計算）' : '') + '）の補充 — 足すものを選んでください</div>' +
         '<div class="rfq"><span>まとめて提案：</span>当たり <input id="qh" type="number" min="0" value="' + Math.max(nHit, 1) + '"> 枚 ＋ 下枠 <input id="qf" type="number" min="0" value="' + fN + '"> 枚 <button class="ghost" id="qgo">この枚数で選び直す</button></div>' +
-        '<div class="mh2 s">同じくらいの当たり</div>' + (same.length ? '<div class="cards">' + same.map(function (p) { return cardSel(p, '同じくらい'); }).join('') + '</div>' : '<div class="msg sub">同じくらいの在庫がありません</div>') +
+        '<div class="mh2 s">同じくらいの当たり' + (firstPick.length ? '' : '（ちょうどいいものが無いので、原価が近い順）') + '</div>' + (same.length ? '<div class="cards">' + same.map(function (p) { return cardSel(p, '近いもの'); }).join('') + '</div>' : '<div class="msg sub">候補がありません。下で探してください</div>') +
+        (R.extra.length ? '<div class="mh2 s">探して足したもの</div><div class="cards">' + R.extra.map(function (p) { return cardSel(p, '探した'); }).join('') + '</div>' : '') +
+        '<div class="srch"><input id="rq" placeholder="カード名・BOX名で在庫から探す"><button class="ghost" id="rqs">探す</button></div><div id="rqr"></div>' +
         (cheaper.length ? '<div class="mh2 s">原価を抑えたいとき（少し下の当たり）</div><div class="cards">' + cheaper.map(function (p) { return cardSel(p, '控えめ'); }).join('') + '</div>' : '') +
         '<div class="mh2 s">下枠（' + esc(RL.fill.at ? '【@' + RL.fill.at + '】' : RL.fill.packOnly ? 'パック' : 'マスタ' + yen(RL.fill.single) + '以上の' + fillKindName(RL)) + 'が基本。ほかのものも足せます）</div><div class="cards">' +
           R.fl.map(function (x, k) { return '<div class="rfc on">' + card({ p: x.p, n: x.n, role: '下枠' }, false) + '<div class="rfn"><button class="ghost" data-frm="' + k + '">−</button><b>' + x.n + '</b><button class="ghost" data-fad="' + k + '">＋</button></div></div>'; }).join('') +
@@ -1573,6 +1583,14 @@
       $('#rsug').querySelectorAll('[data-rp]').forEach(function (b) { b.onclick = function () { var id = Number(b.dataset.rp); R.pick[id] = R.pick[id] ? 0 : 1; draw(); }; });
       $('#rsug').querySelectorAll('[data-fad]').forEach(function (b) { b.onclick = function () { var x = R.fl[Number(b.dataset.fad)]; if (x.n < x.p.stock) x.n++; draw(); }; });
       $('#rsug').querySelectorAll('[data-frm]').forEach(function (b) { b.onclick = function () { var k = Number(b.dataset.frm); R.fl[k].n--; if (R.fl[k].n <= 0) R.fl.splice(k, 1); draw(); }; });
+      var rsearch = function () {
+        var q = $('#rq').value.trim(); if (!q) return;
+        var t = target / Math.max(drawn.length, 1);
+        var r = S.inv.filter(function (p) { return p.kind !== 'filler' && p.stock > 0 && p.name.indexOf(q) >= 0; }).sort(function (x, y) { return Math.abs(Math.log(Math.max(x.cost, 1) / Math.max(t, 1))) - Math.abs(Math.log(Math.max(y.cost, 1) / Math.max(t, 1))); }).slice(0, 24);
+        $('#rqr').innerHTML = '<div class="sm">押すと補充に入ります（原価が近い順）</div>' + candHTML(r, -1);
+        $('#rqr').querySelectorAll('[data-pick]').forEach(function (b) { b.onclick = function () { var p = S.inv.find(function (x) { return x.id === Number(b.dataset.pick); }); if (!p) return; if (R.cands.indexOf(p) < 0) { R.cands.push(p); R.extra.push(p); } R.pick[p.id] = (R.pick[p.id] || 0) + 1; draw(); }; });
+      };
+      $('#rqs').onclick = rsearch; $('#rq').onkeydown = function (e) { if (e.key === 'Enter') rsearch(); };
       $('#rfadd').onclick = function () {
         var tmp = refillPt();
         fillPicker(tmp, '補充の下枠に足すものを選ぶ', null, function (p) {
