@@ -66,16 +66,28 @@
     { k: 'pika', label: 'ピカチュウ系', re: /ピカチュウ|ピチュー|ライチュウ/ },
     { k: 'eevee', label: 'ブイズ系', re: /イーブイ|シャワーズ|サンダース|ブースター|エーフィ|ブラッキー|リーフィア|グレイシア|ニンフィア/ },
     { k: 'girls', label: 'ガールズ系', re: /リーリエ|ナンジャモ|マリィ|シロナ|カトレア|アセロラ|エリカ|カスミ|カンナ|スイレン|マオ|ルザミーネ|サナ(?!ギ)|セレナ|ミモザ|ボタン|ネモ|ゼイユ|ルチア|アイリス|フウロ|コルニ|ナタネ|ヒカリ|メイ|ベル|スズナ|ミカン|アカネ|ハルカ|ユウリ|ソニア|ルリナ|サイトウ|メロン|ポプラ|クララ|ヒガナ|カリン|アズサ|オモダカ|チリ(?!ー)|ポピー|ライム|リップ|タロ|カキツバタ|スグリ|ミニスカート|おねえさん|おじょうさま|かんこうきゃく|ガールズ|センパイとコウハイ|モノマネむすめ|ブルーの|ナツメ|マーシャ(?!ドー)|イリマ|ライチ(?!ュウ)|アローラの仲間/ },
-    { k: 'legend', label: '伝説系', re: /ミュウツー|ミュウ|ルギア|ホウオウ|レックウザ|グラードン|カイオーガ|ディアルガ|パルキア|ギラティナ|アルセウス|レシラム|ゼクロム|キュレム|ゼルネアス|イベルタル|ジガルデ|ソルガレオ|ルナアーラ|ネクロズマ|ザシアン|ザマゼンタ|ムゲンダイナ|コライドン|ミライドン|テラパゴス|ファイヤー|サンダー(?!ス)|フリーザー|ライコウ|エンテイ|スイクン|ラティアス|ラティオス|ジラーチ|デオキシス|セレビィ|ダークライ|シェイミ|ビクティニ|ケルディオ|メロエッタ|ゲノセクト|ディアンシー|フーパ|ボルケニオン|マギアナ|マーシャドー|ゼラオラ|メルタン|メルメタル|ザルード|バドレックス|レジ|ヒードラン|クレセリア|ユクシー|エムリット|アグノム|コバルオン|テラキオン|ビリジオン|トルネロス|ボルトロス|ランドロス|カプ・|オーガポン|モモワロウ/ },
-    { k: 'starter', label: '御三家系', re: /フシギダネ|フシギソウ|フシギバナ|ヒトカゲ|リザード|ゼニガメ|カメール|カメックス|チコリータ|ベイリーフ|メガニウム|ヒノアラシ|マグマラシ|バクフーン|ワニノコ|アリゲイツ|オーダイル|キモリ|ジュプトル|ジュカイン|アチャモ|ワカシャモ|バシャーモ|ミズゴロウ|ヌマクロー|ラグラージ|ナエトル|ハヤシガメ|ドダイトス|ヒコザル|モウカザル|ゴウカザル|ポッチャマ|ポッタイシ|エンペルト|ツタージャ|ジャノビー|ジャローダ|ポカブ|チャオブー|エンブオー|ミジュマル|フタチマル|ダイケンキ|ハリマロン|ハリボーグ|ブリガロン|フォッコ|テールナー|マフォクシー|ケロマツ|ゲコガシラ|ゲッコウガ|モクロー|フクスロー|ジュナイパー|ニャビー|ニャヒート|ガオガエン|アシマリ|オシャマリ|アシレーヌ|サルノリ|バチンキー|ゴリランダー|ヒバニー|ラビフット|エースバーン|メッソン|ジメレオン|インテレオン|ニャオハ|ニャローテ|マスカーニャ|ホゲータ|アチゲータ|ラウドボーン|クワッス|ウェルカモ|ウェーニバル/ }
+    { k: 's151', label: '151', re: /SV2a|sv2a|(?<![\d\/])151(?![\d\/])/, exp: /^sv2a$/i } // 151（拡張パック sv2a）
   ];
-  function themeHit(p) { var t = S.themes || []; if (!t.length) return true; if (p.kind !== 'card' && p.kind !== 'psa') return false; var nm = String(p.name || ''); return THEMES.some(function (x) { return t.indexOf(x.k) >= 0 && x.re.test(nm); }); }
+  var RARES = [ // レアリティで絞る（テーマと一緒に使うと「テーマ かつ レアリティ」）
+    { k: 'SAR', label: 'SAR', re: /^SAR$/i, nm: /\bSAR\b/ },
+    { k: 'SR', label: 'SR', re: /^SR(仕様)?$/i, nm: /\bSR\b/ },
+    { k: 'MUR', label: 'MUR', re: /^MUR$/i, nm: /\bMUR\b/ },
+    { k: 'PROMO', label: 'プロモ', re: /^PROMO$/i, nm: /プロモ|\bPROMO\b|-P\b/i, exp: /-P$/i }
+  ];
+  function themeHit(p) {
+    var t = S.themes || [], rr = S.rares || []; if (!t.length && !rr.length) return true;
+    if (p.kind !== 'card' && p.kind !== 'psa') return false;
+    var nm = String(p.name || ''), ex = String(p.exp || ''), ra = String(p.rarity || '');
+    if (t.length && !THEMES.some(function (x) { return t.indexOf(x.k) >= 0 && (x.re.test(nm) || (x.exp && x.exp.test(ex))); })) return false;
+    if (rr.length && !RARES.some(function (x) { return rr.indexOf(x.k) >= 0 && (ra ? x.re.test(ra) || (x.exp && x.exp.test(ex)) : x.nm.test(nm) || (x.exp && x.exp.test(ex))); })) return false;
+    return true;
+  }
   function themeHTML() {
     if (!ALL) return '';
     var t = S.themes || [];
-    return '<div class="f"><div class="lb">テーマで絞る（混ぜられます）</div><div class="tchk">' + THEMES.map(function (x) { return '<label><input type="checkbox" data-t="' + x.k + '"' + (t.indexOf(x.k) >= 0 ? ' checked' : '') + '>' + x.label + '</label>'; }).join('') + '</div><div class="hint">チェックすると、当たりはそのテーマのシングル・PSAだけになります（下枠はそのまま）</div></div>';
+    return '<div class="f"><div class="lb">テーマで絞る（混ぜられます）</div><div class="tchk">' + THEMES.map(function (x) { return '<label><input type="checkbox" data-t="' + x.k + '"' + (t.indexOf(x.k) >= 0 ? ' checked' : '') + '>' + x.label + '</label>'; }).join('') + '</div><div class="lb" style="margin-top:6px">レアリティで絞る</div><div class="tchk rchk">' + RARES.map(function (x) { return '<label><input type="checkbox" data-r="' + x.k + '"' + ((S.rares || []).indexOf(x.k) >= 0 ? ' checked' : '') + '>' + x.label + '</label>'; }).join('') + '</div><div class="hint">チェックすると、当たりはそのテーマ・レアリティのシングル・PSAだけになります（テーマとレアリティを両方選ぶと、両方に当てはまるもの。下枠はそのまま）</div></div>';
   }
-  function readThemes() { S.themes = [].slice.call(root.querySelectorAll('.tchk input:checked')).map(function (x) { return x.dataset.t; }); }
+  function readThemes() { S.themes = [].slice.call(root.querySelectorAll('.tchk input[data-t]:checked')).map(function (x) { return x.dataset.t; }); S.rares = [].slice.call(root.querySelectorAll('.tchk input[data-r]:checked')).map(function (x) { return x.dataset.r; }); }
   function isEnergy(p) { return (p.kind === 'card' || p.kind === 'psa') && /エネルギー/.test(p.name || ''); }
   function isDeck(p) { return /デッキビルド|スターター|スタートデッキ|デッキセット|構築済み|プレミアムデッキ|デッキ/.test(p.name); }
   function suspectPrice(p) { return p.kind === 'box' && p.cost > 0 && (p.cost < p.sell * 0.3 || (!/BOX|ボックス|box/i.test(p.name) && /パック/.test(p.name))); }
@@ -105,7 +117,7 @@
   document.body.appendChild(host);
   var root = host.attachShadow({ mode: 'open' });
   root.innerHTML = '<style>' + CSS() + '</style><div class="wrap"><div class="win">' +
-    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-10-31 版BD</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
+    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-10-31 版BE</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
     (ALL ? '' : '<div class="tabs"><button data-tab="make" class="on">新しく作る</button><button data-tab="refill">補充する</button></div>') +
     '<button class="x" id="close" title="閉じる">×</button></div>' +
     '<div class="bd" id="body"><div class="msg">読み込み中…</div></div></div></div>';
@@ -631,7 +643,7 @@
       var p = cur.price, n = Number($('#init').value) || L.init, c = Math.min((Number($('#costr').value) || Math.round(L.costr * 100)) / 100, 1.5);
       readThemes();
       var ks = [].slice.call(root.querySelectorAll('.kchk input[data-k]:checked')).map(function (x) { return x.dataset.k; });
-      if ((S.themes || []).length) ks = ks.filter(function (k) { return k === 'card' || k === 'psa'; }).concat(ks.some(function (k) { return k === 'card' || k === 'psa'; }) ? [] : ['card', 'psa']);
+      if (((S.themes || []).length || (S.rares || []).length)) ks = ks.filter(function (k) { return k === 'card' || k === 'psa'; }).concat(ks.some(function (k) { return k === 'card' || k === 'psa'; }) ? [] : ['card', 'psa']);
       if (!ks.length) { alert('当たりに入れる種類を1つ以上選んでください'); return; }
       S.form = { price: p, init: n, costr: c, kinds: ks };
       setConds(null); S.patterns = propose(p, n, c, null, ks); renderMake();
@@ -718,7 +730,7 @@
       F.big = pair('fbig', F.big); F.mid = pair('fmid', F.mid); F.small = pair('fsmall', F.small);
       F.nBig = pair('fnbig', F.nBig).map(Math.round); F.nMid = pair('fnmid', F.nMid).map(Math.round); F.nTotal = pair('fntot', F.nTotal).map(Math.round);
       F.kinds = [].slice.call(root.querySelectorAll('.kchk input[data-k]:checked')).map(function (x) { return x.dataset.k; }); readThemes();
-      if ((S.themes || []).length && !F.kinds.some(function (k) { return k === 'card' || k === 'psa'; })) F.kinds = F.kinds.concat(['card', 'psa']);
+      if (((S.themes || []).length || (S.rares || []).length) && !F.kinds.some(function (k) { return k === 'card' || k === 'psa'; })) F.kinds = F.kinds.concat(['card', 'psa']);
       F.cardConds = [].slice.call(root.querySelectorAll('.cchk input:checked')).map(function (x) { return x.dataset.c; });
       F.boxConds = [].slice.call(root.querySelectorAll('.bchk input:checked')).map(function (x) { return x.dataset.c; });
       F.fill = $('#ffill').value; var fv = $('#fval'); F.fillVal = fv ? fv.value : '';
