@@ -67,13 +67,15 @@ function kPrices() {
 }
 
 function kConfig() {
-  var vals = kSettingSheet().getDataRange().getValues(), stores = {}, staff = {};
+  var vals = kSettingSheet().getDataRange().getValues(), stores = {}, staff = {}, types = {}, staffType = {};
   for (var i = 1; i < vals.length; i++) {
     var v = vals[i];
     if (v[0] && kNum(v[1]) != null) stores[String(v[0]).trim()] = kNum(v[1]);
     if (String(v[4] || '').trim() && kNum(v[5]) != null) staff[String(v[4]).replace(/\s+/g, '')] = kNum(v[5]);
+    if (String(v[8] || '').trim() && kNum(v[9]) != null) types[String(v[8]).trim()] = kNum(v[9]); // 【雇用区分の承認ライン】
+    if (String(v[11] || '').trim() && String(v[12] || '').trim()) staffType[String(v[11]).replace(/\s+/g, '')] = String(v[12]).trim(); // 【スタッフの区分】
   }
-  return { def: K_DEFAULT_LINE, stores: stores, staff: staff };
+  return { def: K_DEFAULT_LINE, stores: stores, staff: staff, types: types, staffType: staffType };
 }
 
 function kaitoriGet(p) {

@@ -6,7 +6,7 @@
   if (location.hostname !== 'pos.mycalinks.com') { alert('マイカ（pos.mycalinks.com）を開いてから押してください'); return; }
   var old = document.getElementById('ndk-kaitori-host'); if (old) old.remove();
 
-  var VERSION = '2026-10-31 版M';
+  var VERSION = '2026-10-31 版N';
   var GAS = 'https://script.google.com/macros/s/AKfycbwXHuu-X3L0qzJhvaszEIm-1xdeNIqJACQ0uM7mz5Q0hvwfdF9IuQiTKr3qmscNVmnhcQ/exec';
   var FB_URL = 'https://script.google.com/macros/s/AKfycbwl-ZCZ1LyefvSzEGkBEpTFTuFyvW0p-AYye6jBWaLP9t7-bC9_Owfeh4jKScNkFys6Fw/exec';
   var SHORT = { 322: '柏', 323: '津田沼', 324: '松戸', 325: '横浜', 326: '中野', 327: '町田', 328: '千葉中央', 390: '通販', 409: 'お台場' };
@@ -169,8 +169,12 @@
   function approvalLine() {
     var c = S.config || {}, st = (c.staff || {})[N(S.staff).replace(/\s/g, '')] || (c.staff || {})[String(S.staff).replace(/\s+/g, '')];
     if (st) return { line: st, why: S.staff + 'さんの承認ライン' };
-    var s = SHORT[S.sid], v = (c.stores || {})[s];
-    return { line: v != null ? v : (c.def || 50000), why: s + '店の承認ライン' };
+    var s = SHORT[S.sid], v = (c.stores || {})[s], line = v != null ? v : (c.def || 50000), why = s + '店の承認ライン';
+    if (S.staff) { // 雇用区分（正社員・アルバイト）の承認ライン：店舗のラインと比べて低い方
+      var ty = (c.staffType || {})[String(S.staff).replace(/\s+/g, '')] || 'アルバイト', tl = (c.types || {})[ty];
+      if (tl != null && tl < line) { line = tl; why = ty + 'の承認ライン'; }
+    }
+    return { line: line, why: why };
   }
 
   /* ---------- 買取表の索引 ---------- */
@@ -341,6 +345,14 @@
 
   function renderDetail() {
     var t = S.tx; if (!t) return;
+    var ck0 = chkInfo(); if (ck0 && !S.pick && ck0.by) { S.pick = S.staff = ck0.by; }
+    if (!S.pick) { // いちばん最初に、査定した本人の名前を選ぶ（正社員・アルバイトで承認ラインが変わるため）
+      $('#body').innerHTML = '<div class="acts" style="margin-top:0"><button class="b g s" id="back">← 一覧にもどる</button></div>' +
+        '<div class="top"><div class="card"><div class="sub">受付 ' + esc(t.reception_number || '') + '　' + hm(t.updated_at || t.created_at) + '　' + (t.status === 'draft' ? '査定中' : '完了') + '</div><div class="big">' + yen(t.total_price) + '</div></div></div>' +
+        '<div class="fin" style="flex-direction:column;align-items:flex-start"><b style="font-size:17px">まず、査定した本人の名前を選んでください</b><div class="sub">選ぶとチェック結果が出ます。正社員・アルバイトで承認ラインが変わります。</div>' + pickerHtml() + '</div>';
+      $('#back').onclick = function () { loadList(); };
+      bindPicker(); return;
+    }
     var ap = approvalLine(), need = (t.total_price || 0) >= ap.line;
     var flags = []; S.lines.forEach(function (m) { m.flags.forEach(function (f) { flags.push(f); }); });
     var red = flags.filter(function (f) { return f.lv === 'red'; });
@@ -353,8 +365,8 @@
     var mustConf = flags.length && !ci, ck = chkInfo();
     if (ck && !S.pick && ck.by) { S.pick = S.staff = ck.by; }
     var fin = ck ? '<div class="st ok">✅ 最終チェック済み（' + esc(ck.by || '') + (ck.at ? '・' + hm(ck.at) : '') + '）</div>'
-      : '<div class="fin"><div class="t"><b>最終チェック（すべての買取で必ず）</b><div class="sub">明細・枚数・金額・状態をマイカと実物で確かめたら、自分の名前をリストから選んで押してください。' + (need ? '本部への承認依頼はそのあとです。' : '') + '</div></div>' +
-        '<div class="who"><span class="sub">査定した人 </span>' + pickerHtml() + '</div><button class="b" id="fin"' + (mustConf || S.syncing ? ' disabled title="先に警告を見直してください"' : '') + '>最終チェックをする</button></div>';
+      : '<div class="fin"><div class="t"><b>最終チェック（すべての買取で必ず）</b><div class="sub">明細・枚数・金額・状態をマイカと実物で確かめたら、押してください。' + (need ? '本部への承認依頼はそのあとです。' : '') + '</div></div>' +
+        '<div class="who"><span class="sub">査定した人：</span><b>' + esc(S.pick) + '</b> <button class="b g s" id="chgName">名前を変える</button></div><button class="b" id="fin"' + (mustConf || S.syncing ? ' disabled title="先に警告を見直してください"' : '') + '>最終チェックをする</button></div>';
     var rows = S.lines.map(function (m) {
       var lv = m.flags.some(function (f) { return f.lv === 'red'; }) ? 'red' : m.flags.length ? 'yel' : '';
       var ref = m.ref ? yen(m.ref) + '<div class="sub">' + esc((m.refs[0] || {}).r ? m.refs[0].r.t : '') + '</div>' : '<span class="sub">' + esc(m.note || (m.hanyo ? '汎用' : '買取表になし')) + '</span>';
@@ -384,7 +396,7 @@
     $('#back').onclick = function () { loadList(); };
     if ($('#req')) $('#req').onclick = function () { if (!this.disabled) countCheck(function () { openSend('approval'); }); };
     if ($('#conf')) $('#conf').onclick = function () { openSend('confirm'); };
-    bindPicker();
+    if ($('#chgName')) $('#chgName').onclick = function () { S.pick = S.staff = ''; renderDetail(); };
     if ($('#fin')) $('#fin').onclick = function () { if (this.disabled) return; var nm = (S.pick || '').trim(); if (!nm) { var w = R.querySelector('.who .sub'); if (w) { w.textContent = '↓ 先に自分の名前を選んでください'; w.style.color = '#c8102e'; } return; } countCheck(function () { finalCheck(nm); }); };
   }
 
