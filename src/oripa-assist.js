@@ -105,7 +105,7 @@
   document.body.appendChild(host);
   var root = host.attachShadow({ mode: 'open' });
   root.innerHTML = '<style>' + CSS() + '</style><div class="wrap"><div class="win">' +
-    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-10-31 版AY</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
+    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-10-31 版AZ</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
     (ALL ? '' : '<div class="tabs"><button data-tab="make" class="on">新しく作る</button><button data-tab="refill">補充する</button></div>') +
     '<button class="x" id="close" title="閉じる">×</button></div>' +
     '<div class="bd" id="body"><div class="msg">読み込み中…</div></div></div></div>';
@@ -881,7 +881,7 @@
     makeFillerByRule(pt.L, n, lf, uid, pt.price, []).forEach(function (a) { var ex = pt.filler.find(function (x) { return x.p.id === a.p.id; }); if (ex) ex.n += a.n; else pt.filler.push(a); });
   }
   function fillPicker(pi, title, exclude, onPick) {
-    var pt = S.patterns[pi];
+    var pt = typeof pi === 'object' ? pi : S.patterns[pi];
     var KT = [['filler', '【@】商品'], ['pack', 'パック'], ['card', 'シングル'], ['box', 'BOX'], ['psa', 'PSA'], ['supply', 'サプライ']];
     var first = (pt.filler[0] && pt.filler[0].p.kind) || 'filler', kind = first;
     var m = modal('<div class="mh">' + esc(title) + '</div><div class="sortbar">' + KT.map(function (k) { return '<button class="ghost' + (k[0] === kind ? ' on' : '') + '" data-kt="' + k[0] + '">' + k[1] + '</button>'; }).join('') + '</div>' +
@@ -1545,32 +1545,47 @@
     // 下枠：このオリパに入っている【@◯◯】を先に、つぎに店の【@◯◯】
     var inPack = {}; (item.original_pack_products || []).forEach(function (c) { inPack[c.product_id] = (inPack[c.product_id] || 0) + c.item_count; });
     var fills = S.inv.filter(function (p) { return p.kind === 'filler' && p.stock > 0; }).sort(function (a, b) { return (inPack[b.id] || 0) - (inPack[a.id] || 0) || a.fv - b.fv; });
-    var R = S.refill = { item: item, hit: hit, pick: {}, fill: fills[0] ? fills[0].id : null, fillN: 0, cands: same.concat(cheaper), fills: fills, appr: null };
+    var R = S.refill = { item: item, hit: hit, pick: {}, fl: [], cands: same.concat(cheaper), fills: fills, appr: null };
+    function ruleFill(n) { // 新規作成と同じルールの下枠（1,000円＝【@20】、3,000円＝【@200】、1万円＝シングル、2.5万円＝BOX など）
+      var left = {}; S.inv.forEach(function (x) { left[x.id] = x.stock - (R.pick[x.id] || 0); }); var used = {};
+      R.cands.forEach(function (x) { if (R.pick[x.id]) markUsed(used, x); });
+      return makeFillerByRule(RL, n, left, used, price, []).map(function (m) { return { p: m.p, n: m.n }; });
+    }
     firstPick.forEach(function (p) { R.pick[p.id] = (R.pick[p.id] || 0) + 1; }); // 最初は、出た当たり1枚ごとに「同じくらい」のいちばん上を1枚
     function draw() {
       var hitsSel = R.cands.filter(function (p) { return R.pick[p.id] > 0; });
-      var nHit = hitsSel.reduce(function (a, p) { return a + R.pick[p.id]; }, 0), f = fills.find(function (x) { return x.id === R.fill; });
-      var cost = hitsSel.reduce(function (a, p) { return a + p.cost * R.pick[p.id]; }, 0) + (f ? f.cost * R.fillN : 0), add = nHit + (f ? R.fillN : 0);
+      var nHit = hitsSel.reduce(function (a, p) { return a + R.pick[p.id]; }, 0), fN = R.fl.reduce(function (a, x) { return a + x.n; }, 0);
+      var cost = hitsSel.reduce(function (a, p) { return a + p.cost * R.pick[p.id]; }, 0) + R.fl.reduce(function (a, x) { return a + x.p.cost * x.n; }, 0), add = nHit + fN;
       var cardSel = function (p, tag) { var n = R.pick[p.id] || 0; return '<div class="rfc' + (n ? ' on' : '') + '">' + card({ p: p, n: Math.max(n, 1), role: tag }, false, 'data-rp="' + p.id + '"') + '<div class="rfn"><button class="ghost" data-rm1="' + p.id + '">−</button><b>' + n + '</b><button class="ghost" data-ad1="' + p.id + '">＋</button></div></div>'; };
       var html = '<div class="mh2">出た当たり：' + esc(hit.name) + '（' + drawn.length + '枚・原価計 ' + yen(target) + '）の補充 — 足すものを選んでください</div>' +
-        '<div class="rfq"><span>まとめて提案：</span>当たり <input id="qh" type="number" min="0" value="' + Math.max(nHit, 1) + '"> 枚 ＋ 下枠 <input id="qf" type="number" min="0" value="' + R.fillN + '"> 枚 <button class="ghost" id="qgo">この枚数で選び直す</button></div>' +
+        '<div class="rfq"><span>まとめて提案：</span>当たり <input id="qh" type="number" min="0" value="' + Math.max(nHit, 1) + '"> 枚 ＋ 下枠 <input id="qf" type="number" min="0" value="' + fN + '"> 枚 <button class="ghost" id="qgo">この枚数で選び直す</button></div>' +
         '<div class="mh2 s">同じくらいの当たり</div>' + (same.length ? '<div class="cards">' + same.map(function (p) { return cardSel(p, '同じくらい'); }).join('') + '</div>' : '<div class="msg sub">同じくらいの在庫がありません</div>') +
         (cheaper.length ? '<div class="mh2 s">原価を抑えたいとき（少し下の当たり）</div><div class="cards">' + cheaper.map(function (p) { return cardSel(p, '控えめ'); }).join('') + '</div>' : '') +
-        '<div class="mh2 s">下枠</div>' + (fills.length ? '<div class="rff"><select id="rfs">' + fills.map(function (x) { return '<option value="' + x.id + '"' + (x.id === R.fill ? ' selected' : '') + '>' + esc(x.name.replace(/ポケモン\/トレーナーズ/, '')) + '（原価 ' + yen(x.cost) + '・在庫 ' + x.stock + (inPack[x.id] ? '・このオリパに入っている' : '') + '）</option>'; }).join('') + '</select> × <input id="rfn" type="number" min="0" value="' + R.fillN + '"> 枚</div>' : '<div class="msg sub">下枠用の【@◯◯】の在庫がありません</div>') +
-        '<div class="rfsum">足すもの：当たり ' + nHit + '枚・下枠 ' + (f ? R.fillN : 0) + '枚（口数 +' + add + '口）／足す原価 ' + yen(cost) + '（出た当たりの原価計 ' + yen(target) + '）／足した口の売上 ' + yen(add * price) + '</div>' +
+        '<div class="mh2 s">下枠（' + esc(RL.fill.at ? '【@' + RL.fill.at + '】' : RL.fill.packOnly ? 'パック' : 'マスタ' + yen(RL.fill.single) + '以上の' + fillKindName(RL)) + 'が基本。ほかのものも足せます）</div><div class="cards">' +
+          R.fl.map(function (x, k) { return '<div class="rfc on">' + card({ p: x.p, n: x.n, role: '下枠' }, false) + '<div class="rfn"><button class="ghost" data-frm="' + k + '">−</button><b>' + x.n + '</b><button class="ghost" data-fad="' + k + '">＋</button></div></div>'; }).join('') +
+          '<button class="addc" id="rfadd">＋<br>下枠を<br>足す</button></div>' +
+        '<div class="rfsum">足すもの：当たり ' + nHit + '枚・下枠 ' + fN + '枚（口数 +' + add + '口）／足す原価 ' + yen(cost) + '（出た当たりの原価計 ' + yen(target) + '）／足した口の売上 ' + yen(add * price) + '</div>' +
         (R.appr ? '<div class="appr ' + (R.appr.status === '承認' ? 'ok' : R.appr.status === '差し戻し' ? 'ng' : 'wait') + '">本部の承認：' + esc(R.appr.status) + (R.appr.by ? '（' + esc(R.appr.by) + '）' : '') + '</div>' : '') +
         '<div class="acts">' + (APPROVAL_URL ? (R.appr && R.appr.status === '承認待ち' ? '<button class="ghost" id="rfchk">承認の結果を確認</button>' : '<button class="ghost" id="rfreq"' + (add ? '' : ' disabled') + '>本部に承認を依頼（任意）</button>') : '') + '<button class="primary" id="rfgo"' + (add ? '' : ' disabled') + '>マイカに補充する</button></div>';
       $('#rsug').innerHTML = html;
       $('#rsug').querySelectorAll('[data-ad1]').forEach(function (b) { b.onclick = function () { var p = R.cands.find(function (x) { return x.id === Number(b.dataset.ad1); }); var n = R.pick[p.id] || 0; if (n < p.stock) R.pick[p.id] = n + 1; draw(); }; });
       $('#rsug').querySelectorAll('[data-rm1]').forEach(function (b) { b.onclick = function () { var id = Number(b.dataset.rm1); R.pick[id] = Math.max(0, (R.pick[id] || 0) - 1); draw(); }; });
       $('#rsug').querySelectorAll('[data-rp]').forEach(function (b) { b.onclick = function () { var id = Number(b.dataset.rp); R.pick[id] = R.pick[id] ? 0 : 1; draw(); }; });
-      if ($('#rfs')) $('#rfs').onchange = function () { R.fill = Number(this.value); draw(); };
-      if ($('#rfn')) $('#rfn').onchange = function () { var x = fills.find(function (q) { return q.id === R.fill; }); R.fillN = Math.max(0, Math.min(Math.round(Number(this.value) || 0), x ? x.stock : 0)); draw(); };
+      $('#rsug').querySelectorAll('[data-fad]').forEach(function (b) { b.onclick = function () { var x = R.fl[Number(b.dataset.fad)]; if (x.n < x.p.stock) x.n++; draw(); }; });
+      $('#rsug').querySelectorAll('[data-frm]').forEach(function (b) { b.onclick = function () { var k = Number(b.dataset.frm); R.fl[k].n--; if (R.fl[k].n <= 0) R.fl.splice(k, 1); draw(); }; });
+      $('#rfadd').onclick = function () {
+        var tmp = refillPt();
+        fillPicker(tmp, '補充の下枠に足すものを選ぶ', null, function (p) {
+          var have = R.fl.find(function (x) { return x.p.id === p.id; }), max = p.stock - (have ? have.n : 0) - (R.pick[p.id] || 0);
+          if (max <= 0) { alert('在庫が足りません'); return; }
+          askCount('「' + p.name + '」を補充の下枠に足す', 1, max, function (n) { if (have) have.n += n; else R.fl.push({ p: p, n: n }); draw(); });
+        });
+      };
       $('#qgo').onclick = function () { // 当たりN枚：同じくらい→控えめの順に1枚ずつ（同じものは2枚まで）。下枠M枚
         var nh = Math.max(0, Math.round(Number($('#qh').value) || 0)), nf = Math.max(0, Math.round(Number($('#qf').value) || 0));
         R.pick = {}; var pool = R.cands.slice(), k = 0, guard = 0;
         while (nh > 0 && pool.length && guard++ < 200) { var p = pool[k % pool.length]; var c = R.pick[p.id] || 0; if (c < Math.min(2, p.stock)) { R.pick[p.id] = c + 1; nh--; } k++; if (k > pool.length * 2) break; }
-        var x = fills.find(function (q) { return q.id === R.fill; }); R.fillN = Math.min(nf, x ? x.stock : 0); draw();
+        R.fl = nf > 0 ? ruleFill(nf) : []; draw();
       };
       if ($('#rfreq')) $('#rfreq').onclick = function () { requestApproval(refillPt(), function (a) { R.appr = a; draw(); }); };
       if ($('#rfchk')) $('#rfchk').onclick = async function () { try { var j = await fetch(APPROVAL_URL + '?action=status&id=' + encodeURIComponent(R.appr.id)).then(function (r) { return r.json(); }); if (j.ok) R.appr = { id: R.appr.id, status: j.status, by: j.by }; } catch (e) { } draw(); };
@@ -1578,8 +1593,8 @@
     }
     function refillPt() {
       var hs = R.cands.filter(function (p) { return R.pick[p.id] > 0; }).map(function (p) { return { p: p, n: R.pick[p.id], role: roleOf(RL, price, p) }; });
-      var f = fills.find(function (x) { return x.id === R.fill; }), fl = f && R.fillN ? [{ p: f, n: R.fillN }] : [];
-      var add = hs.reduce(function (a, h) { return a + h.n; }, 0) + (f ? R.fillN : 0), cost = hs.concat(fl).reduce(function (a, h) { return a + h.p.cost * h.n; }, 0);
+      var fl = R.fl.filter(function (x) { return x.n > 0; });
+      var add = hs.reduce(function (a, h) { return a + h.n; }, 0) + fl.reduce(function (a, x) { return a + x.n; }, 0), cost = hs.concat(fl).reduce(function (a, h) { return a + h.p.cost * h.n; }, 0);
       return { name: '【補充】' + item.display_name, note: '【補充】「' + item.display_name + '」で「' + hit.name + '」が出たので補充', price: price, init: add, hits: hs, filler: fl, cost: cost, rev: add * price, costr: add ? cost / (add * price) : 0, L: RL, warn: [] };
     }
     function confirmRefill() {
