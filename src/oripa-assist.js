@@ -89,7 +89,7 @@
   document.body.appendChild(host);
   var root = host.attachShadow({ mode: 'open' });
   root.innerHTML = '<style>' + CSS() + '</style><div class="wrap"><div class="win">' +
-    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-10-31 版AT</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
+    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-10-31 版AU</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
     (ALL ? '' : '<div class="tabs"><button data-tab="make" class="on">新しく作る</button><button data-tab="refill">補充する</button></div>') +
     '<button class="x" id="close" title="閉じる">×</button></div>' +
     '<div class="bd" id="body"><div class="msg">読み込み中…</div></div></div></div>';
@@ -721,6 +721,10 @@
   // 当たりなのに原価がマスタ価格の1/10以下（原価の登録ミスかもしれない）。使ってよいが目立たせて知らせる
   function tmpCost(p) { return !!(p && (p.costTmp || (p.set && p.set.some(tmpCost)))); }
   function lowCost(p) { if (!p || p.kind === 'filler') return false; if (p.set) return p.set.some(lowCost); return !!p.costTmp || (p.sell > 0 && p.cost <= p.sell * 0.1); }
+  function rawCost(pt) { // 仮の原価のカードがあるとき、マイカの原価のままの合計（なければ null）
+    var d = 0, any = false; flatHits(pt.hits).concat(pt.filler).forEach(function (h) { if (h.p.costRaw != null) { any = true; d += (h.p.cost - h.p.costRaw) * h.n; } });
+    return any ? pt.cost - d : null;
+  }
   function lowCostNote(pt) {
     var l = flatHits(pt.hits).filter(function (h) { return lowCost(h.p); });
     if (!l.length) return '';
@@ -1060,7 +1064,8 @@
         : pt.filler.map(function (f) { return esc(f.p.name.replace(/ポケモン\/トレーナーズ/, '')) + ' ×' + f.n; }).join('　');
       var after = Math.min(pt.costr + pt.L.refillUp, 1.5);
       return '<div class="pt"><div class="pth"><div><div class="pn">' + esc(pt.name) + '</div><div class="pnote">' + esc(pt.note) + '</div></div></div>' +
-        '<div class="kpi"><div><b>' + pct(pt.costr) + '</b><span>原価率</span></div><div><b>' + yen(pt.rev - pt.cost) + '</b><span>粗利（完売時）</span></div><div><b>' + nHit + '枚' + (hasLast ? '＋ラストワン' : '') + '</b><span>当たり</span></div></div>' +
+        '<div class="kpi"><div><b>' + pct(pt.costr) + '</b><span>原価率' + (rawCost(pt) != null ? '（仮の原価で計算）' : '') + '</span></div><div><b>' + yen(pt.rev - pt.cost) + '</b><span>粗利（完売時）' + (rawCost(pt) != null ? '（仮の原価で計算）' : '') + '</span></div><div><b>' + nHit + '枚' + (hasLast ? '＋ラストワン' : '') + '</b><span>当たり</span></div></div>' +
+        (rawCost(pt) != null ? '<div class="kpi kpiraw"><div><b>' + pct(rawCost(pt) / pt.rev) + '</b><span>原価率（マイカの原価のまま）</span></div><div><b>' + yen(pt.rev - rawCost(pt)) + '</b><span>粗利（マイカの原価のまま）</span></div><div><b>' + yen(pt.cost - rawCost(pt)) + '</b><span>仮で足している原価</span></div></div>' : '') +
         (pt.edited ? '<div class="edited">入れ替え済み</div>' : '') + lowCostNote(pt) +
         sec('大当たり', ['TOP', '大当たり']) + sec('中当たり', ['中当たり', '当たり']) + sec('小当たり', ['小当たり']) + sec('ラストワン賞', ['ラストワン'], 'ラストワン') +
         '<div class="addrow"><button class="ghost" data-add="' + i + '">＋ 当たりを足す</button></div>' +
@@ -1547,6 +1552,7 @@
       '.pth{display:flex;gap:10px;align-items:center}.pk{background:#1d1d22;color:#e8c23a;font-weight:900;width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px;flex:none}',
       '.pn{font-weight:800;font-size:15px}.pnote{font-size:11px;color:#777}',
       '.kpi{display:grid;grid-template-columns:repeat(3,1fr);background:#f6f5f2;border-radius:9px;padding:8px 4px;text-align:center}',
+      '.kpiraw{margin-top:6px;background:#fdecea}.kpiraw b{color:#c0392b}',
       '.kpi b{display:block;font-size:16px}.kpi span{font-size:10px;color:#777}',
       '.top{display:flex;justify-content:center}',
       '.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px}',
