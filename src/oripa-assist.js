@@ -89,7 +89,7 @@
   document.body.appendChild(host);
   var root = host.attachShadow({ mode: 'open' });
   root.innerHTML = '<style>' + CSS() + '</style><div class="wrap"><div class="win">' +
-    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-10-31 版AU</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
+    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-10-31 版AV</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
     (ALL ? '' : '<div class="tabs"><button data-tab="make" class="on">新しく作る</button><button data-tab="refill">補充する</button></div>') +
     '<button class="x" id="close" title="閉じる">×</button></div>' +
     '<div class="bd" id="body"><div class="msg">読み込み中…</div></div></div></div>';
@@ -1403,6 +1403,7 @@
     m.querySelector('[data-x]').onclick = function () { m.remove(); };
     fetch(APPROVAL_URL + '?action=oripatabs&store=' + encodeURIComponent(st)).then(function (r) { return r.json(); }).then(function (j) {
       if (!j.ok) throw new Error(j.error || '読み込めませんでした');
+      if (!j.tabs) throw new Error('本部の仕組みが書き出しに対応していない状態です（更新中かもしれません）。少し待ってもう一度押すか、本部に連絡してください');
       var g = guessTab(j.tabs, pt), dt = new Date(), defTab = (pt.saveName || defaultName(pt.price)) + ' ' + (dt.getMonth() + 1) + '.' + dt.getDate();
       m.querySelector('.frm').innerHTML = '<div class="sm">「' + esc(j.name) + '」に、ほかのオリパと同じ形（名前・原価・個数・合計、最後に販売口数・売上・粗利益率）で書き出します。下枠は「下枠」1行にまとめます。</div>' +
         '<label class="ck"><input type="radio" name="wm" value="new" checked> 新しいタブを作って書き出す</label>' +
