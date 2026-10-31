@@ -88,7 +88,7 @@
   document.body.appendChild(host);
   var root = host.attachShadow({ mode: 'open' });
   root.innerHTML = '<style>' + CSS() + '</style><div class="wrap"><div class="win">' +
-    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-10-31 版AP</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
+    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-10-31 版AQ</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
     (ALL ? '' : '<div class="tabs"><button data-tab="make" class="on">新しく作る</button><button data-tab="refill">補充する</button></div>') +
     '<button class="x" id="close" title="閉じる">×</button></div>' +
     '<div class="bd" id="body"><div class="msg">読み込み中…</div></div></div></div>';
@@ -715,11 +715,18 @@
   // attrs があるとクリックできるカード（入れ替え用）
   function psaLabel(p) { var m = ((p.spec || '') + ' ' + p.name + ' ' + p.cond).match(/PSA\s*(\d{1,2})(?!\d)/i); return m ? 'PSA' + m[1] : 'PSA'; }
   function condText(p) { return p.kind === 'psa' ? psaLabel(p) + '（鑑定品）' : p.cond; }
+  // 当たりなのに原価がマスタ価格の1/10以下（原価の登録ミスかもしれない）。使ってよいが目立たせて知らせる
+  function lowCost(p) { if (!p || p.kind === 'filler') return false; if (p.set) return p.set.some(lowCost); return p.sell > 0 && p.cost <= p.sell * 0.1; }
+  function lowCostNote(pt) {
+    var l = flatHits(pt.hits).filter(function (h) { return lowCost(h.p); });
+    if (!l.length) return '';
+    return '<div class="warn lowcw">⚠️ 原価がマスタ価格の10分の1以下の当たりがあります（原価の登録ミスかもしれません。使ってかまいませんが、確認してください）<br>' + l.map(function (h) { return '・' + esc(h.role) + '：' + esc(h.p.name) + '（原価 ' + yen(h.p.cost) + '／マスタ ' + yen(h.p.sell) + '）'; }).join('<br>') + '</div>';
+  }
   function card(h, big, attrs) {
     var im1 = function (u, nm) { return u ? '<img src="' + esc(u) + '" loading="lazy">' : '<div class="noimg">' + esc(String(nm).slice(0, 14)) + '</div>'; };
     var img = h.p.set ? im1(h.p.set[0].img, h.p.set[0].name) + im1(h.p.set[1].img, h.p.set[1].name) : im1(h.p.img, h.p.name);
     var tag = attrs ? 'button' : 'div';
-    return '<' + tag + ' class="cd ' + (big ? 'big ' : '') + (attrs ? 'swap' : '') + '" ' + (attrs || '') + '><div class="im' + (h.p.set ? ' duo' : '') + '">' + img + (h.p.set ? '<span class="settag">セット</span>' : '') + (h.n > 1 ? '<span class="cnt">×' + h.n + '</span>' : '') + '<span class="role r-' + esc(h.role) + '">' + esc(h.role) + '</span>' +
+    return '<' + tag + ' class="cd ' + (big ? 'big ' : '') + (attrs ? 'swap' : '') + '" ' + (attrs || '') + '><div class="im' + (h.p.set ? ' duo' : '') + '">' + img + (h.p.set ? '<span class="settag">セット</span>' : '') + (h.role !== '下枠' && lowCost(h.p) ? '<span class="lowc">原価要確認</span>' : '') + (h.n > 1 ? '<span class="cnt">×' + h.n + '</span>' : '') + '<span class="role r-' + esc(h.role) + '">' + esc(h.role) + '</span>' +
       (h.p.kind === 'psa' ? '<span class="psa">' + esc(psaLabel(h.p)) + '</span>' : '') +
       (attrs ? '<span class="edit">入れ替え</span>' : '') + '</div>' +
       (ALL && h.p.sname ? '<div class="sttag">' + esc(h.p.sname) + '</div>' : '') + '<div class="nm">' + (h.p.kind === 'psa' ? '《' + esc(psaLabel(h.p)) + '》' : '') + esc(h.p.name) + '</div>' + (h.p.kind === 'psa' ? '<div class="cond psa2">PSA鑑定品</div>' : (h.p.cond && !h.p.set ? '<div class="cond' + (h.p.noShrink ? ' nosh' : '') + '">' + esc(h.p.cond) + '</div>' : '')) +
@@ -1050,7 +1057,7 @@
       var after = Math.min(pt.costr + pt.L.refillUp, 1.5);
       return '<div class="pt"><div class="pth"><div><div class="pn">' + esc(pt.name) + '</div><div class="pnote">' + esc(pt.note) + '</div></div></div>' +
         '<div class="kpi"><div><b>' + pct(pt.costr) + '</b><span>原価率</span></div><div><b>' + yen(pt.rev - pt.cost) + '</b><span>粗利（完売時）</span></div><div><b>' + nHit + '枚' + (hasLast ? '＋ラストワン' : '') + '</b><span>当たり</span></div></div>' +
-        (pt.edited ? '<div class="edited">入れ替え済み</div>' : '') +
+        (pt.edited ? '<div class="edited">入れ替え済み</div>' : '') + lowCostNote(pt) +
         sec('大当たり', ['TOP', '大当たり']) + sec('中当たり', ['中当たり', '当たり']) + sec('小当たり', ['小当たり']) + sec('ラストワン賞', ['ラストワン'], 'ラストワン') +
         '<div class="addrow"><button class="ghost" data-add="' + i + '">＋ 当たりを足す</button></div>' +
         '<div class="sec"><div class="sech">下枠<span>' + fN + '口（1口平均 原価' + yen(fC / Math.max(fN, 1)) + (pt.L.fill.single ? '・マスタ' + yen(pt.L.fill.single) + '以上の' + fillKindName(pt.L) : '') + '）　押すと枚数の変更・入れ替え・外すができます</span></div><div class="cards">' +
@@ -1420,6 +1427,7 @@
       '<div class="frm"><label>商品名 <input id="nm" value="' + esc(defaultName(pt.price)) + '"></label>' +
       '<div class="sm">値段 ' + yen(pt.price) + '／' + pt.init + '口／封入 ' + total + '枚' + (pt.hits.some(function (h) { return h.role === 'ラストワン'; }) ? '（ラストワン賞1枚を含む。ラストワン賞は口数に入りません）' : '') + '／原価率 ' + pct(pt.costr) + '</div>' +
       (nSet ? '<div class="sm"><b>セット当たりが' + nSet + 'つあるので、封入枚数は口数より' + nSet + '枚多くなります。セットの2枚は同じ袋に入れてください。</b></div>' : '') +
+      lowCostNote(pt) +
       '<div class="sm">「一時保存」に入るだけで、まだ販売はされません。マイカの「オリパ・福袋」→「一時保存」で中身を確認してから作成してください。</div></div>' +
       '<div class="acts"><button class="ghost" data-x>やめる</button><button class="primary" data-ok>一時保存する</button></div>');
     m.querySelector('[data-x]').onclick = function () { m.remove(); };
@@ -1573,6 +1581,7 @@
       '.cd.swap:hover .edit{opacity:1}',
       '.addc{border:2px dashed #cfc9bb;background:#fbfaf7;border-radius:6px;color:#777;font-weight:800;font-size:11px;cursor:pointer;aspect-ratio:5/7;font-family:inherit;line-height:1.4}',
       '.addc:hover{border-color:#c8102e;color:#c8102e}',
+      '.lowc{position:absolute;left:3px;bottom:3px;font-size:10px;font-weight:900;padding:1px 6px;border-radius:4px;background:#c0392b;color:#fff}.lowcw{border-left:4px solid #c0392b}',
       '.edited{font-size:11px;font-weight:800;color:#1d6b3a;background:#e6f4ea;border-radius:6px;padding:3px 8px;align-self:flex-start}',
       '.srch{display:flex;gap:6px;margin-top:6px}.srch input{width:260px}',
       '.danger{color:#c8102e;border-color:#f0c4cb}',
