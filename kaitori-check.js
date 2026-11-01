@@ -6,7 +6,7 @@
   if (location.hostname !== 'pos.mycalinks.com') { alert('マイカ（pos.mycalinks.com）を開いてから押してください'); return; }
   var old = document.getElementById('ndk-kaitori-host'); if (old) old.remove();
 
-  var VERSION = '2026-10-31 版R';
+  var VERSION = '2026-11-01 版S';
   var GAS = 'https://script.google.com/macros/s/AKfycbwXHuu-X3L0qzJhvaszEIm-1xdeNIqJACQ0uM7mz5Q0hvwfdF9IuQiTKr3qmscNVmnhcQ/exec';
   var FB_URL = 'https://script.google.com/macros/s/AKfycbwl-ZCZ1LyefvSzEGkBEpTFTuFyvW0p-AYye6jBWaLP9t7-bC9_Owfeh4jKScNkFys6Fw/exec';
   var SHORT = { 322: '柏', 323: '津田沼', 324: '松戸', 325: '横浜', 326: '中野', 327: '町田', 328: '千葉中央', 390: '通販', 409: 'お台場' };
@@ -329,9 +329,12 @@
   async function loadImages(t) {
     var ids = []; (t.transaction_carts || []).forEach(function (c) { if (ids.indexOf(c.product_id) < 0) ids.push(c.product_id); });
     var map = {};
-    await Promise.all(ids.slice(0, 80).map(function (id) {
-      return api('/api/store/' + S.sid + '/product?id=' + id).then(function (j) { var p = ((j && j.products) || [])[0]; if (p) map[id] = { img: p.image_url || '', cond: p.condition_option_display_name || '' }; }).catch(function () { });
-    }));
+    // 全部の商品を取る（以前は80件までだった）。10件ずつ、失敗したら1回だけ取り直す
+    var one = function (id, again) {
+      return api('/api/store/' + S.sid + '/product?id=' + id).then(function (j) { var p = ((j && j.products) || [])[0]; if (p) map[id] = { img: p.image_url || '', cond: p.condition_option_display_name || '' }; })
+        .catch(function () { if (!again) return new Promise(function (r) { setTimeout(r, 800); }).then(function () { return one(id, true); }); });
+    };
+    for (var k = 0; k < ids.length; k += 10) { if (S.tx !== t) return; await Promise.all(ids.slice(k, k + 10).map(function (id) { return one(id); })); }
     if (S.tx !== t) return;
     S.lines.forEach(function (m, i) { var x = map[(t.transaction_carts[i] || {}).product_id] || {}; m.img = x.img || ''; if (!m.cond && x.cond) m.cond = x.cond; gradeFlag(m); });
     renderDetail();
