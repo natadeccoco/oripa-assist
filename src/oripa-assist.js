@@ -122,7 +122,7 @@
   document.body.appendChild(host);
   var root = host.attachShadow({ mode: 'open' });
   root.innerHTML = '<style>' + CSS() + '</style><div class="wrap"><div class="win">' +
-    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-11-01 版BJ</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
+    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-11-01 版BK</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
     (ALL ? '' : '<div class="tabs"><button data-tab="make" class="on">新しく作る</button><button data-tab="refill">補充する</button></div>') +
     '<button class="x" id="close" title="閉じる">×</button></div>' +
     '<div class="bd" id="body"><div class="msg">読み込み中…</div></div></div></div>';
@@ -1272,7 +1272,7 @@
     };
   }
   function requestApproval(pt, onDone) {
-    var last = ''; try { last = localStorage.getItem('ndk_oripa_requester') || ''; } catch (e) { }
+    var last = ''; try { last = localStorage.getItem('ndk_oripa_requester') || ''; if (/テスト|Claude/i.test(last)) { last = ''; localStorage.removeItem('ndk_oripa_requester'); } } catch (e) { } // 試しで入れた名前は使わない
     var m = modal('<div class="mh">本部に承認を依頼しますか？</div><div class="frm">' +
       '<label>依頼する人の名前（必須） <input id="rq" value="' + esc(last) + '"></label>' +
       '<label>ひとこと（任意） <input id="rc" placeholder="例：TikTok用に高額を多めにしました"></label>' +
