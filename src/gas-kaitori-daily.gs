@@ -216,11 +216,12 @@ function kdUnchecked(lines) {
   var fs = book.getSheetByName('最終チェック');
   if (fs && fs.getLastRow() >= 2) fs.getRange(2, 1, fs.getLastRow() - 1, 6).getValues().forEach(function (v) { if (v[4]) done[String(v[4])] = { at: v[1], by: v[5] }; });
   var kv = kSheet().getDataRange().getValues(); // 買取タブ：承認依頼の状態（承認待ち・承認・差し戻し）
-  for (var i = 1; i < kv.length; i++) if (kv[i][2] === '承認依頼' && kv[i][15]) { var k = String(kv[i][15]); if (!appr[k] || kv[i][12] === '承認') appr[k] = kv[i][12]; }
+  var req = {}; // 承認依頼を出した人（最終チェックがないときの査定者の代わり）
+  for (var i = 1; i < kv.length; i++) if (kv[i][2] === '承認依頼' && kv[i][15]) { var k = String(kv[i][15]); if (!appr[k] || kv[i][12] === '承認') appr[k] = kv[i][12]; req[k] = kv[i][16] || kv[i][4]; }
   var cfg = kConfig();
   Object.keys(tx).forEach(function (id) {
     var o = tx[id], c = done[id]; o.by = c ? c.by : ''; o.line = kdLineFor(cfg, o.store, o.by);
-    o.need = o.total >= o.line; o.appr = appr[id] || '';
+    o.need = o.total >= o.line; o.appr = appr[id] || ''; o.req = req[id] || '';
     o.kind = o.need && o.appr !== '承認' ? '⛔承認なし' : (!c ? '⚠️確認サインなし' : '');
   });
   var ss = kdBook(), sh = ss.getSheetByName(KD_UC_SHEET);
@@ -252,6 +253,8 @@ function kdUnchecked(lines) {
     try { kdUncheckedWarn(rows, ss); } catch (e) { console.error('承認・チェック漏れの警告: ' + e); }
   }
   kdCheckSummary(ss, tx);
+  kdBuyList(ss, tx);
+  kdMonthSummary(ss);
 }
 function kdUncheckedWarn(rows, ss) {
   var ch = kdWarnChannel(), yen = function (n) { return Number(n || 0).toLocaleString() + '円'; };
@@ -261,7 +264,9 @@ function kdUncheckedWarn(rows, ss) {
     return r[2].slice(0, 1) === '⛔' ? '⛔ ' + r[4] + '　' + d + '　受付' + r[5] + '　' + yen(r[6]) + '（承認ライン ' + yen(r[7]) + '）' + (r[9] ? '　査定者：' + r[9] : '　ツール未使用') + (r[10] ? '　本部：' + r[10] : '')
       : '⚠️ ' + r[4] + '　' + d + '　受付' + r[5] + '　' + yen(r[6]);
   };
-  var head = '【ツールを通していない買取】⛔承認なしで支払い ' + ng.length + '件・⚠️確認サインなし ' + ck.length + '件';
+  var st = {}; rows.forEach(function (r) { var x = st[r[4]] || (st[r[4]] = [0, 0]); x[/^⛔/.test(r[2]) ? 0 : 1]++; });
+  var head = '【ツールを通していない買取】⛔承認なしで支払い ' + ng.length + '件・⚠️確認サインなし ' + ck.length + '件\n' +
+    Object.keys(st).map(function (k) { return '・' + k + '　⛔' + st[k][0] + '件　⚠️' + st[k][1] + '件'; }).join('\n');
   var body = ng.map(line).join('\n') + (ng.length && ck.length ? '\n\n' : '') + ck.slice(0, 40).map(line).join('\n') + (ck.length > 40 ? '\nほか ' + (ck.length - 40) + '件' : '');
   kSplit(head + '\n\n' + body + '\n\n一覧・確認メモはこちら（「' + KD_UC_SHEET + '」タブ）：\n' + ss.getUrl()).forEach(function (x) { send(ch, { type: 'text', text: x }); });
 }
@@ -284,4 +289,54 @@ function kdCheckSummary(ss, tx) {
     .sort(function (a, b) { var da = fmt(a[0]), db = fmt(b[0]); return da < db ? 1 : da > db ? -1 : String(a[1]).localeCompare(String(b[1])); });
   if (last >= 2) sh.getRange(2, 1, last - 1, Math.max(head.length, sh.getLastColumn())).clearContent();
   if (rows.length) { sh.getRange(2, 1, rows.length, head.length).setValues(rows); sh.getRange(2, 9, rows.length, 1).setNumberFormat('0%'); }
+}
+
+/* ---------- 買取一覧（全店・1件1行）：誰が査定したか ---------- */
+// 査定者＝ツールの最終チェックで選んだ名前 → なければ承認依頼を出した人 → どちらもなければ「（ツール未使用）」
+var KD_LIST_COLS = ['買取日時', '店舗', '受付番号', '買取合計', '行数', '査定者', '確認サイン', '承認ライン', '本部承認', '判定', 'マイカ取引ID'];
+function kdBuyList(ss, tx) {
+  var sh = ss.getSheetByName('買取一覧');
+  if (!sh) { sh = ss.insertSheet('買取一覧', 0); sh.setFrozenRows(1); sh.setColumnWidth(6, 140); }
+  sh.getRange(1, 1, 1, KD_LIST_COLS.length).setValues([KD_LIST_COLS]).setFontWeight('bold').setBackground('#efede7');
+  var last = sh.getLastRow(), old = last >= 2 ? sh.getRange(2, 1, last - 1, KD_LIST_COLS.length).getValues() : [], pos = {};
+  old.forEach(function (v, i) { pos[String(v[10])] = i; });
+  Object.keys(tx).forEach(function (id) {
+    var o = tx[id];
+    var row = [new Date(o.at), o.store, o.rec, o.total, o.n, o.by || o.req || '（ツール未使用）', o.by ? 'あり' : 'なし', o.line,
+      o.need ? (o.appr || '承認なし') : '不要', o.kind || 'OK', id];
+    if (pos[id] != null) old[pos[id]] = row; else { pos[id] = old.length; old.push(row); }
+  });
+  old.sort(function (a, b) { return new Date(b[0]) - new Date(a[0]); });
+  if (sh.getFilter()) sh.getFilter().remove();
+  if (last >= 2) sh.getRange(2, 1, last - 1, KD_LIST_COLS.length).clearContent().setBackground(null);
+  if (!old.length) return;
+  sh.getRange(2, 1, old.length, KD_LIST_COLS.length).setValues(old);
+  sh.getRange(2, 1, old.length, 1).setNumberFormat('yyyy/MM/dd(ddd) HH:mm');
+  sh.getRange(2, 4, old.length, 1).setNumberFormat('#,##0"円"'); sh.getRange(2, 8, old.length, 1).setNumberFormat('#,##0"円"');
+  sh.getRange(2, 10, old.length, 1).setBackgrounds(old.map(function (r) { return [/^⛔/.test(r[9]) ? '#ffd9de' : /^⚠️/.test(r[9]) ? '#fff4c2' : null]; }));
+  sh.getRange(1, 1, old.length + 1, KD_LIST_COLS.length).createFilter(); // 店舗・査定者で絞り込める
+}
+// 月別・店舗別：買取件数／⛔承認なし／⚠️確認サインなし／確認サイン率（チェック集計の日別から作る）
+function kdMonthSummary(ss) {
+  var src = ss.getSheetByName('チェック集計'); if (!src || src.getLastRow() < 2) return;
+  var vals = src.getRange(2, 1, src.getLastRow() - 1, 9).getValues(), g = {};
+  vals.forEach(function (v) {
+    if (!v[0]) return;
+    var m = (v[0] instanceof Date ? Utilities.formatDate(v[0], 'Asia/Tokyo', 'yyyy/MM') : String(v[0]).slice(0, 7)), k = m + '|' + v[1];
+    var x = g[k] || (g[k] = [m, v[1], 0, 0, 0, 0, 0, 0, 0]);
+    for (var j = 2; j <= 7; j++) x[j] += Number(v[j]) || 0;
+  });
+  var rows = Object.keys(g).map(function (k) { var x = g[k]; x[8] = x[2] ? x[3] / x[2] : 0; return x; })
+    .sort(function (a, b) { return a[0] < b[0] ? 1 : a[0] > b[0] ? -1 : String(a[1]).localeCompare(String(b[1])); });
+  var sh = ss.getSheetByName('店舗別（月）') || ss.insertSheet('店舗別（月）');
+  sh.clearContents(); sh.setFrozenRows(1);
+  sh.getRange(1, 1, 1, 9).setValues([['月', '店舗', '買取件数', '確認サインあり', '承認が必要', 'うち本部承認あり', '⛔承認なしで支払い', '⚠️確認サインなし', '確認サイン率']]).setFontWeight('bold').setBackground('#efede7');
+  if (rows.length) { sh.getRange(2, 1, rows.length, 9).setValues(rows); sh.getRange(2, 9, rows.length, 1).setNumberFormat('0%'); }
+}
+/** 一度だけ：古い「チェック漏れ」タブを消し、タブを用意する */
+function kdTabsSetup() {
+  var ss = kdBook(), old = ss.getSheetByName('チェック漏れ');
+  if (old && old.getLastRow() < 2) ss.deleteSheet(old);
+  kdUnchecked([]);
+  Logger.log(ss.getUrl());
 }
