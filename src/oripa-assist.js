@@ -123,7 +123,7 @@
   document.body.appendChild(host);
   var root = host.attachShadow({ mode: 'open' });
   root.innerHTML = '<style>' + CSS() + '</style><div class="wrap"><div class="win">' +
-    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-11-01 版BL</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
+    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-11-01 版BM</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
     (ALL ? '' : '<div class="tabs"><button data-tab="make" class="on">新しく作る</button><button data-tab="refill">補充する</button></div>') +
     '<button class="x" id="close" title="閉じる">×</button></div>' +
     '<div class="bd" id="body"><div class="msg">読み込み中…</div></div></div></div>';
@@ -1485,7 +1485,8 @@
     var dt = new Date(), ymd = dt.getFullYear() + '.' + (dt.getMonth() + 1) + '.' + dt.getDate();
     var m = modal('<div class="mh">スプレッドシートに飛ばす</div><div class="frm">' +
       '<div class="sm">「TikTokオリパシート」のいちばん左に、新しいタブ「' + ymd + '」を作って書き出します（同じ日に2つ目なら「' + ymd + '（2）」）。当たりは1枚ずつ、店舗の名前と到着チェック付きで、下枠は「下枠」1行にまとめます。</div>' +
-      '<label>オリパの呼び名（左上に入ります） <input id="tl" value="' + esc('TikTok' + pt.price + '　' + ((S.themes || []).length || (S.rares || []).length ? themeLabel() : '')) + '"></label></div>' +
+      '<label>オリパの呼び名（左上に入ります） <input id="tl" value="' + esc('TikTok' + pt.price + '　' + ((S.themes || []).length || (S.rares || []).length ? themeLabel() : '')) + '"></label>' +
+      '<label class="ck"><input type="checkbox" id="org" checked> どの店舗から来たカードかの一覧も保存する（ドライブ「ツール」フォルダの「全店オリパ カードの出どころ一覧」）</label></div>' +
       '<div class="acts"><button class="ghost" data-x>やめる</button><button class="primary" data-ok>書き出す</button></div>');
     m.querySelector('[data-x]').onclick = function () { m.remove(); };
     var ok = m.querySelector('[data-ok]');
@@ -1496,12 +1497,18 @@
         var rows = flatHits(pt.hits).map(function (h) { return { role: h.role.replace('（セット）', ''), name: h.p.name + (h.setOf ? '（セット）' : '') + (h.p.costTmp ? '（原価は仮：マスタの70%）' : ''), cond: sheetCond(h.p), cost: h.p.cost, n: h.n, store: h.p.sname || '' }; });
         var fN = pt.filler.reduce(function (a, x) { return a + x.n; }, 0), fC = pt.filler.reduce(function (a, x) { return a + x.p.cost * x.n; }, 0);
         var fS = []; pt.filler.forEach(function (x) { String(x.p.sname || '').split('・').forEach(function (k) { if (k && fS.indexOf(k) < 0) fS.push(k); }); });
-        var r = await fetch(ASSIST_URL, { method: 'POST', body: JSON.stringify({ action: 'tiktoksheet', tab: ymd, title: m.querySelector('#tl').value.trim(), price: pt.price, init: pt.init, rows: rows, fillerN: fN, fillerCost: fC, fillerStore: fS.join('・') }) }).then(function (x) { return x.json(); });
+        var r = await fetch(ASSIST_URL, { method: 'POST', body: JSON.stringify({ action: 'tiktoksheet', tab: ymd, title: m.querySelector('#tl').value.trim(), price: pt.price, init: pt.init, rows: rows, fillerN: fN, fillerCost: fC, fillerStore: fS.join('・'), origin: m.querySelector('#org').checked ? originRows(pt) : [] }) }).then(function (x) { return x.json(); });
         if (!r.ok) throw new Error(r.error || '書き出せませんでした');
-        m.querySelector('.mbox').innerHTML = '<div class="mh">書き出しました</div><div class="sm">「TikTokオリパシート」のタブ「' + esc(r.tab) + '」に書き出しました。</div><div class="acts"><a class="ghost" href="' + esc(r.url) + '" target="_blank" rel="noopener" style="text-decoration:none;display:inline-flex;align-items:center">シートを開く</a><button class="primary" data-x>OK</button></div>';
+        m.querySelector('.mbox').innerHTML = '<div class="mh">書き出しました</div><div class="sm">「TikTokオリパシート」のタブ「' + esc(r.tab) + '」に書き出しました。' + (r.originUrl ? '<br>どの店舗から来たかの一覧も「全店オリパ カードの出どころ一覧」に保存しました。' : r.originError ? '<br><span class="err">出どころ一覧は保存できませんでした：' + esc(r.originError) + '</span>' : '') + '</div><div class="acts">' + (r.originUrl ? '<a class="ghost" href="' + esc(r.originUrl) + '" target="_blank" rel="noopener" style="text-decoration:none;display:inline-flex;align-items:center">出どころ一覧を開く</a>' : '') + '<a class="ghost" href="' + esc(r.url) + '" target="_blank" rel="noopener" style="text-decoration:none;display:inline-flex;align-items:center">シートを開く</a><button class="primary" data-x>OK</button></div>';
         m.querySelector('[data-x]').onclick = function () { m.remove(); };
       } catch (e) { ok.disabled = false; ok.textContent = '書き出す'; var er = m.querySelector('.err') || m.querySelector('.frm').appendChild(document.createElement('div')); er.className = 'err'; er.textContent = e.message; }
     };
+  }
+  function originRows(pt) { // どの店舗のカードか（当たり・ラストワン・下枠すべて。セットは1枚ずつ）
+    var out = [];
+    flatHits(pt.hits).forEach(function (h) { out.push({ store: h.p.sname || '', role: h.role.replace('（セット）', ''), name: h.p.name + (h.setOf ? '（セット）' : ''), cond: sheetCond(h.p), n: h.n, cost: h.p.cost, sell: h.p.sell }); });
+    pt.filler.forEach(function (f) { if (f.n > 0) out.push({ store: f.p.sname || '', role: '下枠', name: f.p.name, cond: sheetCond(f.p), n: f.n, cost: f.p.cost, sell: f.p.sell }); });
+    return out;
   }
   function themeLabel() { var a = []; THEMES.forEach(function (x) { if ((S.themes || []).indexOf(x.k) >= 0) a.push(x.label.replace(/系$/, '')); }); RARES.forEach(function (x) { if ((S.rares || []).indexOf(x.k) >= 0) a.push(x.label); }); return a.join('・'); }
   function defaultName(price) { return price.toLocaleString('ja-JP').replace(/,/g, '') + '円オリパ'; }

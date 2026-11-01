@@ -136,5 +136,46 @@ function tiktokWrite(d) {
     ['手数料(7%)', '=F' + (b + 3) + '*0.07'], ['利益', '=F' + (b + 3) + '-F' + b + '-F' + (b + 4)], ['粗利益率', '=IFERROR(F' + (b + 5) + '/F' + (b + 3) + ',0)']];
   sh.getRange(b, 5, foot.length, 2).setValues(foot);
   sh.getRange(b, 6, foot.length, 1).setNumberFormat(yen2); sh.getRange(b + 1, 6).setNumberFormat('0'); sh.getRange(b + 6, 6).setNumberFormat('0.00%');
-  return { ok: true, tab: sh.getName(), url: ss.getUrl() + '#gid=' + sh.getSheetId() };
+  var res = { ok: true, tab: sh.getName(), url: ss.getUrl() + '#gid=' + sh.getSheetId() };
+  if (d.origin && d.origin.length) { try { var o = originWrite(d, sh.getName()); res.originUrl = o.url; res.originTab = o.tab; } catch (e) { res.originError = String(e && e.message || e); } }
+  return res;
+}
+
+/* ---------- 全店オリパ：どの店舗から来たカードかの一覧（ドライブ「ツール」フォルダの「全店オリパ カードの出どころ一覧」） ---------- */
+var ORIGIN_BOOK = '1s5mlyERzuB-szuulJ0M9xl6VhGnOsovi86_vGNGugow';
+var STORE_ORDER = ['柏', '津田沼', '松戸', '横浜', '中野', '町田', '千葉中央', '通販', 'お台場'];
+var ROLE_ORDER = ['TOP', '大当たり', '中当たり', '当たり', '小当たり', 'ラストワン', '下枠'];
+function originWrite(d, tabName) {
+  var ss = SpreadsheetApp.openById(ORIGIN_BOOK), yen = '[$¥-411]#,##0';
+  var rows = (d.origin || []).slice().sort(function (a, b) {
+    var sa = STORE_ORDER.indexOf(a.store), sb = STORE_ORDER.indexOf(b.store); sa = sa < 0 ? 99 : sa; sb = sb < 0 ? 99 : sb;
+    return sa - sb || String(a.store).localeCompare(String(b.store)) || ROLE_ORDER.indexOf(a.role) - ROLE_ORDER.indexOf(b.role) || (b.cost || 0) - (a.cost || 0);
+  });
+  var title = String(d.title || ('TikTok' + d.price)), day = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy/MM/dd');
+  // 1) オリパごとのタブ（いちばん左）：店舗ごとにまとめる
+  var nm = String(tabName || day).slice(0, 90), k = 2, base0 = nm; while (ss.getSheetByName(nm)) nm = base0 + '（' + (k++) + '）';
+  var sh = ss.insertSheet(nm, 0);
+  var out = [[title + '　' + d.price + '円×' + d.init + '口（' + day + '）', '', '', '', '', '', '', '', ''], ['店舗', '区分', '商品名', '状態', '個数', '原価', '総額', 'マスタ', '到着チェック']];
+  var cur = null, blocks = [];
+  rows.forEach(function (r) {
+    if (r.store !== cur) { cur = r.store; blocks.push(out.length + 1); }
+    var row = out.length + 1;
+    out.push([r.store || '?', r.role || '', r.name || '', r.cond || '', Number(r.n) || 0, Math.round(Number(r.cost) || 0), '=E' + row + '*F' + row, Math.round(Number(r.sell) || 0), false]);
+  });
+  sh.getRange(1, 1, out.length, 9).setValues(out);
+  var n = rows.length;
+  if (n) { sh.getRange(3, 6, n, 3).setNumberFormat(yen); sh.getRange(3, 9, n, 1).insertCheckboxes(); }
+  sh.getRange(1, 1).setFontWeight('bold').setFontSize(13); sh.getRange(2, 1, 1, 9).setFontWeight('bold').setBackground('#f3f1ea'); sh.setFrozenRows(2);
+  blocks.forEach(function (r, i) { if (i % 2 === 0) return; var end = (blocks[i + 1] || out.length + 1) - 1; sh.getRange(r, 1, end - r + 1, 9).setBackground('#fbfaf6'); });
+  // 店舗ごとの合計（右側）
+  var stores = []; rows.forEach(function (r) { if (stores.indexOf(r.store) < 0) stores.push(r.store); });
+  var sum = [['店舗', '点数', '原価計']].concat(stores.map(function (st) { return [st, '=SUMIF(A3:A' + (n + 2) + ',"' + st + '",E3:E' + (n + 2) + ')', '=SUMPRODUCT((A3:A' + (n + 2) + '="' + st + '")*G3:G' + (n + 2) + ')']; }));
+  sh.getRange(2, 11, sum.length, 3).setValues(sum); sh.getRange(2, 11, 1, 3).setFontWeight('bold').setBackground('#f3f1ea'); sh.getRange(3, 13, stores.length, 1).setNumberFormat(yen);
+  sh.setColumnWidth(3, 320);
+  // 2) すべての履歴（あとで店舗やカード名で探せるように）
+  var all = ss.getSheetByName('すべての履歴');
+  if (!all) { all = ss.insertSheet('すべての履歴'); all.appendRow(['日付', 'オリパ', '店舗', '区分', '商品名', '状態', '個数', '原価', 'マスタ']); all.setFrozenRows(1); all.getRange(1, 1, 1, 9).setFontWeight('bold'); }
+  var deflt = ss.getSheetByName('シート1'); if (deflt && deflt.getLastRow() === 0 && ss.getSheets().length > 2) ss.deleteSheet(deflt);
+  if (n) all.getRange(all.getLastRow() + 1, 1, n, 9).setValues(rows.map(function (r) { return [day, title + ' ' + d.price + '円×' + d.init + '口', r.store || '', r.role || '', r.name || '', r.cond || '', Number(r.n) || 0, Math.round(Number(r.cost) || 0), Math.round(Number(r.sell) || 0)]; }));
+  return { tab: sh.getName(), url: ss.getUrl() + '#gid=' + sh.getSheetId() };
 }
