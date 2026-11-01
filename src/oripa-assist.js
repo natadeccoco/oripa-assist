@@ -69,6 +69,7 @@
     { k: 'pika', label: 'ピカチュウ系', re: /ピカチュウ|ピチュー|ライチュウ/ },
     { k: 'eevee', label: 'ブイズ系', re: /イーブイ|シャワーズ|サンダース|ブースター|エーフィ|ブラッキー|リーフィア|グレイシア|ニンフィア/ },
     { k: 'girls', label: 'ガールズ系', re: /リーリエ|ナンジャモ|マリィ|シロナ|カトレア|アセロラ|エリカ|カスミ|カンナ|スイレン|マオ|ルザミーネ|サナ(?!ギ)|セレナ|ミモザ|ボタン|ネモ|ゼイユ|ルチア|アイリス|フウロ|コルニ|ナタネ|ヒカリ|メイ|ベル|スズナ|ミカン|アカネ|ハルカ|ユウリ|ソニア|ルリナ|サイトウ|メロン|ポプラ|クララ|ヒガナ|カリン|アズサ|オモダカ|チリ(?!ー)|ポピー|ライム|リップ|タロ|カキツバタ|スグリ|ミニスカート|おねえさん|おじょうさま|かんこうきゃく|ガールズ|センパイとコウハイ|モノマネむすめ|ブルーの|ナツメ|マーシャ(?!ドー)|イリマ|ライチ(?!ュウ)|アローラの仲間/ },
+    { k: 'tag', label: 'タッグチーム', re: /TAG\s*TEAM|タッグチーム|[&＆][^（(]*GX/i }, // 「ピカチュウ&ゼクロムGX」などのTAG TEAM
     { k: 's151', label: '151のポケモン', re: /(?!)/, fn: is151 } // 初代の151匹（弾の「151」ではない）
   ];
   var RARES = [ // レアリティで絞る（テーマと一緒に使うと「テーマ かつ レアリティ」）
@@ -122,7 +123,7 @@
   document.body.appendChild(host);
   var root = host.attachShadow({ mode: 'open' });
   root.innerHTML = '<style>' + CSS() + '</style><div class="wrap"><div class="win">' +
-    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-11-01 版BK</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
+    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-11-01 版BL</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
     (ALL ? '' : '<div class="tabs"><button data-tab="make" class="on">新しく作る</button><button data-tab="refill">補充する</button></div>') +
     '<button class="x" id="close" title="閉じる">×</button></div>' +
     '<div class="bd" id="body"><div class="msg">読み込み中…</div></div></div></div>';
@@ -216,7 +217,7 @@
       var shop = Number(p.actual_sell_price != null ? p.actual_sell_price : p.sell_price) || 0;
       var sell = Number(p.item_sell_price) || shop;
       return { id: p.id, name: p.display_name, img: p.image_url, sell: sell, shop: shop, cost: Number(p.average_wholesale_price) || 0, stock: p.stock_number, kind: kind,
-        bst: kind === 'box' ? bst : '', cond: kind === 'box' && bst ? cond + '・' + bst + (/^B/.test(bst) ? '（シュリンクなし）' : '') : cond, noShrink: kind === 'box' && /^B/.test(bst), exp: p.item_expansion || '', rarity: p.item_rarity || '', fv: bm ? Number(bm[1]) : 0, spec: spec, sid: sid, sname: shortName(sname) };
+        bst: kind === 'box' ? bst : '', cond: kind === 'box' && bst ? cond + '・' + bst + (/^B/.test(bst) ? '（シュリンクなし）' : '') : cond, noShrink: kind === 'box' && /^B/.test(bst), sealed: kind !== 'box' && kind !== 'pack' && /未開封/.test(spec + ' ' + p.display_name), exp: p.item_expansion || '', rarity: p.item_rarity || '', fv: bm ? Number(bm[1]) : 0, spec: spec, sid: sid, sname: shortName(sname) };
     }).filter(function (p) {
       if (p.kind === 'other') return false;
       if (p.kind === 'filler') return true;
@@ -328,7 +329,7 @@
   function roleOf(L, price, p) { return p.sell >= L.big[0] * price ? '大当たり' : (p.sell >= L.mid[0] * price ? '中当たり' : '小当たり'); }
 
   // 同じ商品かどうか（別の在庫行・別の店舗の同じBOXも同じものとして数える）
-  function nk(p) { return 'N:' + p.kind + ':' + String(p.name || '').replace(/[\s　]/g, '') + (p.kind === 'psa' ? ':' + (p.spec || '') + (p.cond || '') : ''); }
+  function nk(p) { return 'N:' + p.kind + ':' + String(p.name || '').replace(/[\s　]/g, '') + (p.kind === 'psa' ? ':' + (p.spec || '') + (p.cond || '') : '') + (p.sealed ? ':未開封' : ''); }
   var _stk = null, _stkInv = null;
   function stockOf(p) { if (_stkInv !== S.inv) { _stk = {}; _stkInv = S.inv; S.inv.forEach(function (q) { _stk[nk(q)] = (_stk[nk(q)] || 0) + (Number(q.stock) || 0); }); } return _stk[nk(p)] || 0; }
   var MAX_SAME = 2; // 同じ商品を当たりに入れるのは2個まで
@@ -782,9 +783,9 @@
     var img = h.p.set ? im1(h.p.set[0].img, h.p.set[0].name) + im1(h.p.set[1].img, h.p.set[1].name) : im1(h.p.img, h.p.name);
     var tag = attrs ? 'button' : 'div';
     return '<' + tag + ' class="cd ' + (big ? 'big ' : '') + (attrs ? 'swap' : '') + '" ' + (attrs || '') + '><div class="im' + (h.p.set ? ' duo' : '') + '">' + img + (h.p.set ? '<span class="settag">セット</span>' : '') + (h.role !== '下枠' && lowCost(h.p) ? '<span class="lowc">原価は仮（マスタの70%）</span>' : '') + (h.n > 1 ? '<span class="cnt">×' + h.n + '</span>' : '') + '<span class="role r-' + esc(h.role) + '">' + esc(h.role) + '</span>' +
-      (h.p.kind === 'psa' ? '<span class="psa">' + esc(psaLabel(h.p)) + '</span>' : '') +
+      (h.p.kind === 'psa' ? '<span class="psa">' + esc(psaLabel(h.p)) + '</span>' : '') + (h.p.sealed ? '<span class="psa seal">未開封</span>' : '') +
       (attrs ? '<span class="edit">入れ替え</span>' : '') + '</div>' +
-      (ALL && h.p.sname ? '<div class="sttag">' + esc(h.p.sname) + '</div>' : '') + '<div class="nm">' + (h.p.kind === 'psa' ? '《' + esc(psaLabel(h.p)) + '》' : '') + esc(h.p.name) + '</div>' + (h.p.kind === 'psa' ? '<div class="cond psa2">PSA鑑定品</div>' : (h.p.cond && !h.p.set ? '<div class="cond' + (h.p.noShrink ? ' nosh' : '') + '">' + esc(h.p.cond) + '</div>' : '')) +
+      (ALL && h.p.sname ? '<div class="sttag">' + esc(h.p.sname) + '</div>' : '') + '<div class="nm">' + (h.p.kind === 'psa' ? '《' + esc(psaLabel(h.p)) + '》' : '') + esc(h.p.name) + '</div>' + (h.p.kind === 'psa' ? '<div class="cond psa2">PSA鑑定品</div>' : (h.p.cond && !h.p.set ? '<div class="cond' + (h.p.noShrink ? ' nosh' : '') + '">' + esc(h.p.cond) + '</div>' : '')) + (h.p.sealed ? '<div class="cond seal2">未開封</div>' : '') +
       (h.p.set ? '<div class="cond">' + esc(h.p.set.map(function (m) { return m.kind === 'psa' ? psaLabel(m) : (m.cond || ''); }).join('＋')) + '</div>' : '') + '<div class="pr">マスタ ' + yen(h.p.sell) + (h.p.set ? '（2枚合計）' : '') + '</div>' + (h.p.shop != null ? '<div class="cs">店頭 ' + yen(h.p.shop) + '</div>' : '') + '<div class="cs">原価 ' + yen(h.p.cost) + (tmpCost(h.p) ? '<b style="color:#c0392b">（仮）</b>' : '') + '</div>' + (h.p.costRaw != null ? '<div class="cs" style="color:#c0392b">マイカの原価 ' + yen(h.p.costRaw) + '</div>' : '') + '</' + tag + '>';
   }
 
@@ -1227,7 +1228,7 @@
       c.font = 'bold 17px ' + F; var tw = c.measureText(role).width + 16;
       c.fillStyle = color[role] || '#555'; c.fillRect(x, y, tw, 28); c.fillStyle = '#fff'; c.fillText(role, x + 8, y + 5);
       if (h.n > 1) { c.font = 'bold 20px ' + F; c.fillStyle = '#1f1d1a'; c.fillText('×' + h.n, x + CW - 8 - c.measureText('×' + h.n).width, y + 4); }
-      var ty = y + 238, isPsa = h.p.kind === 'psa', cond = h.p.set ? 'セット：' + h.p.set.map(function (q) { return q.kind === 'psa' ? psaLabel(q) : (q.cond || ''); }).join('＋') : isPsa ? psaLabel(h.p) : (h.p.cond || (h.p.kind === 'box' ? 'BOX' : ''));
+      var ty = y + 238, isPsa = h.p.kind === 'psa', cond = h.p.sealed ? '未開封' + (h.p.cond ? '・' + h.p.cond : '') : h.p.set ? 'セット：' + h.p.set.map(function (q) { return q.kind === 'psa' ? psaLabel(q) : (q.cond || ''); }).join('＋') : isPsa ? psaLabel(h.p) : (h.p.cond || (h.p.kind === 'box' ? 'BOX' : ''));
       c.font = 'bold 16px ' + F; c.fillStyle = isPsa ? '#2952a3' : '#555'; c.fillText(fit(cond, CW - 16), x + 8, ty);
       c.fillStyle = '#1f1d1a'; c.font = 'bold 16px ' + F; wrap2(h.p.name, CW - 16).forEach(function (l, k) { c.fillText(l, x + 8, ty + 21 + k * 20); });
       c.fillStyle = '#c0392b'; c.font = 'bold 18px ' + F; c.fillText('販売 ' + yen(h.p.sell), x + 8, ty + 66);
@@ -1440,7 +1441,7 @@
 
 
   // 店舗オリパシート（店舗ごとのスプレッドシート）に、ほかのオリパと同じ形で書き出す（下枠は1行にまとめる）
-  function sheetCond(p) { if (p.kind === 'psa') return psaLabel(p); if (p.kind === 'box') return p.bst ? (/^B/.test(p.bst) ? 'B' : p.bst) : ''; return String(p.cond || '').replace('状態', ''); }
+  function sheetCond(p) { if (p.kind === 'psa') return psaLabel(p); if (p.sealed) return '未開封' + (p.cond ? '・' + String(p.cond).replace('状態', '') : ''); if (p.kind === 'box') return p.bst ? (/^B/.test(p.bst) ? 'B' : p.bst) : ''; return String(p.cond || '').replace('状態', ''); }
   function guessTab(tabs, pt) {
     var pr = String(pt.price), st = shortName(S.sname), box = pt.L && pt.L.kinds && pt.L.kinds[0].length === 1 && pt.L.kinds[0][0] === 'box';
     var scuff = S.conds && S.conds.card && S.conds.card.some(function (c) { return !/^状態A-?$/.test(c); });
@@ -1777,7 +1778,7 @@
       '.orow{display:flex;justify-content:space-between;gap:10px;background:#fff;border:1.5px solid #e5e2da;border-radius:9px;padding:10px 12px;cursor:pointer;font-size:14px;font-family:inherit;text-align:left}',
       '.orow.on,.pickable.on .im{outline:3px solid #c8102e}.orow span{color:#777;font-size:12px}',
       '.pickable{cursor:pointer}',
-      '.psa{position:absolute;right:3px;top:3px;font-size:10px;font-weight:900;padding:1px 6px;border-radius:4px;background:#1a3fa0;color:#fff;letter-spacing:.03em}.cond.psa2{background:#1a3fa0;color:#fff}',
+      '.psa{position:absolute;right:3px;top:3px;font-size:10px;font-weight:900;padding:1px 6px;border-radius:4px;background:#1a3fa0;color:#fff;letter-spacing:.03em}.psa.seal{background:#b8860b}.cond.seal2{background:#b8860b;color:#fff;font-weight:800}.cond.psa2{background:#1a3fa0;color:#fff}',
       '.cond{display:inline-block;font-size:9.5px;font-weight:800;color:#555;background:#efece4;border-radius:4px;padding:0 5px;margin:2px 0 1px}.cond.nosh{background:#c0392b;color:#fff}',
       '.cd.swap{cursor:pointer}.cd.swap:hover .im{outline:3px solid #e8c23a}',
       '.edit{position:absolute;left:0;right:0;bottom:0;background:rgba(29,29,34,.78);color:#fff;font-size:10px;font-weight:800;text-align:center;padding:3px 0;opacity:0;transition:opacity .15s}',
