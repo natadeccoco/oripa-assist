@@ -123,7 +123,7 @@
   document.body.appendChild(host);
   var root = host.attachShadow({ mode: 'open' });
   root.innerHTML = '<style>' + CSS() + '</style><div class="wrap"><div class="win">' +
-    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-11-01 版BO</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
+    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-11-01 版BP</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
     (ALL ? '' : '<div class="tabs"><button data-tab="make" class="on">新しく作る</button><button data-tab="refill">補充する</button></div>') +
     '<button class="x" id="close" title="閉じる">×</button></div>' +
     '<div class="bd" id="body"><div class="msg">読み込み中…</div></div></div></div>';
@@ -224,6 +224,7 @@
     }).filter(function (p) {
       if (p.kind === 'other') return false;
       if (p.kind === 'filler') return true;
+      if (p.kind === 'pack' && p.cost > 0 && p.sell <= 0) { p.noPrice = true; return true; } // ばらのパックはマスタも店頭も0円のことが多い（原価で見る）
       if (p.cost <= 0 || p.sell <= 0) return false;          // 原価・マスタ価格が入っていないものは使わない
       if (p.cost <= p.sell * 0.1 && p.sell >= 3000) { p.costRaw = p.cost; p.cost = Math.round(p.sell * 0.7); p.costTmp = true; } // 原価がマスタの1/10以下＝原価の登録ミスとみて、マスタの70%を仮の原価にして計算する
       // シングルの状態（ふだんは状態A・A-だけ）は condPass でしぼる
@@ -684,7 +685,7 @@
     });
   }
   /* ---------- パックオリパ（パック限定）：当たりも下枠もパック。下枠は在庫の多いパックから、原価が合わなければ【@◯◯】で調整 ---------- */
-  function packVal(p) { return p.mis ? (p.shop || p.sell) : (p.sell || p.shop); } // マスタ価格が怪しいパックは店頭価格で見る
+  function packVal(p) { return p.mis ? (p.shop || p.sell) : (p.sell || p.shop || Math.round(p.cost * 1.3)); } // 値段が入っていないパックは原価の1.3倍くらいとみる // マスタ価格が怪しいパックは店頭価格で見る
   function packStock() { return S.inv.filter(function (p) { return p.kind === 'pack' && p.stock > 0 && p.cost > 0; }); }
   function renderPack() {
     var P = S.pk || (S.pk = { price: 500, init: 40, cmin: 60, cmax: 70, nHit: 4, useAt: true });
@@ -716,6 +717,7 @@
     var left = {}; S.inv.forEach(function (p) { left[p.id] = p.stock; }); var used = {};
     var packs = packStock().filter(function (p) { return !isDeck(p); });
     var hitPool = packs.filter(function (p) { return packVal(p) >= price * 1.6; }).sort(function (a, b) { return packVal(b) - packVal(a) || stockOf(b) - stockOf(a); });
+    if (hitPool.length < P.nHit + 1) packs.filter(function (p) { return hitPool.indexOf(p) < 0 && p.cost >= price; }).sort(function (a, b) { return b.cost - a.cost; }).forEach(function (p) { hitPool.push(p); }); // 値段の高いパックが少なければ、原価が1口の値段以上のものも当たりに
     var hits = [], hitCost = 0;
     function take(p, role) { left[p.id]--; markUsed(used, p); var ex = hits.find(function (h) { return h.p.id === p.id && h.role === role; }); if (ex) ex.n++; else hits.push({ p: p, n: 1, role: role }); }
     var roleOf2 = function (v) { return v >= price * 6 ? '大当たり' : v >= price * 3 ? '中当たり' : '小当たり'; };
@@ -731,7 +733,7 @@
     if (S.lastOn !== false) { last = hitPool.find(function (p) { return left[p.id] > 0 && !usedOf(used, p); }) || hitPool.find(function (p) { return left[p.id] > 0; }) || null; if (last) { take(last, 'ラストワン'); hitCost += last.cost; } else warn.push('ラストワン賞にできるパックがありません'); }
     // 下枠：在庫の多いパックから（1種類は全体の35%まで）
     var R = init - nHit, cap = Math.max(1, Math.ceil(R * 0.35)), fl = [];
-    var base = packs.filter(function (p) { return left[p.id] > 0 && packVal(p) < price * 1.6; }).sort(function (a, b) { return stockOf(b) - stockOf(a) || a.cost - b.cost; });
+    var base = packs.filter(function (p) { return left[p.id] > 0 && hitPool.indexOf(p) < 0; }).sort(function (a, b) { return stockOf(b) - stockOf(a) || a.cost - b.cost; });
     function addF(p, n) { left[p.id] -= n; var ex = fl.find(function (x) { return x.p.id === p.id; }); if (ex) ex.n += n; else fl.push({ p: p, n: n }); }
     var got = 0;
     base.forEach(function (p) { if (got < R) { var k = Math.min(R - got, left[p.id], cap); if (k > 0) { addF(p, k); got += k; } } });
