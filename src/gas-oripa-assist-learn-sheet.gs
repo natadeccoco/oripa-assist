@@ -29,7 +29,7 @@ function doPost(e) {
 function setupCheck() { Logger.log(SpreadsheetApp.openById(LEARN_BOOK).getName()); Logger.log(oripaTabs('津田沼').name); Logger.log(SpreadsheetApp.openById(TIKTOK_BOOK).getName()); }
 
 /* ---------- 店舗オリパシートへの書き出し（オリパ作成アシスト）：店舗ごとのスプレッドシート（スクリプト プロパティ ORIPA_SHEETS に {"津田沼":"シートID"}）の指定タブに、ほかのオリパと同じ形でブロックを足す ---------- */
-function oripaSheets() { var o = { '津田沼': '1ViS8Der6dWCMNi8Z6mx35MAybv11BDI6JTa6sC2YlZc' }; try { var x = JSON.parse(P.getProperty('ORIPA_SHEETS') || '{}'); Object.keys(x).forEach(function (k) { o[k] = x[k]; }); } catch (e) { } return o; } // 店舗名 → 店舗オリパシートのID（ほかの店はスクリプト プロパティ ORIPA_SHEETS で足せる）
+function oripaSheets() { var o = { '津田沼': '1ViS8Der6dWCMNi8Z6mx35MAybv11BDI6JTa6sC2YlZc', '柏': '1CFgKiLZM7kDQWaYzL57QPNA3zHqegs8wn9RrMaVAs7A', '松戸': '1wAE71H7RyR-K5AwocBN4ICiAR1TtecyQa1B5Tdb3xCo', '横浜': '1DQuJTn0moyzUCLj0MWA39yaUZmt0F-S5hOGl-o9_3qM', '中野': '1ZaNK5L2AxcA5aRGQDfJThKGQEme_mitlVx6rss-Fxr0', '町田': '1g3O2pqGeNouJCkytYMFgb-tpxFtKS5LCM_vYAgeoe7k', '千葉中央': '1yC_AwKUwLG1myvW3Sdu65wYcsBU8KieG5Sh9fUiFGdA' }; try { var x = JSON.parse(P.getProperty('ORIPA_SHEETS') || '{}'); Object.keys(x).forEach(function (k) { o[k] = x[k]; }); } catch (e) { } return o; } // 店舗名 → 店舗オリパシートのID（ほかの店はスクリプト プロパティ ORIPA_SHEETS で足せる）
 function oripaTabs(store) {
   var id = oripaSheets()[store]; if (!id) return { ok: false, error: store + '店の店舗オリパシートがまだ登録されていません（本部に連絡してください）' };
   var ss = SpreadsheetApp.openById(id);
