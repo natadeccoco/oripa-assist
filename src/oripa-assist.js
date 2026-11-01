@@ -142,7 +142,7 @@
   document.body.appendChild(host);
   var root = host.attachShadow({ mode: 'open' });
   root.innerHTML = '<style>' + CSS() + '</style><div class="wrap"><div class="win">' +
-    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-11-01 版BW</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
+    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-11-01 版BY</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
     (ALL ? '' : '<div class="tabs"><button data-tab="make" class="on">新しく作る</button><button data-tab="refill">補充する</button></div>') +
     '<button class="x" id="close" title="閉じる">×</button></div>' +
     '<div class="bd" id="body"><div class="msg">読み込み中…</div></div></div></div>';
@@ -429,7 +429,7 @@
     }
     // 1) TOP と ラストワン賞
     curRole = 'TOP';
-    var top = L.vend ? (pickOne(L.big[0], L.big[1], L.big[1]) || pickOne(L.big[0], 1e9, L.big[1])) : (pickOne(L.top * 0.75, L.top * 1.35, L.top) || pickOne(L.big[0], 1e9, L.top)); // 自販機：TOPも大当たりの範囲の中でいちばん上を狙う
+    var top = L.vend ? (pickOne(L.big[0], L.big[1], L.big[1]) || pickOne(L.big[0] * 0.85, L.big[1] * 1.15, L.big[1])) : (pickOne(L.top * 0.75, L.top * 1.35, L.top) || pickOne(L.big[0], L.top * 2, L.top)); // 範囲に無いときも、ルールから大きく外れたもの（例：1000円で158倍）は使わない // 自販機：TOPも大当たりの範囲の中でいちばん上を狙う
     var forceSet = setOn && S.forceSet, bigSetDone = false;
     var topSet = setOn && (forceSet || !top || top.sell < L.top * 0.75 * price || top.sell >= L.top * 1.35 * price) ? bestSet(L.top * 0.75 * price, L.top * 1.35 * price, L.top * price) : null;
     if (topSet) { useSet(topSet, 'TOP'); top = topSet; }
@@ -452,6 +452,13 @@
       else if (nBig < L.nBig[1] && nBig + nMid + 1 <= nTot && estCost(nBig + 1, nMid, nTot) <= budget) { nBig++; tried = true; }
       else if (nTot < L.nTotal[1] && estCost(nBig, nMid, nTot + 1) <= budget) { nTot++; tried = true; }
       if (!tried) break;
+    }
+    if (L.vend) { // 自販機：ピラミッド形（大当たりは少なく、小当たりを多く）。TOPが高いほど大当たり・中当たりを減らす
+      var tx = top ? top.sell / price : L.big[0], mid0 = (L.big[0] + L.big[1]) / 2;
+      nBig = Math.min(L.nBig[1], Math.max(L.nBig[0], tx >= mid0 ? L.nBig[0] : L.nBig[0] + 1));
+      nMid = Math.min(L.nMid[1], Math.max(L.nMid[0], tx >= mid0 ? L.nMid[1] : L.nMid[0]));
+      if (nBig + nMid >= nTot) nMid = Math.max(L.nMid[0], nTot - nBig - 1);
+      while (nBig > L.nBig[0] && estCost(nBig, nMid, nTot) > budget) nBig--;
     }
     var nSmall = Math.max(0, nTot - nBig - nMid);
 
