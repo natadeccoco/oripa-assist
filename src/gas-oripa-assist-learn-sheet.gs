@@ -132,7 +132,7 @@ function tiktokWrite(d) {
   sh.getRange(2, 8, list.length, 1).insertCheckboxes();
   sh.getRange(2, 1).setDataValidation(SpreadsheetApp.newDataValidation().requireDate().setAllowInvalid(false).setHelpText('販売日を入力（例: 2026/10/30）').build()).setNumberFormat('"販売日 "yyyy/mm/dd');
   var b = end + 1;
-  var foot = [['原価合計', '=SUM(F2:F' + end + ')'], ['販売口数', Number(d.init) || 0], ['販売単価', Number(d.price) || 0], ['売上', '=F' + (b + 1) + '*F' + (b + 2)],
+  var foot = [['原価合計', '=SUM(F2:F' + end + ')'], ['販売口数', '=SUM(E' + (2 + lastOne.length) + ':E' + end + ')'] /* ラストワン賞の行は口数に入れない */, ['販売単価', Number(d.price) || 0], ['売上', '=F' + (b + 1) + '*F' + (b + 2)],
     ['手数料(7%)', '=F' + (b + 3) + '*0.07'], ['利益', '=F' + (b + 3) + '-F' + b + '-F' + (b + 4)], ['粗利益率', '=IFERROR(F' + (b + 5) + '/F' + (b + 3) + ',0)']];
   sh.getRange(b, 5, foot.length, 2).setValues(foot);
   sh.getRange(b, 6, foot.length, 1).setNumberFormat(yen2); sh.getRange(b + 1, 6).setNumberFormat('0'); sh.getRange(b + 6, 6).setNumberFormat('0.00%');

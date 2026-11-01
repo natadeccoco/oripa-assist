@@ -90,6 +90,8 @@
     var t = S.themes || [];
     return '<div class="f"><div class="lb">テーマで絞る（混ぜられます）</div><div class="tchk">' + THEMES.map(function (x) { return '<label><input type="checkbox" data-t="' + x.k + '"' + (t.indexOf(x.k) >= 0 ? ' checked' : '') + '>' + x.label + '</label>'; }).join('') + '</div><div class="lb" style="margin-top:6px">レアリティで絞る</div><div class="tchk rchk">' + RARES.map(function (x) { return '<label><input type="checkbox" data-r="' + x.k + '"' + ((S.rares || []).indexOf(x.k) >= 0 ? ' checked' : '') + '>' + x.label + '</label>'; }).join('') + '</div><div class="hint">チェックすると、当たりはそのテーマ・レアリティのシングル・PSAだけになります（テーマとレアリティを両方選ぶと、両方に当てはまるもの。下枠はそのまま）</div></div>';
   }
+  function lastHTML() { return '<div class="f"><div class="lb">ラストワン賞</div><label class="ck lastck"><input type="checkbox" id="lastOn"' + (S.lastOn === false ? '' : ' checked') + '> 入れる</label><div class="hint">ラストワン賞は口数に入りません</div></div>'; }
+  function readLast() { var e = root.querySelector('#lastOn'); if (e) S.lastOn = !!e.checked; }
   function readThemes() { S.themes = [].slice.call(root.querySelectorAll('.tchk input[data-t]:checked')).map(function (x) { return x.dataset.t; }); S.rares = [].slice.call(root.querySelectorAll('.tchk input[data-r]:checked')).map(function (x) { return x.dataset.r; }); }
   function isEnergy(p) { return (p.kind === 'card' || p.kind === 'psa') && /エネルギー/.test(p.name || ''); }
   function isDeck(p) { return /デッキビルド|スターター|スタートデッキ|デッキセット|構築済み|プレミアムデッキ|デッキ/.test(p.name); }
@@ -120,7 +122,7 @@
   document.body.appendChild(host);
   var root = host.attachShadow({ mode: 'open' });
   root.innerHTML = '<style>' + CSS() + '</style><div class="wrap"><div class="win">' +
-    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-10-31 版BG</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
+    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-11-01 版BH</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
     (ALL ? '' : '<div class="tabs"><button data-tab="make" class="on">新しく作る</button><button data-tab="refill">補充する</button></div>') +
     '<button class="x" id="close" title="閉じる">×</button></div>' +
     '<div class="bd" id="body"><div class="msg">読み込み中…</div></div></div></div>';
@@ -405,9 +407,9 @@
     else if (top) { take(top, 'TOP'); if (top.sell < L.top * 0.75 * price || top.sell >= L.top * 1.35 * price) warn.push('TOPの狙いはマスタ' + yen(L.top * price) + '前後ですが、在庫にないので近いもの（' + yen(top.sell) + '）にしています'); }
     else warn.push('TOPにできる在庫がありません（狙い：マスタ' + yen(L.top * price) + '前後）');
     lastOneMode = true; // デッキビルドBOX・スターター等はラストワンに使わない
-    var last = pickOne(L.last * 0.7, L.last * 1.4, L.last) || pickOne(L.mid[0], L.top * 1.35, L.last);
+    var last = S.lastOn === false ? null : (pickOne(L.last * 0.7, L.last * 1.4, L.last) || pickOne(L.mid[0], L.top * 1.35, L.last)); // 「ラストワン賞を入れる」を外したときは入れない
     lastOneMode = false;
-    if (last) take(last, 'ラストワン'); else warn.push('ラストワン賞にできる在庫がありません（狙い：マスタ' + yen(L.last * price) + '前後）');
+    if (last) take(last, 'ラストワン'); else if (S.lastOn !== false) warn.push('ラストワン賞にできる在庫がありません（狙い：マスタ' + yen(L.last * price) + '前後）');
 
     // 2) 枚数を決める（予算に入る範囲で、中→大→小の順に増やす）
     var est = function (r) { return rho * geo(r[0], r[1], 0.5) * price; };
@@ -563,7 +565,7 @@
     var fillTotal = filler.reduce(function (s, f) { return s + f.n; }, 0);
     if (fillTotal < fillN) warn.push('下枠が ' + (fillN - fillTotal) + '口分 足りません');
     var nameRule = (L.free ? '任意の金額（' + L.label + '）：原価率' : 'ルール：原価率') + (L.costMin ? pct(L.costMin) + '〜' : '上限') + pct(L.costMax) + '・TOP ' + L.top + '倍・大当たり' + L.big[0] + '〜' + L.big[1] + '倍' + (L.free ? '・中当たり' + L.mid[0] + '〜' + L.mid[1] + '倍・小当たり' + L.small[0] + '〜' + L.small[1] + '倍' : '') + '・ラストワン ' + L.last + '倍・当たり' + L.nTotal[0] + (L.nTotal[1] !== L.nTotal[0] ? '〜' + L.nTotal[1] : '') + '枚';
-    var need = { 'TOP': top ? 0 : 1, '大当たり': Math.max(0, short['大当たり'] - (top ? 0 : 1)), '中当たり': Math.max(0, short['中当たり']), '小当たり': Math.max(0, short['小当たり']), 'ラストワン': last ? 0 : 1 };
+    var need = { 'TOP': top ? 0 : 1, '大当たり': Math.max(0, short['大当たり'] - (top ? 0 : 1)), '中当たり': Math.max(0, short['中当たり']), '小当たり': Math.max(0, short['小当たり']), 'ラストワン': last || S.lastOn === false ? 0 : 1 };
     var cnt0 = { '大当たり': nOf(['TOP', '大当たり']), '中当たり': nOf(['中当たり', '当たり']), '小当たり': nOf(['小当たり']) };
     return { need: need, miss0: { '大当たり': need['TOP'] + need['大当たり'], '中当たり': need['中当たり'], '小当たり': need['小当たり'] }, cnt0: cnt0, key: '', name: 'おすすめ構成', note: nameRule, price: price, init: init, rev: rev, hits: hits, filler: filler, cost: cost, costr: cost / rev,
       value: hits.reduce(function (s, h) { return s + h.p.sell * h.n; }, 0), L: L, warn: warn };
@@ -636,7 +638,7 @@
       '<div class="f"><div class="lb">口数</div><input id="init" type="number" value="' + init + '"> 口</div>' +
       '<div class="f"><div class="lb">最初の原価率（上限）</div><input id="costr" type="number" step="1" value="' + Math.round(costr * 100) + '"> %<div class="hint">ルール：' + pct(L.costMin) + '〜' + pct(L.costMax) + '（' + L.base.toLocaleString() + '円帯）</div></div>' +
       '<div class="f"><div class="lb">当たりに入れる種類</div><div class="kchk">' + ['box', 'card', 'psa', 'pack', 'supply'].map(function (k) { return '<label><input type="checkbox" data-k="' + k + '"' + (kinds.indexOf(k) >= 0 ? ' checked' : '') + '>' + KIND_NAMES[k] + '</label>'; }).join('') + '</div><div class="hint">最初は本部ルールの種類（' + esc(L.label) + '）</div></div>' +
-      themeHTML() +
+      lastHTML() + themeHTML() +
       '<div class="f go"><button class="primary" id="go">提案する</button></div>' +
       '</div>' + afterForm();
     bindModeTabs(); bindStoreChips();
@@ -644,7 +646,7 @@
     $('#pfree').onchange = function () { var v = Number(this.value); if (v > 0) { S.form = { price: v }; S.patterns = []; renderMake(); } };
     $('#go').onclick = function () {
       var p = cur.price, n = Number($('#init').value) || L.init, c = Math.min((Number($('#costr').value) || Math.round(L.costr * 100)) / 100, 1.5);
-      readThemes();
+      readThemes(); readLast();
       var ks = [].slice.call(root.querySelectorAll('.kchk input[data-k]:checked')).map(function (x) { return x.dataset.k; });
       if (((S.themes || []).length || (S.rares || []).length)) ks = ks.filter(function (k) { return k === 'card' || k === 'psa'; }).concat(ks.some(function (k) { return k === 'card' || k === 'psa'; }) ? [] : ['card', 'psa']);
       if (!ks.length) { alert('当たりに入れる種類を1つ以上選んでください'); return; }
@@ -717,7 +719,7 @@
           [['rule', (L.fill.at ? '【@' + L.fill.at + '】' + (L.fill.pack ? '（足りなければパック）' : '') : 'マスタ' + yen(L.fill.single) + '以上の' + fillKindName(L)) + '（' + L.base.toLocaleString() + '円のオリパと同じ）'], ['at', '【@◯◯】商品'], ['card', 'シングル'], ['box', 'BOX'], ['pack', 'パック']].map(function (o) { return '<option value="' + o[0] + '"' + (F.fill === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select>' +
           (F.fill === 'at' ? ' 【@' + num('fval', F.fillVal || fillDef.at) + '】' : (F.fill === 'card' || F.fill === 'box') ? ' マスタ ' + num('fval', F.fillVal || fillDef[F.fill], ' w') + ' 円以上' : '') +
         '</div>' +
-        themeHTML() +
+        lastHTML() + themeHTML() +
         '<div class="f go"><button class="primary" id="go">提案する</button></div>' +
       '</div>' +
       '<div class="hint">値段を変えると、倍率・枚数・原価率に近い値段帯（' + L.base.toLocaleString() + '円）の目安が入り直します。そのあと自由に書き換えてください。</div>' +
@@ -732,7 +734,7 @@
       F.top = v('ftop') > 0 ? v('ftop') : F.top; F.last = v('flast') > 0 ? v('flast') : F.last;
       F.big = pair('fbig', F.big); F.mid = pair('fmid', F.mid); F.small = pair('fsmall', F.small);
       F.nBig = pair('fnbig', F.nBig).map(Math.round); F.nMid = pair('fnmid', F.nMid).map(Math.round); F.nTotal = pair('fntot', F.nTotal).map(Math.round);
-      F.kinds = [].slice.call(root.querySelectorAll('.kchk input[data-k]:checked')).map(function (x) { return x.dataset.k; }); readThemes();
+      F.kinds = [].slice.call(root.querySelectorAll('.kchk input[data-k]:checked')).map(function (x) { return x.dataset.k; }); readThemes(); readLast();
       if (((S.themes || []).length || (S.rares || []).length) && !F.kinds.some(function (k) { return k === 'card' || k === 'psa'; })) F.kinds = F.kinds.concat(['card', 'psa']);
       F.cardConds = [].slice.call(root.querySelectorAll('.cchk input:checked')).map(function (x) { return x.dataset.c; });
       F.boxConds = [].slice.call(root.querySelectorAll('.bchk input:checked')).map(function (x) { return x.dataset.c; });
