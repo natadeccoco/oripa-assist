@@ -6,7 +6,7 @@
  *   GET  ?action=lstatus&id=…   … 申請の結果
  *   GET  ?action=llist&store=… … その店の最近の申請（ツールの「最近の申請」）
  *   POST {action:'losscheck', key, stores:[{store, losses:[マイカのロス]}]}
- *        … 雄司のPC（loss_check.ps1、毎晩22時）から。承認のないロスを「ロス申請」グループに警告。backfill:true なら「導入前」として記録だけ
+ *        … 雄司のPC（loss_check.ps1、毎晩22時）から。承認のないロスを役員グループ「ロス警告（役員）」に警告し、「申請のないロス一覧」に追記。backfill:true なら「導入前」として記録だけ
  *   集計は「ロス分析」タブ（夜のチェックのたびに作り直す）
  * LINE WORKSのボタン：postback 'lapprove:ID' / 'lreject:ID'（callback() から lossCallback() に回す）
  * 送り先：役員が「ロス申請」グループで「ロス申請に登録」と送ると、そのグループが登録される（LW_LOSS_CHANNEL）
@@ -172,25 +172,55 @@ function lossCheck(d) {
         }
         if (!judge) judge = '無承認';
         rows.push([key, st.store, new Date(L.created_at), genre, reason, Number(L.count) || 0, Number(L.total) || 0, names.join('\n'), judge, appId, now, L.staff || '']);
-        if (/^無承認/.test(judge)) bad.push({ store: st.store, at: L.created_at, genre: genre, reason: reason, count: L.count, total: L.total, names: names, judge: judge });
+        if (/^無承認/.test(judge)) bad.push({ id: key, store: st.store, at: L.created_at, genre: genre, reason: reason, count: L.count, total: L.total, names: names, judge: judge, appId: appId, staff: L.staff || '' });
       });
     });
     if (rows.length) ms.getRange(ms.getLastRow() + 1, 1, rows.length, M_COLS.length).setValues(rows);
   } finally { lock.releaseLock(); }
   var sent = false;
   try { lAnalyze(); } catch (e) { console.error(e); }
-  if (bad.length && ch && !d.backfill) {
-    var t = '⚠️【承認のないロスがあります】' + bad.length + '件\nマイカにロス登録されていますが、ロス申請の承認が確認できませんでした。該当店舗は本部に事情を連絡してください。\n';
+  var listErr = '';
+  if (bad.length && !d.backfill) { try { lAppendList(bad); } catch (e) { listErr = String(e.message || e); console.error(e); } }
+  var ach = lAlertChannel();
+  if (bad.length && ach && !d.backfill) {
+    var t = '⚠️【申請のないロス】' + bad.length + '件\nマイカにロス登録されていますが、ロス申請の承認が確認できませんでした。\n一覧：https://docs.google.com/spreadsheets/d/' + LOSS_LIST_ID + '\n';
     bad.forEach(function (b) {
       var x = new Date(new Date(b.at).getTime() + 9 * 3600e3);
       t += '\n■ ' + b.store + '店　' + (x.getUTCMonth() + 1) + '/' + x.getUTCDate() + ' ' + String(x.getUTCHours()).padStart(2, '0') + ':' + String(x.getUTCMinutes()).padStart(2, '0') +
         '　' + (b.count || 0) + '点・' + lYen(b.total) + '\n　区分：' + (b.genre || 'なし') + '／理由：' + (b.reason || 'なし').replace(/\n/g, ' ') +
         '\n　' + b.names.slice(0, 6).join('、') + (b.names.length > 6 ? ' ほか' + (b.names.length - 6) + '件' : '') + '\n　判定：' + b.judge + '\n';
     });
-    kSplit(t).forEach(function (x) { send(ch, { type: 'text', text: x }); });
+    kSplit(t).forEach(function (x) { send(ach, { type: 'text', text: x }); });
     sent = true;
   }
-  return json({ ok: true, checked: newCount, bad: bad.length, sent: sent, channel: !!ch });
+  return json({ ok: true, checked: newCount, bad: bad.length, sent: sent, channel: !!ach, listErr: listErr });
+}
+
+/* ---------- 申請のないロス：役員グループへの警告と一覧スプレッドシート ---------- */
+var LOSS_LIST_ID = '1de2vIX9JrjlsaEPDcIPH64TO02pDovNyozQODpEiRV4'; // ドライブ「ツール」フォルダの「申請のないロス一覧」
+function lAlertChannel() { return P.getProperty('LW_LOSS_ALERT_CHANNEL') || ''; }
+function lAppendList(bad) {
+  var sh = SpreadsheetApp.openById(LOSS_LIST_ID).getSheets()[0], now = new Date();
+  var rows = bad.map(function (b) { return [now, b.store, new Date(b.at), b.genre, b.reason, Number(b.count) || 0, Number(b.total) || 0, b.names.join('\n'), b.judge, b.appId || '', b.id, b.staff, '']; });
+  sh.getRange(sh.getLastRow() + 1, 1, rows.length, 13).setValues(rows);
+  sh.getRange(2, 1, Math.max(1, sh.getLastRow() - 1), 1).setNumberFormat('yyyy/MM/dd');
+  sh.getRange(2, 3, Math.max(1, sh.getLastRow() - 1), 1).setNumberFormat('yyyy/MM/dd HH:mm');
+  sh.getRange(2, 7, Math.max(1, sh.getLastRow() - 1), 1).setNumberFormat('#,##0"円"');
+}
+/** 1回だけ：Botが役員だけのグループ「ロス警告（役員）」を作って、申請のないロスの警告先にする */
+function lCreateAlertGroup() {
+  if (lAlertChannel()) { Logger.log('すでに登録済み：' + lAlertChannel()); return; }
+  var ap = (P.getProperty('LW_APPROVERS') || '').split(',').map(function (s) { return s.trim(); }).filter(String);
+  if (!ap.length) throw new Error('LW_APPROVERS（役員）が入っていません');
+  var r = UrlFetchApp.fetch('https://www.worksapis.com/v1.0/bots/' + prop('LW_BOT_ID') + '/channels', {
+    method: 'post', contentType: 'application/json', muteHttpExceptions: true,
+    headers: { Authorization: 'Bearer ' + token() }, payload: JSON.stringify({ members: ap, title: 'ロス警告（役員）' })
+  });
+  var j = JSON.parse(r.getContentText() || '{}');
+  if (!j.channelId) throw new Error('グループを作れませんでした（' + r.getResponseCode() + '）: ' + r.getContentText());
+  P.setProperty('LW_LOSS_ALERT_CHANNEL', j.channelId);
+  send(j.channelId, { type: 'text', text: '「ロス警告（役員）」グループです（役員のみ）。\nロス申請の承認がないままマイカに登録されたロスを、毎晩22時のチェックでここに知らせます。\n一覧：https://docs.google.com/spreadsheets/d/' + LOSS_LIST_ID });
+  Logger.log('作成・登録しました：' + j.channelId + '（' + ap.map(userName).join('、') + '）');
 }
 
 /* ---------- ロス分析（「マイカのロス」から店舗別・月別に集計） ---------- */
