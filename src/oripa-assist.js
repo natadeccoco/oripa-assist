@@ -122,7 +122,7 @@
   document.body.appendChild(host);
   var root = host.attachShadow({ mode: 'open' });
   root.innerHTML = '<style>' + CSS() + '</style><div class="wrap"><div class="win">' +
-    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-11-01 版BH</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
+    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-11-01 版BJ</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
     (ALL ? '' : '<div class="tabs"><button data-tab="make" class="on">新しく作る</button><button data-tab="refill">補充する</button></div>') +
     '<button class="x" id="close" title="閉じる">×</button></div>' +
     '<div class="bd" id="body"><div class="msg">読み込み中…</div></div></div></div>';
@@ -559,6 +559,14 @@
       });
     })();
     hits.sort(function (a, b) { return roleRank(a.role) - roleRank(b.role) || b.p.sell - a.p.sell; });
+    // 当たりの在庫が足りず空いた口は、下枠で埋めて口数をそろえる（当たりを足すと、そのぶん下枠が減る）
+    var hitN0 = hits.reduce(function (s2, h) { return s2 + (h.role === 'ラストワン' ? 0 : h.n); }, 0), fillN0 = filler.reduce(function (s2, f) { return s2 + f.n; }, 0), gap = init - hitN0 - fillN0;
+    if (gap > 0) {
+      var w2 = [], extra = makeFillerByRule(L, gap, left, usedIds, price, w2), got2 = 0;
+      extra.forEach(function (a2) { got2 += a2.n; var ex = filler.find(function (x) { return x.p.id === a2.p.id; }); if (ex) ex.n += a2.n; else filler.push(a2); });
+      fillCost = filler.reduce(function (s2, f) { return s2 + f.p.cost * f.n; }, 0); fillN += got2;
+      if (got2) warn.push('当たりが足りない ' + got2 + '口分は、いまは下枠で埋めて口数（' + init + '口）をそろえています。当たりを足すと、そのぶん下枠が減ります');
+    }
     var cost = hitCost() + fillCost;
     if (cost > rev * L.costMax + 1) warn.push('原価率が上限（' + pct(L.costMax) + '）を超えています：' + pct(cost / rev));
     if (L.costMin && cost < rev * L.costMin - 1) warn.push('この在庫では原価率が下限（' + pct(L.costMin) + '）に届きません：' + pct(cost / rev) + '。当たりを入れ替えるか足してください');
@@ -1178,7 +1186,8 @@
   function approvalImage(pt) {
     var hitN = pt.hits.reduce(function (s, h) { return s + h.n; }, 0);
     var fN = pt.filler.reduce(function (s, f) { return s + f.n; }, 0), fC = pt.filler.reduce(function (s, f) { return s + f.p.cost * f.n; }, 0);
-    return cardSheet(pt.hits, shortName(S.sname) + '店　' + pt.price.toLocaleString() + '円 × ' + pt.init + '口',
+    var fl = pt.filler.filter(function (f) { return f.n > 0; }).map(function (f) { return { p: f.p, n: f.n, role: '下枠' }; }); // 下枠も画像に出す
+    return cardSheet(pt.hits.concat(fl), shortName(S.sname) + '店　' + pt.price.toLocaleString() + '円 × ' + pt.init + '口',
       '原価率 ' + pct(pt.costr) + '　粗利 ' + yen(pt.rev - pt.cost) + '　売上 ' + yen(pt.rev) + '　当たり ' + hitN + '枚',
       '下枠 ' + fN + '口（原価計 ' + yen(fC) + '）　' + pt.filler.slice(0, 4).map(function (f) { return f.p.name.replace(/ポケモン\/トレーナーズ/, '') + '×' + f.n; }).join('・'));
   }
