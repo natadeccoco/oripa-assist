@@ -94,6 +94,19 @@
   function lastHTML() { return '<div class="f"><div class="lb">ラストワン賞</div><label class="ck lastck"><input type="checkbox" id="lastOn"' + (S.lastOn === false ? '' : ' checked') + '> 入れる</label><div class="hint">ラストワン賞は口数に入りません</div></div>'; }
   function readLast() { var e = root.querySelector('#lastOn'); if (e) S.lastOn = !!e.checked; }
   function readThemes() { S.themes = [].slice.call(root.querySelectorAll('.tchk input[data-t]:checked')).map(function (x) { return x.dataset.t; }); S.rares = [].slice.call(root.querySelectorAll('.tchk input[data-r]:checked')).map(function (x) { return x.dataset.r; }); }
+  // 弾の新しさ（0〜1）：MEGA（M）＞スカーレット・バイオレット（SV）＞ソード・シールド（S）＞サン・ムーン（SM）＞それより前
+  function newness(p) {
+    if (p._nw != null) return p._nw;
+    var c = String(p.exp || '') || ((String(p.name || '').match(/[（(]\s*([A-Za-z]{1,3}\d+[a-zA-Z]?)/) || [])[1] || '');
+    var m, v = 0.3;
+    if ((m = c.match(/^M(\d+)/i)) && !/^MC/i.test(c)) v = 0.85 + Math.min(Number(m[1]), 15) / 100;
+    else if ((m = c.match(/^SV(\d+)/i))) v = 0.65 + Math.min(Number(m[1]), 15) / 75;
+    else if ((m = c.match(/^SM(\d+)/i))) v = 0.25 + Math.min(Number(m[1]), 12) / 60;
+    else if ((m = c.match(/^S(\d+)/i))) v = 0.45 + Math.min(Number(m[1]), 12) / 60;
+    else if (/^(XY|BW|DP|L|PCG|ADV)/i.test(c)) v = 0.1;
+    return (p._nw = Math.max(0, Math.min(1, v)));
+  }
+  function isFullArt(p) { var r = String(p.rarity || ''); if (r) return /^(SAR|SR|UR|HR|MUR|CSR|CHR|SSR|AR)/i.test(r); return /\b(SAR|SR|UR|HR|MUR|CSR|CHR|SSR|AR)\b/.test(String(p.name || '')); }
   function isEnergy(p) { return (p.kind === 'card' || p.kind === 'psa') && /エネルギー/.test(p.name || ''); }
   function isDeck(p) { return /デッキビルド|スターター|スタートデッキ|デッキセット|構築済み|プレミアムデッキ|デッキ/.test(p.name); }
   function suspectPrice(p) { return p.kind === 'box' && p.cost > 0 && (p.cost < p.sell * 0.3 || (!/BOX|ボックス|box/i.test(p.name) && /パック/.test(p.name))); }
@@ -123,7 +136,7 @@
   document.body.appendChild(host);
   var root = host.attachShadow({ mode: 'open' });
   root.innerHTML = '<style>' + CSS() + '</style><div class="wrap"><div class="win">' +
-    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-11-01 版BT</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
+    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-11-01 版BU</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
     (ALL ? '' : '<div class="tabs"><button data-tab="make" class="on">新しく作る</button><button data-tab="refill">補充する</button></div>') +
     '<button class="x" id="close" title="閉じる">×</button></div>' +
     '<div class="bd" id="body"><div class="msg">読み込み中…</div></div></div></div>';
@@ -360,6 +373,7 @@
     })();
 
     // 当たり1枚を選ぶ：値段（マスタ）の範囲内で、優先する種類から、狙いの原価に近いもの
+    var curRole = null; // いま選んでいる枠（TOP・大当たりはフルアートを優先）
     function pickOne(loX, hiX, wantSellX, wantCost, strict) {
       var lo = loX * price, hi = hiX * price, ws = wantSellX * price;
       // BOX帯（1000/2000/25000円）は過去事例どおり「同じBOXを複数」をシングルより先に使う
@@ -385,6 +399,8 @@
         s += Math.log(1 + stockOf(p)) * 1.6 + Math.log(1 + (Number(p.stock) || 0)) * 0.4; // 在庫の多い商品を優先（全店モードは全店の合計）
         s += Math.log(1 + histCount(p, L.base)) * 0.7; // 過去によく入れていた商品を優先
         s += learnScore(p, L.base) * 0.8; // スタッフが手直しで足した商品は上げ、外した商品は下げる
+        s += newness(p) * 0.6; // 販売価格が近ければ、新しい弾のものを優先
+        if ((curRole === 'TOP' || curRole === '大当たり') && isFullArt(p)) s += 1.5; // TOP・大当たりはフルアート（SAR・SR・UR・MURなど）を優先
         return s;
       }
     }
@@ -406,6 +422,7 @@
       return null;
     }
     // 1) TOP と ラストワン賞
+    curRole = 'TOP';
     var top = L.vend ? (pickOne(L.big[0], L.big[1], L.big[1]) || pickOne(L.big[0], 1e9, L.big[1])) : (pickOne(L.top * 0.75, L.top * 1.35, L.top) || pickOne(L.big[0], 1e9, L.top)); // 自販機：TOPも大当たりの範囲の中でいちばん上を狙う
     var forceSet = setOn && S.forceSet, bigSetDone = false;
     var topSet = setOn && (forceSet || !top || top.sell < L.top * 0.75 * price || top.sell >= L.top * 1.35 * price) ? bestSet(L.top * 0.75 * price, L.top * 1.35 * price, L.top * price) : null;
@@ -413,6 +430,7 @@
     else if (top) { take(top, 'TOP'); if (top.sell < L.top * 0.75 * price || top.sell >= L.top * 1.35 * price) warn.push('TOPの狙いはマスタ' + yen(L.top * price) + '前後ですが、在庫にないので近いもの（' + yen(top.sell) + '）にしています'); }
     else warn.push('TOPにできる在庫がありません（狙い：マスタ' + yen(L.top * price) + '前後）');
     lastOneMode = true; // デッキビルドBOX・スターター等はラストワンに使わない
+    curRole = 'ラストワン';
     var last = S.lastOn === false ? null : (pickOne(L.last * 0.7, L.last * 1.4, L.last) || pickOne(L.mid[0], L.top * 1.35, L.last)); // 「ラストワン賞を入れる」を外したときは入れない
     lastOneMode = false;
     if (last) take(last, 'ラストワン'); else if (S.lastOn !== false) warn.push('ラストワン賞にできる在庫がありません（狙い：マスタ' + yen(L.last * price) + '前後）');
@@ -449,7 +467,7 @@
       var s = slots[i];
       var fsp = forceSet && !bigSetDone && s.role === '大当たり' ? bestSet(s.r[0] * price, s.r[1] * price, geo(s.r[0], s.r[1], 0.25 + s.t * 0.5) * price, want) : null;
       if (fsp) { useSet(fsp, '大当たり'); bigSetDone = true; continue; }
-      var p = pickOne(s.r[0], s.r[1], geo(s.r[0], s.r[1], 0.25 + s.t * 0.5), want);
+      curRole = s.role; var p = pickOne(s.r[0], s.r[1], geo(s.r[0], s.r[1], 0.25 + s.t * 0.5), want);
       if (p) take(p, s.role);
       else if (setOn && s.role === '大当たり') { var sp = bestSet(s.r[0] * price, s.r[1] * price, geo(s.r[0], s.r[1], 0.25 + s.t * 0.5) * price, want); if (sp) useSet(sp, '大当たり'); }
     }
