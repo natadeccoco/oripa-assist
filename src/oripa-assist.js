@@ -123,7 +123,7 @@
   document.body.appendChild(host);
   var root = host.attachShadow({ mode: 'open' });
   root.innerHTML = '<style>' + CSS() + '</style><div class="wrap"><div class="win">' +
-    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-11-01 版BP</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
+    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-11-01 版BQ</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
     (ALL ? '' : '<div class="tabs"><button data-tab="make" class="on">新しく作る</button><button data-tab="refill">補充する</button></div>') +
     '<button class="x" id="close" title="閉じる">×</button></div>' +
     '<div class="bd" id="body"><div class="msg">読み込み中…</div></div></div></div>';
@@ -721,16 +721,16 @@
     var hits = [], hitCost = 0;
     function take(p, role) { left[p.id]--; markUsed(used, p); var ex = hits.find(function (h) { return h.p.id === p.id && h.role === role; }); if (ex) ex.n++; else hits.push({ p: p, n: 1, role: role }); }
     var roleOf2 = function (v) { return v >= price * 6 ? '大当たり' : v >= price * 3 ? '中当たり' : '小当たり'; };
-    // 当たり：値段の高いパックから。原価は全体の6割まで。同じパックは2個まで
+    // 当たり：値段の高いパックから。同じパックは2個まで
     for (var i = 0, g = 0; hits.reduce(function (a, h) { return a + h.n; }, 0) < P.nHit && g < 400; g++) {
-      var c = hitPool.filter(function (p) { return left[p.id] > 0 && usedOf(used, p) < 2 && hitCost + p.cost <= bMax * 0.6; });
+      var c = hitPool.filter(function (p) { return left[p.id] > 0 && usedOf(used, p) < 2 && hitCost + p.cost <= bMax * 0.4; }); // 当たりの原価は全体の4割まで
       if (!c.length) break;
       var p = c.find(function (q) { return !usedOf(used, q); }) || c[0]; take(p, hits.length ? roleOf2(packVal(p)) : 'TOP'); hitCost += p.cost; // まずは違う種類から
     }
     var nHit = hits.reduce(function (a, h) { return a + h.n; }, 0);
     if (nHit < P.nHit) warn.push('当たりにできるパック（' + yen(Math.round(price * 1.6)) + '以上）が足りず、' + (P.nHit - nHit) + '枚少なくなっています');
     var last = null;
-    if (S.lastOn !== false) { last = hitPool.find(function (p) { return left[p.id] > 0 && !usedOf(used, p); }) || hitPool.find(function (p) { return left[p.id] > 0; }) || null; if (last) { take(last, 'ラストワン'); hitCost += last.cost; } else warn.push('ラストワン賞にできるパックがありません'); }
+    if (S.lastOn !== false) { var lc = Math.max(bMax * 0.12, price * 2); last = hitPool.find(function (p) { return left[p.id] > 0 && !usedOf(used, p) && p.cost <= lc; }) || hitPool.find(function (p) { return left[p.id] > 0 && p.cost <= lc; }) || packs.filter(function (p) { return left[p.id] > 0 && p.cost <= lc; }).sort(function (a, b) { return packVal(b) - packVal(a); })[0] || null; /* ラストワン賞は原価を抑えめに */ if (last) { take(last, 'ラストワン'); hitCost += last.cost; } else warn.push('ラストワン賞にできるパックがありません'); }
     // 下枠：在庫の多いパックから（1種類は全体の35%まで）
     var R = init - nHit, cap = Math.max(1, Math.ceil(R * 0.35)), fl = [];
     var base = packs.filter(function (p) { return left[p.id] > 0 && hitPool.indexOf(p) < 0; }).sort(function (a, b) { return stockOf(b) - stockOf(a) || a.cost - b.cost; });
@@ -745,7 +745,8 @@
     if (P.useAt && ats.length) {
       for (g = 0; hitCost + fCost() > bMax && g < 500; g++) {
         var hi2 = fl.filter(function (x) { return x.p.kind === 'pack' && x.n > 0; }).sort(function (a, b) { return b.p.cost - a.p.cost; })[0];
-        var at = ats.filter(function (a) { return left[a.id] > 0 && a.cost < (hi2 ? hi2.p.cost : 0); }).sort(function (a, b) { return b.fv - a.fv; })[0];
+        var pc = hi2 ? hi2.p.cost : 0, okA = ats.filter(function (a) { return left[a.id] > 0 && a.cost < pc; });
+        var at = okA.filter(function (a) { return a.cost <= pc * 0.5; }).sort(function (a, b) { return b.fv - a.fv; })[0] || okA.sort(function (a, b) { return a.cost - b.cost; })[0]; // 原価が半分以下になる中でいちばん高い【@◯◯】
         if (!hi2 || !at) break;
         hi2.n--; left[hi2.p.id]++; if (hi2.n <= 0) fl.splice(fl.indexOf(hi2), 1); addF(at, 1); swapped++;
       }
