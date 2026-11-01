@@ -123,7 +123,7 @@
   document.body.appendChild(host);
   var root = host.attachShadow({ mode: 'open' });
   root.innerHTML = '<style>' + CSS() + '</style><div class="wrap"><div class="win">' +
-    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-11-01 版BS</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
+    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-11-01 版BT</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
     (ALL ? '' : '<div class="tabs"><button data-tab="make" class="on">新しく作る</button><button data-tab="refill">補充する</button></div>') +
     '<button class="x" id="close" title="閉じる">×</button></div>' +
     '<div class="bd" id="body"><div class="msg">読み込み中…</div></div></div></div>';
@@ -696,7 +696,7 @@
     var v = VEND[price] || VEND[500], L = Object.assign({}, learnFor(price));
     L.init = v.init; L.nTotal = [12, 12]; L.big = v.big.slice(); L.nBig = v.nBig.slice(); L.mid = v.mid.slice(); L.nMid = v.nMid.slice(); L.small = v.small.slice();
     L.top = v.big[1]; L.last = v.small[0]; L.costMin = 0; // TOPは大当たりの上の方。原価率の下限で当たりを格上げしない（枚数の決まりを守る）
-    L.fill = { at: v.at }; L.vend = true; L.label = '自販機オリパ（当たり12口・ラストワンなし・下枠【@' + v.at + '】）';
+    L.fill = { at: v.at }; L.vend = true; L.kinds = [['card']]; L.dupFirst = false; L.boxMinX = 0; // 自販機の当たりはシングルだけ L.label = '自販機オリパ（当たり12口・ラストワンなし・下枠【@' + v.at + '】）';
     return L;
   }
   function renderVend() {
@@ -707,7 +707,7 @@
       '<div class="f"><div class="lb">1回の値段</div><div class="chips">' + [500, 1000, 2000].map(function (p) { return '<button class="chip' + (p === V.price ? ' on' : '') + '" data-vp="' + p + '">' + p.toLocaleString() + '円</button>'; }).join('') + '</div></div>' +
       '<div class="f"><div class="lb">口数</div><input id="vi" type="number" value="' + init + '"> 口<div class="hint">自販機の決まり：' + v.init + '口</div></div>' +
       '<div class="f"><div class="lb">原価率（上限）</div><input id="vc" type="number" value="' + cr + '"> %<div class="hint">当たりの倍率と枚数を優先します</div></div>' +
-      '<div class="f"><div class="lb">決まり</div><div class="hint" style="font-size:13px;color:#1d1d22">当たり <b>12口</b>（大当たり ' + v.big[0] + '〜' + v.big[1] + '倍×' + v.nBig[0] + '〜' + v.nBig[1] + '枚・中当たり ' + v.mid[0] + '〜' + v.mid[1] + '倍×' + v.nMid[0] + '〜' + v.nMid[1] + '枚・小当たり ' + v.small[0] + '〜' + v.small[1] + '倍×残り）／ラストワン賞 <b>なし</b>／下枠 <b>【@' + v.at + '】</b></div></div>' +
+      '<div class="f"><div class="lb">決まり</div><div class="hint" style="font-size:13px;color:#1d1d22">当たり <b>シングルだけ・12口</b>（大当たり ' + v.big[0] + '〜' + v.big[1] + '倍×' + v.nBig[0] + '〜' + v.nBig[1] + '枚・中当たり ' + v.mid[0] + '〜' + v.mid[1] + '倍×' + v.nMid[0] + '〜' + v.nMid[1] + '枚・小当たり ' + v.small[0] + '〜' + v.small[1] + '倍×残り）／ラストワン賞 <b>なし</b>／下枠 <b>【@' + v.at + '】</b></div></div>' +
       '<div class="f go"><button class="primary" id="go">提案する</button></div>' +
       '</div>' + afterForm();
     bindModeTabs(); bindStoreChips();
