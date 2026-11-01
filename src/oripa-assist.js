@@ -123,7 +123,7 @@
   document.body.appendChild(host);
   var root = host.attachShadow({ mode: 'open' });
   root.innerHTML = '<style>' + CSS() + '</style><div class="wrap"><div class="win">' +
-    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-11-01 版BM</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
+    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-11-01 版BN</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
     (ALL ? '' : '<div class="tabs"><button data-tab="make" class="on">新しく作る</button><button data-tab="refill">補充する</button></div>') +
     '<button class="x" id="close" title="閉じる">×</button></div>' +
     '<div class="bd" id="body"><div class="msg">読み込み中…</div></div></div></div>';
@@ -211,7 +211,10 @@
       var cond = p.condition_option_display_name || '';
       var spec = p.specialty__display_name || '';
       var isPsa = /PSA/i.test(spec + ' ' + (p.specialty__handle || '') + ' ' + cond + ' ' + p.display_name);
-      var kind = bm ? 'filler' : (cat === 'CARD' ? (isPsa ? 'psa' : 'card') : (cat === 'BOX' ? 'box' : (cat === 'PACK' || /パック/.test(catName) ? 'pack' : (/サプライ/.test(catName) ? 'supply' : 'other'))));
+      // マイカではパックも「ボックス」カテゴリ。名前に BOX が無く、画像が BOX 用（〜_b.jpg）でなく、原価が安いものをパックとして扱う
+      var imgf = String(p.image_url || '').split('/').pop();
+      var looksPack = cat === 'BOX' && !/BOX|ボックス/i.test(p.display_name) && !/_b(_\w+)?\.\w+$/i.test(imgf) && !/デッキ|スターター|スタート|セット|ジャンボ|コレクション|ファイル|ギフト|キャンペーン|チャレンジ|プロモ/.test(p.display_name) && (Number(p.average_wholesale_price) || 0) <= 3000;
+      var kind = bm ? 'filler' : (cat === 'CARD' ? (isPsa ? 'psa' : 'card') : looksPack ? 'pack' : (cat === 'BOX' ? 'box' : (cat === 'PACK' || /パック/.test(catName) ? 'pack' : (/サプライ/.test(catName) ? 'supply' : 'other'))));
       // マスタ価格 = 商品マスタの販売価格（item_sell_price）。店頭価格 = この在庫の実際の販売価格（actual_sell_price）
       var bst = ((spec.match(/BOX状態\s*(\S+)/) || [])[1] || ''); // BOXの状態（A-・B など。Bはシュリンクなし）
       var shop = Number(p.actual_sell_price != null ? p.actual_sell_price : p.sell_price) || 0;
