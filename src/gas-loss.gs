@@ -132,6 +132,7 @@ function lossRegister(ev) {
 /* ---------- 夜のチェック（PCから） ---------- */
 function lossCheck(d) {
   if (!P.getProperty('LOSS_KEY') || d.key !== P.getProperty('LOSS_KEY')) return json({ ok: false, error: 'key' });
+  if (!lAlertChannel()) { try { lCreateAlertGroup(); } catch (e) { console.error(e); } } // 役員の警告グループがまだなら作る
   var ch = lChannel();
   var exempt = lExempt();
   var lock = LockService.getScriptLock(); lock.waitLock(30000);
