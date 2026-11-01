@@ -136,7 +136,7 @@
   document.body.appendChild(host);
   var root = host.attachShadow({ mode: 'open' });
   root.innerHTML = '<style>' + CSS() + '</style><div class="wrap"><div class="win">' +
-    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-11-01 版BU</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
+    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-11-01 版BV</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
     (ALL ? '' : '<div class="tabs"><button data-tab="make" class="on">新しく作る</button><button data-tab="refill">補充する</button></div>') +
     '<button class="x" id="close" title="閉じる">×</button></div>' +
     '<div class="bd" id="body"><div class="msg">読み込み中…</div></div></div></div>';
@@ -709,7 +709,7 @@
   var VEND = { // 当たりの倍率（マスタ価格が1回の値段の何倍か）と枚数。小当たりは残り（当たりは全部で12口）
     500: { init: 330, at: 20, big: [35, 60], nBig: [2, 4], mid: [20, 30], nMid: [3, 4], small: [10, 20] },
     1000: { init: 350, at: 200, big: [35, 50], nBig: [2, 3], mid: [20, 30], nMid: [3, 4], small: [10, 20] },
-    2000: { init: 350, at: 200, big: [30, 40], nBig: [2, 4], mid: [20, 30], nMid: [3, 4], small: [10, 20] } };
+    2000: { init: 350, at: 200, big: [30, 50], nBig: [2, 4], mid: [20, 30], nMid: [3, 4], small: [10, 20] } };
   function vendRule(price) {
     var v = VEND[price] || VEND[500], L = Object.assign({}, learnFor(price));
     L.init = v.init; L.nTotal = [12, 12]; L.big = v.big.slice(); L.nBig = v.nBig.slice(); L.mid = v.mid.slice(); L.nMid = v.nMid.slice(); L.small = v.small.slice();
