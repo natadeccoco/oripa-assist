@@ -123,7 +123,7 @@
   document.body.appendChild(host);
   var root = host.attachShadow({ mode: 'open' });
   root.innerHTML = '<style>' + CSS() + '</style><div class="wrap"><div class="win">' +
-    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-11-01 版BQ</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
+    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-11-01 版BR</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
     (ALL ? '' : '<div class="tabs"><button data-tab="make" class="on">新しく作る</button><button data-tab="refill">補充する</button></div>') +
     '<button class="x" id="close" title="閉じる">×</button></div>' +
     '<div class="bd" id="body"><div class="msg">読み込み中…</div></div></div></div>';
@@ -236,7 +236,8 @@
   /* ---------- 提案ロジック（ルールどおりに1パターン作る） ---------- */
   function propose(price, init, costr, free, kinds) {
     var L = learnFor(price);
-    if (free) L = applyFree(L, free, price);
+    if (free && free.vend) L = vendRule(price); // 自販機オリパ
+    else if (free) L = applyFree(L, free, price);
     else if (kinds && kinds.length && kinds.slice().sort().join() !== L.kinds[0].slice().sort().join()) { // 本部ルール：当たりの種類をスタッフが変えたとき
       L = Object.assign({}, L);
       L.kinds = [kinds.slice()]; L.dupFirst = kinds.length === 1 && kinds[0] === 'box'; L.allowMis = kinds.indexOf('pack') >= 0;
@@ -640,6 +641,7 @@
   function renderMake() {
     var F = S.free || (S.free = { on: false, kinds: ['box', 'card', 'psa'], fill: 'rule', fillVal: '' });
     if (S.packOn) return renderPack();
+    if (S.vendOn) return renderVend();
     if (F.on) return renderFree(F);
     var prices = [500, 1000, 2000, 3000, 10000, 25000];
     var cur = S.form || { price: 1000 };
@@ -672,19 +674,49 @@
   }
   function modeTabs(mode) {
     mode = mode === true ? 'free' : mode === false ? 'rule' : mode;
-    return '<div class="mtabs"><button class="mtab' + (mode === 'rule' ? ' on' : '') + '" data-mode="rule">値段のルールで作る</button><button class="mtab' + (mode === 'free' ? ' on' : '') + '" data-mode="free">任意の金額で作る</button><button class="mtab' + (mode === 'pack' ? ' on' : '') + '" data-mode="pack">パックオリパ（パック限定）</button></div>';
+    return '<div class="mtabs"><button class="mtab' + (mode === 'rule' ? ' on' : '') + '" data-mode="rule">値段のルールで作る</button><button class="mtab' + (mode === 'free' ? ' on' : '') + '" data-mode="free">任意の金額で作る</button><button class="mtab' + (mode === 'pack' ? ' on' : '') + '" data-mode="pack">パックオリパ（パック限定）</button><button class="mtab' + (mode === 'vend' ? ' on' : '') + '" data-mode="vend">自販機オリパ</button></div>';
   }
   function bindModeTabs() {
     root.querySelectorAll('[data-mode]').forEach(function (b) {
       b.onclick = function () {
-        var md = b.dataset.mode, on = md === 'free', pk = md === 'pack'; if (S.free.on === on && !!S.packOn === pk) return;
-        S.free.on = on; S.packOn = pk; S.patterns = []; if (!on) setConds(null);
+        var md = b.dataset.mode, on = md === 'free', pk = md === 'pack', vd = md === 'vend'; if (S.free.on === on && !!S.packOn === pk && !!S.vendOn === vd) return;
+        S.free.on = on; S.packOn = pk; S.vendOn = vd; S.patterns = []; if (!on) setConds(null);
         if (on && !S.free.price) seedFree(S.free, (S.form && S.form.price) || 1500);
         renderMake();
       };
     });
   }
   /* ---------- パックオリパ（パック限定）：当たりも下枠もパック。下枠は在庫の多いパックから、原価が合わなければ【@◯◯】で調整 ---------- */
+  /* ---------- 自販機オリパ：500円・1,000円・2,000円。当たりは12口、ラストワンなし。口数と下枠は値段ごとに決まり ---------- */
+  var VEND = { 500: { init: 330, at: 20 }, 1000: { init: 350, at: 200 }, 2000: { init: 350, at: 200 } };
+  function vendRule(price) {
+    var v = VEND[price] || VEND[500], L = Object.assign({}, learnFor(price));
+    L.init = v.init; L.nTotal = [12, 12]; L.nBig = [Math.min(L.nBig[0], 3), Math.min(L.nBig[1], 4)]; L.nMid = [Math.min(L.nMid[0], 4), Math.min(L.nMid[1], 6)];
+    L.fill = { at: v.at }; L.vend = true; L.label = '自販機オリパ（当たり12口・ラストワンなし・下枠【@' + v.at + '】）';
+    return L;
+  }
+  function renderVend() {
+    var V = S.vd || (S.vd = { price: 500 }), v = VEND[V.price], L = vendRule(V.price);
+    var init = V.init || v.init, cr = V.costr || Math.round(L.costMax * 100);
+    $('#body').innerHTML = modeTabs('vend') +
+      '<div class="form">' +
+      '<div class="f"><div class="lb">1回の値段</div><div class="chips">' + [500, 1000, 2000].map(function (p) { return '<button class="chip' + (p === V.price ? ' on' : '') + '" data-vp="' + p + '">' + p.toLocaleString() + '円</button>'; }).join('') + '</div></div>' +
+      '<div class="f"><div class="lb">口数</div><input id="vi" type="number" value="' + init + '"> 口<div class="hint">自販機の決まり：' + v.init + '口</div></div>' +
+      '<div class="f"><div class="lb">原価率（上限）</div><input id="vc" type="number" value="' + cr + '"> %<div class="hint">ルール：' + pct(L.costMin) + '〜' + pct(L.costMax) + '（' + L.base.toLocaleString() + '円帯）</div></div>' +
+      '<div class="f"><div class="lb">決まり</div><div class="hint" style="font-size:13px;color:#1d1d22">当たり <b>12口</b>／ラストワン賞 <b>なし</b>／下枠 <b>【@' + v.at + '】</b></div></div>' +
+      '<div class="f go"><button class="primary" id="go">提案する</button></div>' +
+      '</div>' + afterForm();
+    bindModeTabs(); bindStoreChips();
+    root.querySelectorAll('[data-vp]').forEach(function (b) { b.onclick = function () { S.vd = { price: Number(b.dataset.vp) }; S.patterns = []; renderMake(); }; });
+    $('#go').onclick = function () {
+      V.init = Math.max(13, Math.round(Number($('#vi').value) || v.init)); V.costr = Math.min(Number($('#vc').value) || cr, 150);
+      var keep = S.lastOn; S.lastOn = false; // 自販機はラストワン賞なし
+      S.patterns = propose(V.price, V.init, V.costr / 100, { vend: true }, null); S.lastOn = keep;
+      S.patterns.forEach(function (pt) { pt.name = '自販機オリパ'; });
+      renderMake(); var r = $('#res'); if (r) r.scrollIntoView({ behavior: 'smooth' });
+    };
+    bindPatternButtons();
+  }
   function packVal(p) { return p.mis ? (p.shop || p.sell) : (p.sell || p.shop || Math.round(p.cost * 1.3)); } // 値段が入っていないパックは原価の1.3倍くらいとみる // マスタ価格が怪しいパックは店頭価格で見る
   function packStock() { return S.inv.filter(function (p) { return p.kind === 'pack' && p.stock > 0 && p.cost > 0; }); }
   function renderPack() {
@@ -1186,7 +1218,7 @@
       var idx = function (h) { return 'data-pi="' + i + '" data-hi="' + pt.hits.indexOf(h) + '"'; };
       var sec = function (label, roles, addRole) {
         var hs = pt.hits.filter(function (h) { return roles.indexOf(h.role) >= 0; });
-        var addBtn = addRole === 'ラストワン' ? (hs.length ? '' : '<button class="addc" data-add="' + i + '" data-role="ラストワン">＋<br>ラストワン賞を<br>選ぶ</button>') : '';
+        var addBtn = addRole === 'ラストワン' ? (hs.length || (pt.L && pt.L.vend) ? '' : '<button class="addc" data-add="' + i + '" data-role="ラストワン">＋<br>ラストワン賞を<br>選ぶ</button>') : '';
         // 足りない枚数ぶん、空のカード枠を出す（押すとその枠に足せる）
         var have = hs.reduce(function (s, h) { return s + h.n; }, 0), miss = pt.miss0 && pt.miss0[label] ? Math.max(0, pt.miss0[label] - Math.max(0, have - (pt.cnt0[label] || 0))) : 0;
         for (var b = 0; b < miss; b++) addBtn += '<button class="blankc" data-add="' + i + '" data-role="' + esc(label) + '"><span class="bk">在庫が<br>足りません</span><span class="bs">押して足す</span></button>';
@@ -1202,7 +1234,7 @@
         '<div class="kpi"><div><b>' + pct(pt.costr) + '</b><span>原価率' + (rawCost(pt) != null ? '（仮の原価で計算）' : '') + '</span></div><div><b>' + yen(pt.rev - pt.cost) + '</b><span>粗利（完売時）' + (rawCost(pt) != null ? '（仮の原価で計算）' : '') + '</span></div><div><b>' + nHit + '枚' + (hasLast ? '＋ラストワン' : '') + '</b><span>当たり</span></div></div>' +
         (rawCost(pt) != null ? '<div class="kpi kpiraw"><div><b>' + pct(rawCost(pt) / pt.rev) + '</b><span>原価率（マイカの原価のまま）</span></div><div><b>' + yen(pt.rev - rawCost(pt)) + '</b><span>粗利（マイカの原価のまま）</span></div><div><b>' + yen(pt.cost - rawCost(pt)) + '</b><span>仮で足している原価</span></div></div>' : '') +
         (pt.edited ? '<div class="edited">入れ替え済み</div>' : '') + lowCostNote(pt) +
-        sec('大当たり', ['TOP', '大当たり']) + sec('中当たり', ['中当たり', '当たり']) + sec('小当たり', ['小当たり']) + sec('ラストワン賞', ['ラストワン'], 'ラストワン') +
+        sec('大当たり', ['TOP', '大当たり']) + sec('中当たり', ['中当たり', '当たり']) + sec('小当たり', ['小当たり']) + (pt.L && pt.L.vend ? '' : sec('ラストワン賞', ['ラストワン'], 'ラストワン')) +
         '<div class="addrow"><button class="ghost" data-add="' + i + '">＋ 当たりを足す</button></div>' +
         '<div class="sec"><div class="sech">下枠<span>' + fN + '口（1口平均 原価' + yen(fC / Math.max(fN, 1)) + (pt.L.fill.single ? '・マスタ' + yen(pt.L.fill.single) + '以上の' + fillKindName(pt.L) : '') + '）　押すと枚数の変更・入れ替え・外すができます</span></div><div class="cards">' +
           pt.filler.map(function (f, fi) { return card({ p: f.p, n: f.n, role: '下枠' }, false, 'data-pi="' + i + '" data-fi="' + fi + '"'); }).join('') +
@@ -1603,7 +1635,7 @@
   function confirmSave(pt) {
     var total = flatHits(pt.hits).concat(pt.filler).reduce(function (s, h) { return s + h.n; }, 0), nSet = pt.hits.filter(function (h) { return h.p.set; }).length;
     var m = modal('<div class="mh">マイカに一時保存しますか？</div>' +
-      '<div class="frm"><label>商品名 <input id="nm" value="' + esc(defaultName(pt.price)) + '"></label>' +
+      '<div class="frm"><label>商品名 <input id="nm" value="' + esc(pt.L && pt.L.vend ? pt.price + '円自販機オリパ' : defaultName(pt.price)) + '"></label>' +
       '<div class="sm">値段 ' + yen(pt.price) + '／' + pt.init + '口／封入 ' + total + '枚' + (pt.hits.some(function (h) { return h.role === 'ラストワン'; }) ? '（ラストワン賞1枚を含む。ラストワン賞は口数に入りません）' : '') + '／原価率 ' + pct(pt.costr) + '</div>' +
       (nSet ? '<div class="sm"><b>セット当たりが' + nSet + 'つあるので、封入枚数は口数より' + nSet + '枚多くなります。セットの2枚は同じ袋に入れてください。</b></div>' : '') +
       lowCostNote(pt) +
