@@ -123,7 +123,7 @@
   document.body.appendChild(host);
   var root = host.attachShadow({ mode: 'open' });
   root.innerHTML = '<style>' + CSS() + '</style><div class="wrap"><div class="win">' +
-    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-11-01 版BN</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
+    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-11-01 版BO</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
     (ALL ? '' : '<div class="tabs"><button data-tab="make" class="on">新しく作る</button><button data-tab="refill">補充する</button></div>') +
     '<button class="x" id="close" title="閉じる">×</button></div>' +
     '<div class="bd" id="body"><div class="msg">読み込み中…</div></div></div></div>';
@@ -227,7 +227,7 @@
       if (p.cost <= 0 || p.sell <= 0) return false;          // 原価・マスタ価格が入っていないものは使わない
       if (p.cost <= p.sell * 0.1 && p.sell >= 3000) { p.costRaw = p.cost; p.cost = Math.round(p.sell * 0.7); p.costTmp = true; } // 原価がマスタの1/10以下＝原価の登録ミスとみて、マスタの70%を仮の原価にして計算する
       // シングルの状態（ふだんは状態A・A-だけ）は condPass でしぼる
-      if (suspectPrice(p)) { p.kind = 'pack'; p.mis = true; } // BOX扱いだが中身はパックらしいもの（原価がマスタの3割未満）→パック扱い。当たりには使わず、下枠（3000円など）にだけ使う
+      if (suspectPrice(p)) { p.mis = true; if (!/BOX|ボックス|デッキ|スターター|スタート|セット|ジャンボ|コレクション/i.test(p.name)) p.kind = 'pack'; } // BOX扱いだが中身はパックらしいもの（原価がマスタの3割未満）→パック扱い。当たりには使わず、下枠（3000円など）にだけ使う
       return true;
     });
   }
@@ -638,6 +638,7 @@
 
   function renderMake() {
     var F = S.free || (S.free = { on: false, kinds: ['box', 'card', 'psa'], fill: 'rule', fillVal: '' });
+    if (S.packOn) return renderPack();
     if (F.on) return renderFree(F);
     var prices = [500, 1000, 2000, 3000, 10000, 25000];
     var cur = S.form || { price: 1000 };
@@ -668,18 +669,98 @@
     };
     bindPatternButtons();
   }
-  function modeTabs(free) {
-    return '<div class="mtabs"><button class="mtab' + (free ? '' : ' on') + '" data-mode="rule">値段のルールで作る</button><button class="mtab' + (free ? ' on' : '') + '" data-mode="free">任意の金額で作る</button></div>';
+  function modeTabs(mode) {
+    mode = mode === true ? 'free' : mode === false ? 'rule' : mode;
+    return '<div class="mtabs"><button class="mtab' + (mode === 'rule' ? ' on' : '') + '" data-mode="rule">値段のルールで作る</button><button class="mtab' + (mode === 'free' ? ' on' : '') + '" data-mode="free">任意の金額で作る</button><button class="mtab' + (mode === 'pack' ? ' on' : '') + '" data-mode="pack">パックオリパ（パック限定）</button></div>';
   }
   function bindModeTabs() {
     root.querySelectorAll('[data-mode]').forEach(function (b) {
       b.onclick = function () {
-        var on = b.dataset.mode === 'free'; if (S.free.on === on) return;
-        S.free.on = on; S.patterns = []; if (!on) setConds(null);
+        var md = b.dataset.mode, on = md === 'free', pk = md === 'pack'; if (S.free.on === on && !!S.packOn === pk) return;
+        S.free.on = on; S.packOn = pk; S.patterns = []; if (!on) setConds(null);
         if (on && !S.free.price) seedFree(S.free, (S.form && S.form.price) || 1500);
         renderMake();
       };
     });
+  }
+  /* ---------- パックオリパ（パック限定）：当たりも下枠もパック。下枠は在庫の多いパックから、原価が合わなければ【@◯◯】で調整 ---------- */
+  function packVal(p) { return p.mis ? (p.shop || p.sell) : (p.sell || p.shop); } // マスタ価格が怪しいパックは店頭価格で見る
+  function packStock() { return S.inv.filter(function (p) { return p.kind === 'pack' && p.stock > 0 && p.cost > 0; }); }
+  function renderPack() {
+    var P = S.pk || (S.pk = { price: 500, init: 40, cmin: 60, cmax: 70, nHit: 4, useAt: true });
+    var ps = packStock(), nKinds = ps.length, nAll = ps.reduce(function (a, p) { return a + p.stock; }, 0);
+    $('#body').innerHTML = modeTabs('pack') +
+      '<div class="form">' +
+      '<div class="f"><div class="lb">1回の値段</div><input id="kp" type="number" value="' + P.price + '"> 円</div>' +
+      '<div class="f"><div class="lb">口数</div><input id="ki" type="number" value="' + P.init + '"> 口</div>' +
+      '<div class="f"><div class="lb">原価率</div><input id="kc0" type="number" value="' + P.cmin + '" style="width:60px"> % 〜 <input id="kc1" type="number" value="' + P.cmax + '" style="width:60px"> %</div>' +
+      '<div class="f"><div class="lb">当たりパックの数</div><input id="kh" type="number" value="' + P.nHit + '"> 枚<div class="hint">1口の値段の1.6倍以上のパック（古い弾・人気弾など）</div></div>' +
+      '<div class="f"><div class="lb">下枠</div><label class="ck"><input type="checkbox" id="ka"' + (P.useAt ? ' checked' : '') + '> 原価が合わないときは【@◯◯】も入れる</label></div>' +
+      lastHTML() +
+      '<div class="f go"><button class="primary" id="go">提案する</button></div>' +
+      '</div>' + storeChips() + '<div class="info">在庫：パック ' + nKinds + '種類・' + nAll + '個（' + esc(S.sname) + '）。当たりも下枠もパックだけで作ります</div>' +
+      '<div id="res">' + (S.patterns.length ? patternsHTML() : '<div class="msg sub">条件を入れて「提案する」を押してください</div>') + '</div>';
+    bindModeTabs(); bindStoreChips();
+    $('#go').onclick = function () {
+      P.price = Math.max(1, Number($('#kp').value) || 500); P.init = Math.max(1, Math.round(Number($('#ki').value) || 40));
+      P.cmin = Number($('#kc0').value) || 0; P.cmax = Number($('#kc1').value) || 70; if (P.cmin > P.cmax) { var t = P.cmin; P.cmin = P.cmax; P.cmax = t; }
+      P.nHit = Math.max(0, Math.round(Number($('#kh').value) || 0)); P.useAt = $('#ka').checked; readLast();
+      var pt = buildPack(P); pt.base = pt.L.base; pt.orig = flatHits(pt.hits).map(function (h) { return { k: nk(h.p), name: h.p.name }; });
+      S.patterns = [pt]; renderMake(); var r = $('#res'); if (r) r.scrollIntoView({ behavior: 'smooth' });
+    };
+    bindPatternButtons();
+  }
+  function buildPack(P) {
+    var price = P.price, init = P.init, rev = price * init, bMax = rev * P.cmax / 100, bMin = rev * P.cmin / 100, warn = [];
+    var L = Object.assign({}, learnFor(price), { kinds: [['pack']], fill: { packOnly: true }, free: true, label: 'パック限定', costMin: P.cmin / 100, costMax: P.cmax / 100, costr: P.cmax / 100, allowMis: true, packMode: true });
+    var left = {}; S.inv.forEach(function (p) { left[p.id] = p.stock; }); var used = {};
+    var packs = packStock().filter(function (p) { return !isDeck(p); });
+    var hitPool = packs.filter(function (p) { return packVal(p) >= price * 1.6; }).sort(function (a, b) { return packVal(b) - packVal(a) || stockOf(b) - stockOf(a); });
+    var hits = [], hitCost = 0;
+    function take(p, role) { left[p.id]--; markUsed(used, p); var ex = hits.find(function (h) { return h.p.id === p.id && h.role === role; }); if (ex) ex.n++; else hits.push({ p: p, n: 1, role: role }); }
+    var roleOf2 = function (v) { return v >= price * 6 ? '大当たり' : v >= price * 3 ? '中当たり' : '小当たり'; };
+    // 当たり：値段の高いパックから。原価は全体の6割まで。同じパックは2個まで
+    for (var i = 0, g = 0; hits.reduce(function (a, h) { return a + h.n; }, 0) < P.nHit && g < 400; g++) {
+      var c = hitPool.filter(function (p) { return left[p.id] > 0 && usedOf(used, p) < 2 && hitCost + p.cost <= bMax * 0.6; });
+      if (!c.length) break;
+      var p = c.find(function (q) { return !usedOf(used, q); }) || c[0]; take(p, hits.length ? roleOf2(packVal(p)) : 'TOP'); hitCost += p.cost; // まずは違う種類から
+    }
+    var nHit = hits.reduce(function (a, h) { return a + h.n; }, 0);
+    if (nHit < P.nHit) warn.push('当たりにできるパック（' + yen(Math.round(price * 1.6)) + '以上）が足りず、' + (P.nHit - nHit) + '枚少なくなっています');
+    var last = null;
+    if (S.lastOn !== false) { last = hitPool.find(function (p) { return left[p.id] > 0 && !usedOf(used, p); }) || hitPool.find(function (p) { return left[p.id] > 0; }) || null; if (last) { take(last, 'ラストワン'); hitCost += last.cost; } else warn.push('ラストワン賞にできるパックがありません'); }
+    // 下枠：在庫の多いパックから（1種類は全体の35%まで）
+    var R = init - nHit, cap = Math.max(1, Math.ceil(R * 0.35)), fl = [];
+    var base = packs.filter(function (p) { return left[p.id] > 0 && packVal(p) < price * 1.6; }).sort(function (a, b) { return stockOf(b) - stockOf(a) || a.cost - b.cost; });
+    function addF(p, n) { left[p.id] -= n; var ex = fl.find(function (x) { return x.p.id === p.id; }); if (ex) ex.n += n; else fl.push({ p: p, n: n }); }
+    var got = 0;
+    base.forEach(function (p) { if (got < R) { var k = Math.min(R - got, left[p.id], cap); if (k > 0) { addF(p, k); got += k; } } });
+    if (got < R) base.forEach(function (p) { if (got < R && left[p.id] > 0) { var k = Math.min(R - got, left[p.id]); addF(p, k); got += k; } });
+    var fCost = function () { return fl.reduce(function (a, x) { return a + x.p.cost * x.n; }, 0); };
+    // 原価が上限を超えるなら、原価の高いパックを【@◯◯】に入れ替える
+    var ats = S.inv.filter(function (p) { return p.kind === 'filler' && p.stock > 0; }).sort(function (a, b) { return a.fv - b.fv || b.stock - a.stock; });
+    var swapped = 0;
+    if (P.useAt && ats.length) {
+      for (g = 0; hitCost + fCost() > bMax && g < 500; g++) {
+        var hi2 = fl.filter(function (x) { return x.p.kind === 'pack' && x.n > 0; }).sort(function (a, b) { return b.p.cost - a.p.cost; })[0];
+        var at = ats.filter(function (a) { return left[a.id] > 0 && a.cost < (hi2 ? hi2.p.cost : 0); }).sort(function (a, b) { return b.fv - a.fv; })[0];
+        if (!hi2 || !at) break;
+        hi2.n--; left[hi2.p.id]++; if (hi2.n <= 0) fl.splice(fl.indexOf(hi2), 1); addF(at, 1); swapped++;
+      }
+    }
+    if (got < R) { // パックが足りない分は【@◯◯】で
+      var need2 = R - got;
+      if (P.useAt) ats.forEach(function (a) { if (need2 > 0 && left[a.id] > 0) { var k = Math.min(need2, left[a.id]); addF(a, k); need2 -= k; } });
+      warn.push('下枠用のパックが ' + (R - got) + '口分 足りません' + (P.useAt && need2 < R - got ? '（' + (R - got - need2) + '口分は【@◯◯】で埋めています）' : ''));
+    }
+    if (swapped) warn.push('原価率を上限に合わせるため、' + swapped + '口分は【@◯◯】を入れています');
+    var cost = hitCost + fCost();
+    if (cost > bMax + 1) warn.push('原価率が上限（' + P.cmax + '%）を超えています：' + pct(cost / rev));
+    if (cost < bMin - 1) warn.push('原価率が下限（' + P.cmin + '%）に届きません：' + pct(cost / rev) + '。当たりパックを足すか、下枠のパックを入れ替えてください');
+    hits.sort(function (a, b) { return roleRank(a.role) - roleRank(b.role) || packVal(b.p) - packVal(a.p); });
+    var z = { 'TOP': 0, '大当たり': 0, '中当たり': 0, '小当たり': 0, 'ラストワン': 0 };
+    return { need: z, miss0: { '大当たり': 0, '中当たり': 0, '小当たり': 0 }, cnt0: {}, key: '', name: 'パックオリパ', note: 'パック限定：原価率' + P.cmin + '〜' + P.cmax + '%・当たりパック' + P.nHit + '枚（' + yen(Math.round(price * 1.6)) + '以上）・下枠は在庫の多いパックから',
+      price: price, init: init, rev: rev, hits: hits, filler: fl, cost: cost, costr: cost / rev, value: hits.reduce(function (s2, h) { return s2 + packVal(h.p) * h.n; }, 0), L: L, warn: warn };
   }
   function afterForm() {
     return storeChips() + '<div class="info">在庫：当たり候補 ' + S.inv.filter(function (p) { return p.kind !== 'filler'; }).length + '種類／下枠 ' + fillerList().length + '種類（' + esc(S.sname) + '）</div>' +
