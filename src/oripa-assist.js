@@ -142,7 +142,7 @@
   document.body.appendChild(host);
   var root = host.attachShadow({ mode: 'open' });
   root.innerHTML = '<style>' + CSS() + '</style><div class="wrap"><div class="win">' +
-    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-11-01 版BZ</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
+    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-11-01 版CA</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
     (ALL ? '' : '<div class="tabs"><button data-tab="make" class="on">新しく作る</button><button data-tab="refill">補充する</button></div>') +
     '<button class="x" id="close" title="閉じる">×</button></div>' +
     '<div class="bd" id="body"><div class="msg">読み込み中…</div></div></div></div>';
@@ -1852,7 +1852,7 @@
       var pt = refillPt();
       var m = modal('<div class="mh">マイカの「' + esc(item.display_name) + '」に補充しますか？</div><div class="frm">' +
         '<div class="sm">' + pt.hits.concat(pt.filler).map(function (h) { return '・' + esc(h.p.name) + ' ×' + h.n; }).join('<br>') + '</div>' +
-        '<div class="sm"><b>口数が ' + pt.init + '口 増えます</b>（足す原価 ' + yen(pt.cost) + '・足した口の売上 ' + yen(pt.rev) + '・足した分の原価率 ' + (pt.init ? Math.round(pt.costr * 1000) / 10 : 0) + '%）。補充は押した時点でマイカの在庫が動きます（一時保存ではありません）。</div>' + lowCostNote(pt) + '</div>' +
+        '<div class="sm"><b>口数が ' + pt.init + '口 増えます</b>（足す原価 ' + yen(pt.cost) + '・足した口の売上 ' + yen(pt.rev) + '・足した分の原価率 ' + (pt.init ? Math.round(pt.costr * 1000) / 10 : 0) + '%）。</div><div class="bigwarn">⚠ 「補充する」を押した時点で、マイカの在庫が動きます<br><span>一時保存ではありません。すぐにオリパの口数が増え、店の在庫から減ります</span></div>' + lowCostNote(pt) + '</div>' +
         '<div class="acts"><button class="ghost" data-x>やめる</button><button class="primary" data-ok>補充する</button></div>');
       m.querySelector('[data-x]').onclick = function () { m.remove(); };
       m.querySelector('[data-ok]').onclick = async function () {
@@ -1908,7 +1908,7 @@
       '.pn{font-weight:800;font-size:15px}.pnote{font-size:11px;color:#777}',
       '.kpi{display:grid;grid-template-columns:repeat(3,1fr);background:#f6f5f2;border-radius:9px;padding:8px 4px;text-align:center}',
       '.tchk{display:flex;flex-wrap:wrap;gap:6px 12px}.tchk label{display:flex;align-items:center;gap:4px;font-size:13px;font-weight:700;background:#fff7e0;border:1.5px solid #e8c23a;border-radius:8px;padding:4px 10px;cursor:pointer}',
-      '.rfc{display:flex;flex-direction:column;gap:4px;border-radius:8px;padding:2px}.rfc.on{outline:3px solid #c8102e}.rfn{display:flex;align-items:center;justify-content:center;gap:8px}.rfn .ghost{padding:2px 10px}.rfq{display:flex;flex-wrap:wrap;align-items:center;gap:6px;background:#fff;border:1px solid #e5e2da;border-radius:10px;padding:8px 12px;margin:6px 0;font-size:13px}.rfq input,.rff input{width:60px}.rff{display:flex;align-items:center;gap:6px;font-size:13px}.rff select{font-size:13px;padding:5px;max-width:560px}.rfsum{background:#f3f1ea;border-radius:8px;padding:10px 12px;font-size:13px;font-weight:700;margin-top:8px}.rfkpi{display:flex;flex-wrap:wrap;align-items:center;gap:14px;margin-top:6px;font-size:14px}.rfkpi b{font-size:17px}.rfkpi b.neg{color:#c8102e}.rfkpi .sm{font-weight:400}',
+      '.rfc{display:flex;flex-direction:column;gap:4px;border-radius:8px;padding:2px}.rfc.on{outline:3px solid #c8102e}.rfn{display:flex;align-items:center;justify-content:center;gap:8px}.rfn .ghost{padding:2px 10px}.rfq{display:flex;flex-wrap:wrap;align-items:center;gap:6px;background:#fff;border:1px solid #e5e2da;border-radius:10px;padding:8px 12px;margin:6px 0;font-size:13px}.rfq input,.rff input{width:60px}.rff{display:flex;align-items:center;gap:6px;font-size:13px}.rff select{font-size:13px;padding:5px;max-width:560px}.bigwarn{margin:10px 0 2px;padding:12px 14px;border:2px solid #c8102e;border-radius:10px;background:#fff1f2;color:#c8102e;font-size:18px;font-weight:900;line-height:1.5}.bigwarn span{display:block;font-size:13px;font-weight:700;color:#7a1020}.rfsum{background:#f3f1ea;border-radius:8px;padding:10px 12px;font-size:13px;font-weight:700;margin-top:8px}.rfkpi{display:flex;flex-wrap:wrap;align-items:center;gap:14px;margin-top:6px;font-size:14px}.rfkpi b{font-size:17px}.rfkpi b.neg{color:#c8102e}.rfkpi .sm{font-weight:400}',
       '.kpiraw{margin-top:6px;background:#fdecea}.kpiraw b{color:#c0392b}',
       '.kpi b{display:block;font-size:16px}.kpi span{font-size:10px;color:#777}',
       '.top{display:flex;justify-content:center}',
