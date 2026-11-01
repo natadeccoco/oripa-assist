@@ -73,7 +73,7 @@
     { k: 's151', label: '151のポケモン', re: /(?!)/, fn: is151 } // 初代の151匹（弾の「151」ではない）
   ];
   var RARES = [ // レアリティで絞る（テーマと一緒に使うと「テーマ かつ レアリティ」）
-    { k: 'SAR', label: 'SAR', re: /^SAR$/i, nm: /\bSAR\b/ },
+    { k: 'SAR', label: 'SAR（MURも）', re: /^(SAR|MUR)$/i, nm: /\b(SAR|MUR)\b/ }, // MURはSARと同じ扱い
     { k: 'SR', label: 'SR', re: /^SR(仕様)?$/i, nm: /\bSR\b/ },
     { k: 'MUR', label: 'MUR', re: /^MUR$/i, nm: /\bMUR\b/ },
     { k: 'PROMO', label: 'プロモ', re: /^PROMO$/i, nm: /プロモ|\bPROMO\b|-P\b/i, exp: /-P$/i }
@@ -106,7 +106,13 @@
     else if (/^(XY|BW|DP|L|PCG|ADV)/i.test(c)) v = 0.1;
     return (p._nw = Math.max(0, Math.min(1, v)));
   }
-  function isFullArt(p) { var r = String(p.rarity || ''); if (r) return /^(SAR|SR|UR|HR|MUR|CSR|CHR|SSR|AR)/i.test(r); return /\b(SAR|SR|UR|HR|MUR|CSR|CHR|SSR|AR)\b/.test(String(p.name || '')); }
+  function isFullArt(p) { // レアリティで見る。レアリティが無いときは、カード番号が弾の枚数より大きい（例 205/165）＝フルアートとみる
+    var r = String(p.rarity || '');
+    if (r && /^(SAR|SR|UR|HR|MUR|CSR|CHR|SSR|AR)/i.test(r)) return true;
+    if (r && !/^(PROMO|null)$/i.test(r)) return false;
+    var m = String(p.cno || '').match(/(\d+)\s*\/\s*(\d+)/); if (m && Number(m[1]) > Number(m[2])) return true;
+    return /\b(SAR|SR|UR|HR|MUR|CSR|CHR|SSR|AR)\b/.test(String(p.name || ''));
+  }
   function isEnergy(p) { return (p.kind === 'card' || p.kind === 'psa') && /エネルギー/.test(p.name || ''); }
   function isDeck(p) { return /デッキビルド|スターター|スタートデッキ|デッキセット|構築済み|プレミアムデッキ|デッキ/.test(p.name); }
   function suspectPrice(p) { return p.kind === 'box' && p.cost > 0 && (p.cost < p.sell * 0.3 || (!/BOX|ボックス|box/i.test(p.name) && /パック/.test(p.name))); }
@@ -136,7 +142,7 @@
   document.body.appendChild(host);
   var root = host.attachShadow({ mode: 'open' });
   root.innerHTML = '<style>' + CSS() + '</style><div class="wrap"><div class="win">' +
-    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-11-01 版BV</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
+    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-11-01 版BW</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
     (ALL ? '' : '<div class="tabs"><button data-tab="make" class="on">新しく作る</button><button data-tab="refill">補充する</button></div>') +
     '<button class="x" id="close" title="閉じる">×</button></div>' +
     '<div class="bd" id="body"><div class="msg">読み込み中…</div></div></div></div>';
@@ -233,7 +239,7 @@
       var shop = Number(p.actual_sell_price != null ? p.actual_sell_price : p.sell_price) || 0;
       var sell = Number(p.item_sell_price) || shop;
       return { id: p.id, name: p.display_name, img: p.image_url, sell: sell, shop: shop, cost: Number(p.average_wholesale_price) || 0, stock: p.stock_number, kind: kind,
-        bst: kind === 'box' ? bst : '', cond: kind === 'box' && bst ? cond + '・' + bst + (/^B/.test(bst) ? '（シュリンクなし）' : '') : cond, noShrink: kind === 'box' && /^B/.test(bst), sealed: kind !== 'box' && kind !== 'pack' && /未開封/.test(spec + ' ' + p.display_name), exp: p.item_expansion || '', rarity: p.item_rarity || '', fv: bm ? Number(bm[1]) : 0, spec: spec, sid: sid, sname: shortName(sname) };
+        bst: kind === 'box' ? bst : '', cond: kind === 'box' && bst ? cond + '・' + bst + (/^B/.test(bst) ? '（シュリンクなし）' : '') : cond, noShrink: kind === 'box' && /^B/.test(bst), sealed: kind !== 'box' && kind !== 'pack' && /未開封/.test(spec + ' ' + p.display_name), exp: p.item_expansion || '', rarity: p.item_rarity || '', cno: p.item_cardnumber || '', fv: bm ? Number(bm[1]) : 0, spec: spec, sid: sid, sname: shortName(sname) };
     }).filter(function (p) {
       if (p.kind === 'other') return false;
       if (p.kind === 'filler') return true;
