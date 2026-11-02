@@ -1,13 +1,13 @@
 /* ナタデココ 販売価格の承認（マイカ上で動くブックマークレット本体）
- * 5万円以上のPSA・シングル・BOXの販売価格を、LINE WORKSの店舗グループで役員に承認してもらう。
- * シングル・BOX：スタッフが価格を入力。
+ * 5万円以上のPSA・シングル・BOX・未開封の販売価格を、LINE WORKSの店舗グループで役員に承認してもらう。
+ * シングル・BOX・未開封：スタッフが価格を入力。
  * PSA10：スニダンの最安出品と直近の取引の高い方を自動入力。ただし粗利10%以上になるまで引き上げる。 */
 (function () {
   'use strict';
   if (location.hostname !== 'pos.mycalinks.com') { alert('マイカ（pos.mycalinks.com）を開いてから押してください'); return; }
   var old = document.getElementById('ndk-hanbai-host'); if (old) old.remove();
 
-  var VERSION = '2026-11-02 版B';
+  var VERSION = '2026-11-02 版C';
   var GAS = 'https://script.google.com/macros/s/AKfycbwXHuu-X3L0qzJhvaszEIm-1xdeNIqJACQ0uM7mz5Q0hvwfdF9IuQiTKr3qmscNVmnhcQ/exec';
   var FB_URL = 'https://script.google.com/macros/s/AKfycbwl-ZCZ1LyefvSzEGkBEpTFTuFyvW0p-AYye6jBWaLP9t7-bC9_Owfeh4jKScNkFys6Fw/exec';
   var SHORT = { 322: '柏', 323: '津田沼', 324: '松戸', 325: '横浜', 326: '中野', 327: '町田', 328: '千葉中央', 409: 'お台場' };
@@ -38,8 +38,10 @@
     var dn = String(p.displayNameWithMeta || p.display_name || ''), sp = String(p.specialty__display_name || '');
     var m = (sp + ' ' + (dn.match(/《([^》]*)》/) || [])[1]).match(/PSA\s*(\d+)/i);
     if (m) return { kind: 'PSA', grade: m[1] };
-    if (p.item_category_display_name === 'ボックス' || /BOX|ボックス/i.test(dn)) return { kind: 'BOX' };
-    return { kind: 'シングル' };
+    var cat = String(p.item_category_display_name || '').replace(/（.*$/, '');
+    if (cat === 'ボックス') return { kind: /BOX|ボックス/i.test(dn) ? 'BOX' : '未開封' }; // マイカの「ボックス」にはパック・スターターセットなども入っている
+    if (cat === 'カード' || !cat) return { kind: 'シングル' };
+    return { kind: cat }; // サプライ・デッキなどはマイカのカテゴリ名のまま
   }
   function floorPrice(cost) { return cost > 0 ? Math.ceil(cost * 10 / 9 / 100) * 100 : 0; } // 粗利10%を確保する最低価格（100円単位で切り上げ）
   function psaAuto(snk, cost) {
@@ -75,7 +77,7 @@
     '.it{display:flex;gap:10px;align-items:center;padding:7px 0;border-top:1px solid #eceae4}.it:first-child{border-top:0}' +
     '.it img,.it .noimg{width:40px;height:56px;object-fit:contain;border-radius:4px;background:#f2f0ea;flex:none}' +
     '.it .g{flex:1;min-width:0}.it .n{font-weight:700;font-size:13px;word-break:break-all}.it .m{color:#777;font-size:12px}' +
-    '.pill{display:inline-block;font-size:11px;font-weight:800;padding:0 7px;border-radius:999px;background:#1d1d22;color:#fff;margin-right:4px}.pill.psa{background:#2952a3}.pill.box{background:#7a5b00}' +
+    '.pill{display:inline-block;font-size:11px;font-weight:800;padding:0 7px;border-radius:999px;background:#1d1d22;color:#fff;margin-right:4px}.pill.psa{background:#2952a3}.pill.box{background:#7a5b00}.pill.mikai{background:#15803d}' +
     'button.b{all:unset;cursor:pointer;font-weight:800;font-size:14px;padding:10px 18px;border-radius:10px;background:#1d1d22;color:#fff;text-align:center}' +
     'button.b.r{background:#c8102e}button.b.g{background:#fff;color:#1d1d22;border:1.5px solid #d6d2c8}button.b.s{font-size:12px;padding:5px 10px;border-radius:8px}' +
     'button.b[disabled]{opacity:.45;cursor:default}.it button.b{flex:none}' +
@@ -138,7 +140,7 @@
         var k = kindOf(p);
         return '<div class="it">' + (p.image_url ? '<img src="' + esc(p.image_url) + '" loading="lazy">' : '<span class="noimg"></span>') +
           '<div class="g"><div class="n">' + esc(p.displayNameWithMeta || p.display_name) + '</div><div class="m">' +
-          '<span class="pill' + (k.kind === 'PSA' ? ' psa' : k.kind === 'BOX' ? ' box' : '') + '">' + k.kind + (k.grade || '') + '</span>' +
+          '<span class="pill' + (k.kind === 'PSA' ? ' psa' : k.kind === 'BOX' ? ' box' : k.kind === '未開封' ? ' mikai' : '') + '">' + k.kind + (k.grade || '') + '</span>' +
           (p.condition_option_display_name ? esc(p.condition_option_display_name) + '　' : '') +
           '在庫 ' + (p.stock_number || 0) + '　販売 ' + yen(nowPrice(p)) + '　原価 ' + yen(p.average_wholesale_price) + '</div></div>' +
           '<button class="b s" data-pick="' + i + '">追加</button></div>';
@@ -167,7 +169,7 @@
   }
   function needApproval(c) { return Math.max(c.price || 0, c.now) >= LINE; }
   function lineHtml(c) {
-    var isAuto = !!c.auto, pc = c.kind === 'PSA' ? ' psa' : c.kind === 'BOX' ? ' box' : '';
+    var isAuto = !!c.auto, pc = c.kind === 'PSA' ? ' psa' : c.kind === 'BOX' ? ' box' : c.kind === '未開封' ? ' mikai' : '';
     var h = '<div class="line" data-line="' + c.id + '"><div class="it">' + (c.img ? '<img src="' + esc(c.img) + '">' : '<span class="noimg"></span>') +
       '<div class="g"><div class="n">' + esc(c.name) + '</div><div class="m"><span class="pill' + pc + '">' + c.kind + c.grade + '</span>在庫 ' + c.stock + '　今 ' + yen(c.now) + '　原価 ' + (c.cost ? yen(c.cost) : '不明') + '</div></div>' +
       '<button class="b s g" data-del="' + c.id + '">削除</button></div>';
