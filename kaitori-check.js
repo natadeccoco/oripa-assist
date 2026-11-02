@@ -6,7 +6,7 @@
   if (location.hostname !== 'pos.mycalinks.com') { alert('マイカ（pos.mycalinks.com）を開いてから押してください'); return; }
   var old = document.getElementById('ndk-kaitori-host'); if (old) old.remove();
 
-  var VERSION = '2026-11-02 版U';
+  var VERSION = '2026-11-02 版V';
   var GAS = 'https://script.google.com/macros/s/AKfycbwXHuu-X3L0qzJhvaszEIm-1xdeNIqJACQ0uM7mz5Q0hvwfdF9IuQiTKr3qmscNVmnhcQ/exec';
   var FB_URL = 'https://script.google.com/macros/s/AKfycbwl-ZCZ1LyefvSzEGkBEpTFTuFyvW0p-AYye6jBWaLP9t7-bC9_Owfeh4jKScNkFys6Fw/exec';
   var SHORT = { 322: '柏', 323: '津田沼', 324: '松戸', 325: '横浜', 326: '中野', 327: '町田', 328: '千葉中央', 390: '通販', 409: 'お台場' };
@@ -277,12 +277,19 @@
     try {
       var sid = S.sid, today = jstDay(new Date());
       var start = new Date(today + 'T00:00:00+09:00').toISOString();
-      var dr = await api('/api/store/' + sid + '/transaction?status=draft&transaction_kind=buy&take=100&skip=0&orderBy=-finished_at');
-      var since = new Date(start).getTime() - 864e5; // 昨日と今日（日本時間0時から）の査定中を出す。マイカに残ったままのそれより前の査定中は出さない
+      // 完了していない買取（査定中）は全部出す（預かり査定で1週間ほどかかることがある）。完了した買取は出さない
+      var all = [];
+      for (var sk = 0; sk < 1000; sk += 100) {
+        var dr = await api('/api/store/' + sid + '/transaction?status=draft&transaction_kind=buy&take=100&skip=' + sk + '&orderBy=-finished_at');
+        var got = dr.transactions || []; all = all.concat(got); if (got.length < 100) break;
+      }
       var tm = function (t) { return Math.max(new Date(t.created_at || 0).getTime() || 0, new Date(t.updated_at || 0).getTime() || 0); };
-      var drafts = (dr.transactions || []).filter(function (t) { return tm(t) >= since; }).sort(function (a, b) { return tm(b) - tm(a); });
       S.today0 = new Date(start).getTime();
-      S.list = drafts; // 査定中だけ出す（完了した買取は出さない）
+      var old0 = S.today0 - 14 * 864e5; // 14日より前に触ったきりの査定中は、下の「古い査定中」にたたんでおく
+      all.sort(function (a, b) { return tm(b) - tm(a); });
+      var drafts = all.filter(function (t) { return tm(t) >= old0; }), olds = all.filter(function (t) { return tm(t) < old0; });
+      S.list = all;
+      var ago = function (t) { var d = Math.ceil((S.today0 - tm(t)) / 864e5); return tm(t) >= S.today0 ? '' : '<b style="color:#c2410c">' + (d <= 1 ? '昨日' : d + '日前') + '</b> '; };
       var row = function (t) {
         var w = 0, red = 0; (t.transaction_carts || []).forEach(function (c) { var j = judge(c); j.flags.forEach(function (x) { w++; if (x.lv === 'red') red++; }); });
         var ap = approvalLine(), need = (t.total_price || 0) >= ap.line;
@@ -290,11 +297,12 @@
           (t.status === 'draft' ? '<span class="pill blue">査定中</span>' : '<span class="pill gr">完了</span>') +
           (red ? '<span class="pill red">🚨 ' + red + '</span>' : '') + (w - red ? '<span class="pill yel">⚠️ ' + (w - red) + '</span>' : '') + (!w ? '<span class="pill ok">OK</span>' : '') +
           (need ? '<span class="pill red">要承認</span>' : '') +
-          '<div class="s">' + (tm(t) < S.today0 ? '<b style="color:#c2410c">昨日</b> ' : '') + hm(t.updated_at || t.created_at) + '　' + (t.transaction_carts || []).length + '行・' + (t.transaction_carts || []).reduce(function (s, c) { return s + (c.item_count || 0); }, 0) + '点</div></div>' +
+          '<div class="s">' + ago(t) + hm(t.updated_at || t.created_at) + '　' + (t.transaction_carts || []).length + '行・' + (t.transaction_carts || []).reduce(function (s, c) { return s + (c.item_count || 0); }, 0) + '点</div></div>' +
           '<div class="t">' + yen(t.total_price) + '</div></div>';
       };
       $('#body').innerHTML =
-        '<h2>査定中の買取（お金を払う前にチェック）</h2>' + (drafts.length ? drafts.map(row).join('') : '<div class="sub">査定中の買取はありません。マイカで明細を入れてから「更新」を押してください。</div>');
+        '<h2>査定中の買取（お金を払う前にチェック）</h2>' + (drafts.length ? drafts.map(row).join('') : '<div class="sub">査定中の買取はありません。マイカで明細を入れてから「更新」を押してください。</div>') +
+        (olds.length ? '<details style="margin-top:14px"><summary style="cursor:pointer;color:#666">古い査定中（2週間以上前・' + olds.length + '件）を見る</summary>' + olds.map(row).join('') + '</details>' : '');
       R.querySelectorAll('.tx').forEach(function (el) { el.onclick = function () { openTx(Number(el.dataset.id)); }; });
     } catch (e) { $('#body').innerHTML = '<div class="msg err">買取を読み込めませんでした：' + esc(e.message) + '</div>'; }
   }
