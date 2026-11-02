@@ -7,13 +7,13 @@
   if (location.hostname !== 'pos.mycalinks.com') { alert('マイカ（pos.mycalinks.com）を開いてから押してください'); return; }
   var old = document.getElementById('ndk-hanbai-host'); if (old) old.remove();
 
-  var VERSION = '2026-11-02 版A';
+  var VERSION = '2026-11-02 版B';
   var GAS = 'https://script.google.com/macros/s/AKfycbwXHuu-X3L0qzJhvaszEIm-1xdeNIqJACQ0uM7mz5Q0hvwfdF9IuQiTKr3qmscNVmnhcQ/exec';
   var FB_URL = 'https://script.google.com/macros/s/AKfycbwl-ZCZ1LyefvSzEGkBEpTFTuFyvW0p-AYye6jBWaLP9t7-bC9_Owfeh4jKScNkFys6Fw/exec';
   var SHORT = { 322: '柏', 323: '津田沼', 324: '松戸', 325: '横浜', 326: '中野', 327: '町田', 328: '千葉中央', 409: 'お台場' };
   var LINE = 50000, MIN_MARGIN = 0.1;
 
-  var S = { sid: null, stores: [], results: [], cur: null, staff: '', list: [], pollT: null, searchT: null, sending: false, seq: 0 };
+  var S = { sid: null, stores: [], results: [], lines: [], staff: '', list: [], pollT: null, searchT: null, sending: false };
   try { S.staff = localStorage.getItem('ndk_hanbai_staff') || localStorage.getItem('ndk_kaitori_staff') || localStorage.getItem('ndk_loss_staff') || ''; } catch (e) { }
 
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
@@ -83,7 +83,7 @@
     '.msg{padding:18px;text-align:center;color:#777}.err{color:#c8102e;font-weight:700}' +
     '.st{padding:10px 14px;border-radius:10px;font-weight:800;margin:10px 0}.st.wait{background:#fff4c2;color:#5c4300}.st.ok{background:#e3f4e6;color:#15803d}.st.ng{background:#fff0f2;color:#c8102e}' +
     '.code{display:inline-block;font:800 18px/1.2 ui-monospace,Consolas,monospace;background:#1d1d22;color:#e8c23a;padding:6px 12px;border-radius:8px;margin:6px 6px 0 0;letter-spacing:.03em}' +
-    '.rq{border-top:1px solid #eceae4;padding:9px 0}.rq:first-child{border-top:0}.rq .h{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.rq .t{color:#555;font-size:12px;white-space:pre-wrap;margin-top:3px}' +
+    '.rq{border-top:1px solid #eceae4;padding:9px 0}.rq:first-child{border-top:0}.rq .h{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.line{border-top:1px solid #d6d2c8;padding:10px 0}.line:first-child{border-top:0;padding-top:0}.ptitle{display:flex;gap:10px;align-items:center;margin-top:6px}.ptitle input{flex:1;min-width:0}.ptitle span{font-weight:700;font-size:13px;flex:none}.rq .t{color:#555;font-size:12px;white-space:pre-wrap;margin-top:3px}' +
     '.tag{font-size:11.5px;font-weight:800;padding:1px 8px;border-radius:999px}.tag.wait{background:#fff4c2;color:#7a5b00}.tag.ok{background:#e3f4e6;color:#15803d}.tag.ng{background:#fff0f2;color:#c8102e}' +
     '.hint{font-size:12px;color:#7a5b00;background:#fdf6dc;border-radius:8px;padding:8px 10px;margin-top:8px}' +
     'a{color:#2563eb}' +
@@ -96,7 +96,9 @@
     '<div class="body" id="body">' +
     '<div class="col"><div class="box"><h2>① カードを探す</h2><input class="q" id="q" placeholder="商品名で検索（例：リーリエの決心、BOX名）">' +
     '<div id="res"><div class="msg">商品名を2文字以上入れてください（この店の在庫から探します）</div></div></div></div>' +
-    '<div class="col"><div class="box"><h2>② 販売価格を決める</h2><div id="panel"><div class="msg">左の検索からカードを「選ぶ」を押してください</div></div></div>' +
+    '<div class="col"><div class="box"><h2>② 販売価格を決める <small style="font-weight:400;color:#888">（複数枚をまとめて依頼できます）</small></h2><div id="lines"></div><div id="sum"></div>' +
+    '<label class="lbl">コメント <small>（任意）</small></label><textarea class="f" id="comment"></textarea>' +
+    '<div style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap"><button class="b r" id="send" disabled>本部に承認を依頼する</button><button class="b g" id="clear">全部やめる</button></div><div id="result"></div></div>' +
     '<div class="box"><h2>最近の依頼（この店・14日分）</h2><div id="list"><div class="msg">読み込み中…</div></div></div></div>' +
     '</div></div></div>';
   var $ = function (s) { return R.querySelector(s); };
@@ -105,6 +107,8 @@
   $('#staff').onchange = function () { S.staff = this.value.trim(); try { localStorage.setItem('ndk_hanbai_staff', S.staff); } catch (e) { } };
   $('#reload').onclick = function () { loadList(); };
   $('#fb').onclick = function () { window.open(FB_URL + '?tool=' + encodeURIComponent('販売価格の承認') + '&store=' + encodeURIComponent(SHORT[S.sid] || ''), '_blank'); };
+  $('#send').onclick = submit;
+  $('#clear').onclick = function () { S.lines = []; drawLines(); $('#result').innerHTML = ''; };
   $('#q').oninput = function () { clearTimeout(S.searchT); var v = this.value.trim(); S.searchT = setTimeout(function () { search(v); }, 400); };
 
   /* ---------- 初期化 ---------- */
@@ -116,9 +120,9 @@
       var cur = S.stores.find(function (s) { return hname && hname.indexOf(s.display_name) >= 0; }) ||
         S.stores.find(function (s) { return hname.indexOf(SHORT[s.id]) >= 0; }) || S.stores[0];
       $('#store').innerHTML = S.stores.map(function (s) { return '<option value="' + s.id + '"' + (s.id === cur.id ? ' selected' : '') + '>' + esc(SHORT[s.id]) + '</option>'; }).join('');
-      $('#store').onchange = function () { S.sid = Number(this.value); S.cur = null; drawPanel(); loadList(); search($('#q').value.trim()); };
+      $('#store').onchange = function () { S.sid = Number(this.value); S.lines = []; drawLines(); loadList(); search($('#q').value.trim()); };
       S.sid = cur.id;
-      loadList();
+      drawLines(); loadList();
     } catch (e) { $('#body').innerHTML = '<div class="msg err">読み込みに失敗しました：' + esc(e.message) + '<br>マイカにログインした状態で、もう一度ボタンを押してください。</div>'; }
   })();
 
@@ -137,80 +141,91 @@
           '<span class="pill' + (k.kind === 'PSA' ? ' psa' : k.kind === 'BOX' ? ' box' : '') + '">' + k.kind + (k.grade || '') + '</span>' +
           (p.condition_option_display_name ? esc(p.condition_option_display_name) + '　' : '') +
           '在庫 ' + (p.stock_number || 0) + '　販売 ' + yen(nowPrice(p)) + '　原価 ' + yen(p.average_wholesale_price) + '</div></div>' +
-          '<button class="b s" data-pick="' + i + '">選ぶ</button></div>';
+          '<button class="b s" data-pick="' + i + '">追加</button></div>';
       }).join('');
-      R.querySelectorAll('[data-pick]').forEach(function (b) { b.onclick = function () { pick(S.results[Number(b.dataset.pick)]); }; });
+      R.querySelectorAll('[data-pick]').forEach(function (b) { b.onclick = function () { add(S.results[Number(b.dataset.pick)]); }; });
     } catch (e) { $('#res').innerHTML = '<div class="msg err">検索できませんでした：' + esc(e.message) + '</div>'; }
   }
 
-  /* ---------- 価格を決める ---------- */
-  async function pick(p) {
-    var k = kindOf(p), seq = ++S.seq;
-    S.cur = { id: p.id, name: p.displayNameWithMeta || p.display_name, cond: p.condition_option_display_name || '', kind: k.kind, grade: k.grade || '', cost: Number(p.average_wholesale_price) || 0, now: nowPrice(p), stock: p.stock_number || 0, img: p.image_url || '', auto: null, snk: null, loading: k.kind === 'PSA' && k.grade === '10' };
-    drawPanel();
-    if (!S.cur.loading) return;
-    var c = S.cur;
+  /* ---------- 価格を決める（複数枚） ---------- */
+  function add(p) {
+    if (S.lines.some(function (x) { return x.id === p.id; })) return;
+    var k = kindOf(p);
+    var c = { id: p.id, name: p.displayNameWithMeta || p.display_name, cond: p.condition_option_display_name || '', kind: k.kind, grade: k.grade || '', cost: Number(p.average_wholesale_price) || 0, now: nowPrice(p), stock: p.stock_number || 0, img: p.image_url || '', auto: null, snk: null, price: 0, loading: k.kind === 'PSA' && k.grade === '10' };
+    S.lines.push(c); $('#result').innerHTML = ''; drawLines();
+    if (c.loading) fetchSnk(c);
+  }
+  async function fetchSnk(c) {
     try {
       var j = await gas({ action: 'ksnkr', n: JSON.stringify([c.name]) });
-      if (seq !== S.seq) return;
       c.snk = (j.r || [])[0] || null;
       c.auto = psaAuto(c.snk, c.cost);
-    } catch (e) { if (seq !== S.seq) return; c.snk = { why: e.message }; }
+      if (c.auto) c.price = c.auto.price;
+    } catch (e) { c.snk = { why: e.message }; }
     c.loading = false;
-    drawPanel();
+    if (S.lines.indexOf(c) >= 0) drawLine(c);
   }
-  function drawPanel() {
-    var c = S.cur, el = $('#panel');
-    if (!c) { el.innerHTML = '<div class="msg">左の検索からカードを「選ぶ」を押してください</div>'; return; }
-    var isAuto = !!c.auto, h = '<div class="it">' + (c.img ? '<img src="' + esc(c.img) + '">' : '<span class="noimg"></span>') +
-      '<div class="g"><div class="n">' + esc(c.name) + '</div><div class="m"><span class="pill' + (c.kind === 'PSA' ? ' psa' : c.kind === 'BOX' ? ' box' : '') + '">' + c.kind + c.grade + '</span>在庫 ' + c.stock + '</div></div></div>' +
-      '<dl class="kv"><dt>今の販売価格</dt><dd>' + yen(c.now) + '</dd><dt>原価</dt><dd>' + (c.cost ? yen(c.cost) : '不明') + '</dd>';
-    if (c.loading) h += '</dl><div class="st wait">スニダンの価格を取得中…</div>';
-    else {
-      if (c.auto) h += '<dt>スニダン最安出品</dt><dd>' + (c.auto.low ? yen(c.auto.low) : 'なし') + '</dd><dt>スニダン直近の取引</dt><dd>' + (c.auto.last ? yen(c.auto.last) + (c.snk.date ? '（' + esc(c.snk.date) + '）' : '') : 'なし') + '</dd>' +
-        (c.snk.url ? '<dt>売買履歴</dt><dd><a href="' + esc(c.snk.url) + '" target="_blank">スニダンで見る</a></dd>' : '');
-      h += '</dl>';
-      if (c.kind === 'PSA' && !c.auto) h += '<div class="hint">' + (c.grade === '10' ? 'スニダンの価格を取得できなかったため（' + esc((c.snk && c.snk.why) || '不明') + '）、価格を手で入力してください。' : '自動入力はPSA10だけです。価格を手で入力してください。') + '</div>';
-      if (c.auto && c.auto.raised) h += '<div class="hint">スニダンの価格（' + yen(c.auto.market) + '）では粗利10%に届かないため、' + yen(c.auto.price) + 'に引き上げました。</div>';
-      h += '<label class="lbl">販売価格' + (isAuto ? ' <small>（スニダンから自動入力）</small>' : '') + '</label><input class="f big" id="price" type="text" inputmode="numeric" autocomplete="off"' + (isAuto ? ' readonly' : '') + ' value="' + (isAuto ? c.auto.price : '') + '" placeholder="金額を入力">' +
-        '<div id="calc"></div><label class="lbl">コメント <small>（任意）</small></label><textarea class="f" id="comment"></textarea>' +
-        '<div style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap"><button class="b r" id="send">本部に承認を依頼する</button><button class="b g" id="clear">やめる</button></div><div id="result"></div>';
-    }
-    el.innerHTML = h;
-    if (c.loading) return;
-    $('#price').oninput = drawCalc;
-    $('#send').onclick = submit;
-    $('#clear').onclick = function () { S.seq++; S.cur = null; drawPanel(); };
-    drawCalc();
+  function needApproval(c) { return Math.max(c.price || 0, c.now) >= LINE; }
+  function lineHtml(c) {
+    var isAuto = !!c.auto, pc = c.kind === 'PSA' ? ' psa' : c.kind === 'BOX' ? ' box' : '';
+    var h = '<div class="line" data-line="' + c.id + '"><div class="it">' + (c.img ? '<img src="' + esc(c.img) + '">' : '<span class="noimg"></span>') +
+      '<div class="g"><div class="n">' + esc(c.name) + '</div><div class="m"><span class="pill' + pc + '">' + c.kind + c.grade + '</span>在庫 ' + c.stock + '　今 ' + yen(c.now) + '　原価 ' + (c.cost ? yen(c.cost) : '不明') + '</div></div>' +
+      '<button class="b s g" data-del="' + c.id + '">削除</button></div>';
+    if (c.loading) return h + '<div class="st wait">スニダンの価格を取得中…</div></div>';
+    if (c.auto) h += '<div class="m" style="font-size:12px;color:#555">スニダン：最安出品 ' + (c.auto.low ? yen(c.auto.low) : 'なし') + '／直近の取引 ' + (c.auto.last ? yen(c.auto.last) + (c.snk.date ? '（' + esc(c.snk.date) + '）' : '') : 'なし') + (c.snk.url ? '　<a href="' + esc(c.snk.url) + '" target="_blank">売買履歴</a>' : '') + '</div>';
+    if (c.kind === 'PSA' && !c.auto) h += '<div class="hint">' + (c.grade === '10' ? 'スニダンの価格を取得できなかったため（' + esc((c.snk && c.snk.why) || '不明') + '）、価格を手で入力してください。' : '自動入力はPSA10だけです。価格を手で入力してください。') + '</div>';
+    if (c.auto && c.auto.raised) h += '<div class="hint">スニダンの価格（' + yen(c.auto.market) + '）では粗利10%に届かないため、' + yen(c.auto.price) + 'に引き上げました。</div>';
+    return h + '<div class="ptitle"><span>販売価格' + (isAuto ? '（自動）' : '') + '</span><input class="f big" data-price="' + c.id + '" type="text" inputmode="numeric" autocomplete="off"' + (isAuto ? ' readonly' : '') + ' value="' + (c.price || '') + '" placeholder="金額を入力"></div><div data-calc="' + c.id + '"></div></div>';
   }
-  function priceVal() { return Math.floor(Number(String(($('#price') || {}).value || '').normalize('NFKC').replace(/[,，円\s]/g, ''))) || 0; }
-  function needApproval(c, v) { return Math.max(v, c.now) >= LINE; }
-  function drawCalc() {
-    var c = S.cur, v = priceVal(), m = marginOf(v, c.cost), el = $('#calc'), btn = $('#send');
-    if (!v) { el.innerHTML = ''; btn.disabled = true; return; }
-    var h = '<dl class="kv"><dt>粗利</dt><dd>' + (c.cost ? yen(v - c.cost) + '（' + pct(m) + '）' : '原価が不明です') + '</dd></dl>';
+  function bindLine(c) {
+    var el = R.querySelector('[data-line="' + c.id + '"]'); if (!el) return;
+    el.querySelector('[data-del]').onclick = function () { S.lines.splice(S.lines.indexOf(c), 1); drawLines(); };
+    var inp = el.querySelector('[data-price]');
+    if (inp) { inp.oninput = function () { c.price = Math.floor(Number(String(inp.value).normalize('NFKC').replace(/[,，円\s]/g, ''))) || 0; drawCalc(c); drawSum(); }; drawCalc(c); }
+  }
+  function drawLine(c) {
+    var el = R.querySelector('[data-line="' + c.id + '"]'); if (!el) return;
+    el.outerHTML = lineHtml(c); bindLine(c); drawSum();
+  }
+  function drawLines() {
+    if (!S.lines.length) { $('#lines').innerHTML = '<div class="msg">左の検索からカードを「追加」してください</div>'; drawSum(); return; }
+    $('#lines').innerHTML = S.lines.map(lineHtml).join('');
+    S.lines.forEach(bindLine); drawSum();
+  }
+  function drawCalc(c) {
+    var el = R.querySelector('[data-calc="' + c.id + '"]'); if (!el) return;
+    if (!c.price) { el.innerHTML = ''; return; }
+    var m = marginOf(c.price, c.cost);
+    var h = '<div class="m" style="font-size:13px;margin-top:4px">粗利 <b>' + (c.cost ? yen(c.price - c.cost) + '（' + pct(m) + '）' : '原価が不明です') + '</b></div>';
     if (m != null && m < MIN_MARGIN) h += '<div class="st ng">粗利が10%未満です（10%以上にするには ' + yen(floorPrice(c.cost)) + ' 以上）</div>';
-    var need = needApproval(c, v);
-    if (!need) h += '<div class="st ok">今の価格も新しい価格も5万円未満なので、承認はいりません。</div>';
-    el.innerHTML = h; btn.disabled = !need;
+    if (!needApproval(c)) h += '<div class="st ok">今の価格も新しい価格も5万円未満なので、承認はいりません（依頼には入りません）。</div>';
+    el.innerHTML = h;
+  }
+  function drawSum() {
+    var need = S.lines.filter(needApproval), ready = need.filter(function (c) { return c.price > 0; }), busy = S.lines.some(function (c) { return c.loading; });
+    var total = ready.reduce(function (a, c) { return a + c.price; }, 0), miss = need.length - ready.length;
+    $('#sum').innerHTML = S.lines.length ? '<div style="margin-top:10px;font-weight:800">承認の依頼 ' + ready.length + '枚・販売価格 合計 ' + yen(total) + (miss ? '<span class="err">（価格が未入力：' + miss + '枚）</span>' : '') + (busy ? '<span style="color:#777">（取得中）</span>' : '') + '</div>' : '';
+    $('#send').disabled = !ready.length || !!miss || busy || S.sending;
   }
   async function submit() {
     if (S.sending) return;
-    var c = S.cur, out = $('#result'), staff = $('#staff').value.trim(), v = priceVal(), errs = [];
-    if (!staff) errs.push('上の「依頼者」に名前を入れてください');
-    if (!v) errs.push('販売価格を入れてください');
-    if (errs.length) { out.innerHTML = '<div class="st ng">' + errs.map(esc).join('<br>') + '</div>'; return; }
+    var out = $('#result'), staff = $('#staff').value.trim(), send = S.lines.filter(function (c) { return needApproval(c) && c.price > 0; });
+    if (!staff) { out.innerHTML = '<div class="st ng">上の「依頼者」に名前を入れてください</div>'; return; }
+    if (!send.length) return;
     S.staff = staff; try { localStorage.setItem('ndk_hanbai_staff', staff); } catch (e) { }
     S.sending = true; $('#send').disabled = true; out.innerHTML = '<div class="st wait">送信中…</div>';
     try {
-      var body = { action: 'hanbai', store: SHORT[S.sid], requester: staff, pid: c.id, name: c.name, cond: c.cond, kind: c.kind + c.grade, cost: c.cost, now: c.now, price: v,
-        source: c.auto ? (c.auto.raised ? '自動（粗利10%に引き上げ）' : '自動（スニダン）') : '手入力', low: c.auto ? c.auto.low : '', last: c.auto ? c.auto.last : '', url: (c.snk && c.snk.url) || '', comment: $('#comment').value.trim() };
+      var body = { action: 'hanbai', store: SHORT[S.sid], requester: staff, comment: $('#comment').value.trim(), lines: send.map(function (c) {
+        return { pid: c.id, name: c.name, cond: c.cond, kind: c.kind + c.grade, cost: c.cost, now: c.now, price: c.price,
+          source: c.auto ? (c.auto.raised ? '自動（粗利10%に引き上げ）' : '自動（スニダン）') : '手入力', low: c.auto ? c.auto.low : '', last: c.auto ? c.auto.last : '', url: (c.snk && c.snk.url) || '' };
+      }) };
       var j = await fetch(GAS, { method: 'POST', body: JSON.stringify(body) }).then(function (r) { return r.json(); });
       if (!j.ok) throw new Error(j.error || '送信できませんでした');
-      out.innerHTML = '<div class="st wait">' + (j.dup ? 'このカードはすでに承認待ちです。' : 'LINE WORKSの店舗グループに承認を依頼しました。') + '<br><span class="code">' + esc(j.id) + '</span><br>役員が承認すると、下の「最近の依頼」に ✅ が付きます。</div>';
+      S.lines = S.lines.filter(function (c) { return send.indexOf(c) < 0; }); $('#comment').value = ''; drawLines();
+      out.innerHTML = '<div class="st wait">LINE WORKSの店舗グループに ' + send.length + '枚の承認を依頼しました。<br><span class="code">' + esc(j.id) + '</span><br>役員が承認すると、下の「最近の依頼」に ✅ が付きます。</div>';
       loadList();
-    } catch (e) { out.innerHTML = '<div class="st ng">送信できませんでした：' + esc(e.message) + '</div>'; $('#send').disabled = false; }
-    finally { S.sending = false; }
+    } catch (e) { out.innerHTML = '<div class="st ng">送信できませんでした：' + esc(e.message) + '</div>'; }
+    finally { S.sending = false; drawSum(); }
   }
 
   /* ---------- 最近の依頼 ---------- */
@@ -229,8 +244,8 @@
       var cls = x.status === '承認' ? 'ok' : x.status === '差し戻し' ? 'ng' : 'wait';
       var lab = x.status === '承認' ? '✅ 承認' + (x.by ? '（' + x.by + '）' : '') : x.status === '差し戻し' ? '↩️ 差し戻し' + (x.by ? '（' + x.by + '）' : '') : '⏳ 承認待ち';
       return '<div class="rq"><div class="h"><b>' + esc(x.id) + '</b><span class="tag ' + cls + '">' + esc(lab) + '</span></div>' +
-        '<div class="t">' + esc(hm(x.at) + '　' + x.requester + '\n' + x.name + '\n販売価格 ' + yen(x.price) + '（今 ' + yen(x.now) + '）') + '</div>' +
-        (x.status === '承認' ? '<div class="hint">マイカでこの価格に変更してください：<b>' + yen(x.price) + '</b></div>' : '') + '</div>';
+        '<div class="t">' + esc(hm(x.at) + '　' + x.requester + '　' + x.items.length + '枚\n' + x.items.map(function (t) { return t.name + '\n　販売価格 ' + yen(t.price) + '（今 ' + yen(t.now) + '）'; }).join('\n')) + '</div>' +
+        (x.status === '承認' ? '<div class="hint">マイカで上の販売価格に変更してください。</div>' : '') + '</div>';
     }).join('');
   }
 })();
