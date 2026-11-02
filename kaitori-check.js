@@ -6,7 +6,7 @@
   if (location.hostname !== 'pos.mycalinks.com') { alert('マイカ（pos.mycalinks.com）を開いてから押してください'); return; }
   var old = document.getElementById('ndk-kaitori-host'); if (old) old.remove();
 
-  var VERSION = '2026-11-02 版Y';
+  var VERSION = '2026-11-02 版Z';
   var GAS = 'https://script.google.com/macros/s/AKfycbwXHuu-X3L0qzJhvaszEIm-1xdeNIqJACQ0uM7mz5Q0hvwfdF9IuQiTKr3qmscNVmnhcQ/exec';
   var FB_URL = 'https://script.google.com/macros/s/AKfycbwl-ZCZ1LyefvSzEGkBEpTFTuFyvW0p-AYye6jBWaLP9t7-bC9_Owfeh4jKScNkFys6Fw/exec';
   var SHORT = { 322: '柏', 323: '津田沼', 324: '松戸', 325: '横浜', 326: '中野', 327: '町田', 328: '千葉中央', 390: '通販', 409: 'お台場' };
@@ -289,6 +289,10 @@
       var tm = function (t) { return Math.max(new Date(t.created_at || 0).getTime() || 0, new Date(t.updated_at || 0).getTime() || 0); };
       S.today0 = new Date(start).getTime();
       var old0 = S.today0 - 14 * 864e5; // 14日より前に触ったきりの査定中は、下の「古い査定中」にたたんでおく
+      // マイカの「未査定」（預かり査定など、査定がまだ終わっていない受付）は日付に関係なく出す。
+      // 「査定完了」（会計していない）やレジで作った下書きは、今日の分だけ出す（お客様が売らなかった受付がマイカに残り続けるため）
+      var unassessed = function (t) { return t.platform === 'PURCHASE_RECEPTION' && !t.buy__is_assessed; };
+      all = all.filter(function (t) { return unassessed(t) || tm(t) >= S.today0; });
       all.sort(function (a, b) { return tm(b) - tm(a); });
       var drafts = all.filter(function (t) { return tm(t) >= old0; }), olds = all.filter(function (t) { return tm(t) < old0; });
       S.list = all;
@@ -297,7 +301,7 @@
         var w = 0, red = 0; (t.transaction_carts || []).forEach(function (c) { var j = judge(c); j.flags.forEach(function (x) { w++; if (x.lv === 'red') red++; }); });
         var ap = approvalLine(), need = (t.total_price || 0) >= ap.line;
         return '<div class="tx" data-id="' + t.id + '"><div class="g"><b>受付 ' + esc(t.reception_number || '') + '</b>' +
-          (t.status === 'draft' ? '<span class="pill blue">査定中</span>' : '<span class="pill gr">完了</span>') +
+          (t.status !== 'draft' ? '<span class="pill gr">完了</span>' : unassessed(t) ? '<span class="pill blue">未査定</span>' : '<span class="pill blue">査定完了・未会計</span>') +
           (red ? '<span class="pill red">🚨 ' + red + '</span>' : '') + (w - red ? '<span class="pill yel">⚠️ ' + (w - red) + '</span>' : '') + (!w ? '<span class="pill ok">OK</span>' : '') +
           (need ? '<span class="pill red">要承認</span>' : '') +
           '<div class="s">' + ago(t) + hm(t.updated_at || t.created_at) + '　' + (t.transaction_carts || []).length + '行・' + (t.transaction_carts || []).reduce(function (s, c) { return s + (c.item_count || 0); }, 0) + '点</div></div>' +
@@ -305,7 +309,7 @@
       };
       $('#body').innerHTML =
         '<h2>査定中の買取（お金を払う前にチェック）</h2>' + (drafts.length ? drafts.map(row).join('') : '<div class="sub">査定中の買取はありません。マイカで明細を入れてから「更新」を押してください。</div>') +
-        (olds.length ? '<details style="margin-top:14px"><summary style="cursor:pointer;color:#666">古い査定中（2週間以上前・' + olds.length + '件）を見る</summary>' + olds.map(row).join('') + '</details>' : '');
+        (olds.length ? '<details style="margin-top:14px"><summary style="cursor:pointer;color:#666">古い未査定（2週間以上前・' + olds.length + '件）を見る</summary>' + olds.map(row).join('') + '</details>' : '');
       R.querySelectorAll('.tx').forEach(function (el) { el.onclick = function () { openTx(Number(el.dataset.id)); }; });
     } catch (e) { $('#body').innerHTML = '<div class="msg err">買取を読み込めませんでした：' + esc(e.message) + '</div>'; }
   }
