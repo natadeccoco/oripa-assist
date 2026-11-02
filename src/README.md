@@ -6,3 +6,5 @@
 - `../loss-shinsei.js` … ロス申請ツール（`npx terser loss-shinsei.js -c -m -o loss-shinsei.min.js`）。設置ページ `setup-loss-shinsei.html`（公開版 https://claude.ai/artifact/41JsZnYV6mqepqpBosr4Mj ）
 - `gas-loss.gs` … GAS「オリパ本部承認（LINE WORKS）」の「ロス申請.gs」。申請→「ロス申請」グループに承認ボタン、夜のチェック（無承認ロスの警告）
 - `pc/loss_check.ps1` … 雄司のPC（Documents\myca_import）で毎晩22:00・23:30に動く、マイカのロス取得→GASへ送信（タスク MycaLossCheck）
+- `../hanbai-shonin.js` … 販売価格の承認ツール（`npx terser hanbai-shonin.js -c -m -o hanbai-shonin.min.js`）。設置ページ `setup-hanbai-shonin.html`
+- `gas-hanbai.gs` … GAS「オリパ本部承認（LINE WORKS）」の「販売価格.gs」。依頼→店舗グループに承認ボタン。履歴は「オリパ承認履歴」の「販売価格」タブ
