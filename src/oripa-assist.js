@@ -142,7 +142,7 @@
   document.body.appendChild(host);
   var root = host.attachShadow({ mode: 'open' });
   root.innerHTML = '<style>' + CSS() + '</style><div class="wrap"><div class="win">' +
-    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-11-01 版CA</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
+    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-11-02 版CB</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
     (ALL ? '' : '<div class="tabs"><button data-tab="make" class="on">新しく作る</button><button data-tab="refill">補充する</button></div>') +
     '<button class="x" id="close" title="閉じる">×</button></div>' +
     '<div class="bd" id="body"><div class="msg">読み込み中…</div></div></div></div>';
@@ -361,7 +361,7 @@
   function markUsed(u, p) { u[p.id] = 1; u[nk(p)] = (u[nk(p)] || 0) + 1; }
   function build(price, init, costr, L) {
     var rev = price * init, budget = rev * costr, warn = [];
-    var left = {}; S.inv.forEach(function (p) { left[p.id] = p.stock; });
+    var left = {}; S.inv.forEach(function (p) { left[p.id] = p.stock - reservedOf(p.id); }); // とっておいた案で使っている在庫は除く
     // 過去事例：1000円のBOX当たりはほぼ¥10,000以上（下位10%で約11倍）、2000円は約6倍以上。安いデッキ・スターター等は当たりに使わない
     var HINV = S.inv.filter(function (p) {
       if (p.kind === 'box' && L.boxMinX && p.sell < L.boxMinX * price * 0.97) return false; // 7,980円のBOXは8,000円帯として使う
@@ -768,7 +768,7 @@
       '<div class="f"><div class="lb">下枠</div><label class="ck"><input type="checkbox" id="ka"' + (P.useAt ? ' checked' : '') + '> 原価が合わないときは【@◯◯】も入れる</label></div>' +
       lastHTML() +
       '<div class="f go"><button class="primary" id="go">提案する</button></div>' +
-      '</div>' + storeChips() + '<div class="info">在庫：パック ' + nKinds + '種類・' + nAll + '個（' + esc(S.sname) + '）。当たりも下枠もパックだけで作ります</div>' +
+      '</div>' + storeChips() + keptHTML() + '<div class="info">在庫：パック ' + nKinds + '種類・' + nAll + '個（' + esc(S.sname) + '）。当たりも下枠もパックだけで作ります</div>' +
       '<div id="res">' + (S.patterns.length ? patternsHTML() : '<div class="msg sub">条件を入れて「提案する」を押してください</div>') + '</div>';
     bindModeTabs(); bindStoreChips();
     $('#go').onclick = function () {
@@ -783,7 +783,7 @@
   function buildPack(P) {
     var price = P.price, init = P.init, rev = price * init, bMax = rev * P.cmax / 100, bMin = rev * P.cmin / 100, warn = [];
     var L = Object.assign({}, learnFor(price), { kinds: [['pack']], fill: { packOnly: true }, free: true, label: 'パック限定', costMin: P.cmin / 100, costMax: P.cmax / 100, costr: P.cmax / 100, allowMis: true, packMode: true });
-    var left = {}; S.inv.forEach(function (p) { left[p.id] = p.stock; }); var used = {};
+    var left = {}; S.inv.forEach(function (p) { left[p.id] = p.stock - reservedOf(p.id); }); var used = {};
     var packs = packStock().filter(function (p) { return !isDeck(p); });
     var hitPool = packs.filter(function (p) { return packVal(p) >= price * 1.6; }).sort(function (a, b) { return packVal(b) - packVal(a) || stockOf(b) - stockOf(a); });
     if (hitPool.length < P.nHit + 1) packs.filter(function (p) { return hitPool.indexOf(p) < 0 && p.cost >= price; }).sort(function (a, b) { return b.cost - a.cost; }).forEach(function (p) { hitPool.push(p); }); // 値段の高いパックが少なければ、原価が1口の値段以上のものも当たりに
@@ -834,8 +834,45 @@
     return { need: z, miss0: { '大当たり': 0, '中当たり': 0, '小当たり': 0 }, cnt0: {}, key: '', name: 'パックオリパ', note: 'パック限定：原価率' + P.cmin + '〜' + P.cmax + '%・当たりパック' + P.nHit + '枚（' + yen(Math.round(price * 1.6)) + '以上）・下枠は在庫の多いパックから',
       price: price, init: init, rev: rev, hits: hits, filler: fl, cost: cost, costr: cost / rev, value: hits.reduce(function (s2, h) { return s2 + packVal(h.p) * h.n; }, 0), L: L, warn: warn };
   }
+  /* ---------- 案をとっておく：提案したラインナップをツールの中に保存（このパソコンのブラウザ）。とっておいた案で使った在庫は、次の提案で使わない ---------- */
+  function keptKey() { return 'ndk_oripa_kept_' + (ALL ? 'all' : (S.sid || '')); }
+  function keptList() { if (S._keptKey !== keptKey()) { S._keptKey = keptKey(); try { S.kept = JSON.parse(localStorage.getItem(keptKey()) || '[]'); } catch (e) { S.kept = []; } } return S.kept || (S.kept = []); }
+  function keptSave() { try { localStorage.setItem(keptKey(), JSON.stringify(keptList())); } catch (e) { } }
+  function reservedOf(id) {
+    if (S.useKept === false) return 0;
+    var cur = (S.patterns || []).map(function (pt) { return pt.keepId; }).filter(Boolean), n = 0;
+    keptList().forEach(function (k) { if (cur.indexOf(k.id) >= 0) return; (k.pt.hits || []).concat(k.pt.filler || []).forEach(function (h) { members(h.p).forEach(function (m) { if (m.id === id) n += h.n; }); }); });
+    return n;
+  }
+  function keepPattern(pt) {
+    var list = keptList(), dt = new Date(), copy = JSON.parse(JSON.stringify(pt, function (k, v) { return v instanceof RegExp ? undefined : v; }));
+    var label = (pt.L && pt.L.vend ? '自販機 ' : pt.L && pt.L.packMode ? 'パック ' : '') + pt.price.toLocaleString() + '円×' + pt.init + '口';
+    if (pt.keepId) { var ex = list.find(function (k) { return k.id === pt.keepId; }); if (ex) { ex.pt = copy; ex.at = dt.getTime(); ex.label = label; keptSave(); renderMake(); return; } }
+    var id = 'K' + dt.getTime(); pt.keepId = id; copy.keepId = id;
+    list.unshift({ id: id, at: dt.getTime(), label: label, pt: copy }); if (list.length > 30) list.length = 30; keptSave(); renderMake();
+  }
+  function keptHTML() {
+    var list = keptList(); if (!list.length) return '';
+    return '<div class="kept"><div class="lb">とっておいた案（' + list.length + '件）<label class="ck" style="margin-left:12px;font-weight:400"><input type="checkbox" id="usekept"' + (S.useKept === false ? '' : ' checked') + '> ここで使った在庫は、次の提案で使わない</label></div>' +
+      list.map(function (k) {
+        var d = new Date(k.at), cr = k.pt.costr ? pct(k.pt.costr) : '';
+        return '<div class="krow"><b>' + esc(k.label) + '</b><span>' + (d.getMonth() + 1) + '/' + d.getDate() + ' ' + d.getHours() + ':' + ('0' + d.getMinutes()).slice(-2) + '・原価率 ' + cr + '・当たり ' + (k.pt.hits || []).reduce(function (a, h) { return a + (h.role === 'ラストワン' ? 0 : h.n); }, 0) + '枚</span><button class="ghost" data-kopen="' + esc(k.id) + '">開く</button><button class="ghost" data-kdel="' + esc(k.id) + '">消す</button></div>';
+      }).join('') + '</div>';
+  }
+  function bindKept() {
+    var u = root.querySelector('#usekept'); if (u) u.onchange = function () { S.useKept = u.checked; };
+    root.querySelectorAll('[data-kopen]').forEach(function (b) { b.onclick = function () {
+      var k = keptList().find(function (x) { return x.id === b.dataset.kopen; }); if (!k) return;
+      var pt = JSON.parse(JSON.stringify(k.pt)); pt.L = Object.assign({}, learnFor(pt.price), pt.L || {}); pt.keepId = k.id;
+      S.patterns = [pt]; renderMake(); var r = $('#res'); if (r) r.scrollIntoView({ behavior: 'smooth' });
+    }; });
+    root.querySelectorAll('[data-kdel]').forEach(function (b) { b.onclick = function () {
+      if (!confirm('とっておいた案「' + (keptList().find(function (x) { return x.id === b.dataset.kdel; }) || {}).label + '」を消しますか？')) return;
+      S.kept = keptList().filter(function (x) { return x.id !== b.dataset.kdel; }); keptSave(); S.patterns = S.patterns.filter(function (p) { return p.keepId !== b.dataset.kdel; }); renderMake();
+    }; });
+  }
   function afterForm() {
-    return storeChips() + '<div class="info">在庫：当たり候補 ' + S.inv.filter(function (p) { return p.kind !== 'filler'; }).length + '種類／下枠 ' + fillerList().length + '種類（' + esc(S.sname) + '）</div>' +
+    return storeChips() + keptHTML() + '<div class="info">在庫：当たり候補 ' + S.inv.filter(function (p) { return p.kind !== 'filler'; }).length + '種類／下枠 ' + fillerList().length + '種類（' + esc(S.sname) + '）</div>' +
       '<div id="res">' + (S.patterns.length ? patternsHTML() : '<div class="msg sub">条件を入れて「提案する」を押してください</div>') + '</div>';
   }
   // 任意の金額：近い値段帯のルールを目安として入れておく（すべて書き換えられる）
@@ -1278,13 +1315,15 @@
           '<button class="addc" data-fadd="' + i + '">＋<br>下枠を<br>足す</button></div></div>' +
         '<div class="note2">当たりが先に出て補充すると、平均で原価率が <b>' + pct(after) + '</b> くらいまで上がります</div>' +
         (pt.warn.length ? '<div class="warn">' + pt.warn.map(esc).join('<br>') + (APPROVAL_URL && !ALL && needTotal(pt) ? '<div class="shareq"><button class="ghost" data-share="' + i + '">在庫共有で足りない当たりを募集する</button></div>' : '') + '</div>' : '') +
-        '<div class="acts"><button class="ghost" data-detail="' + i + '">中身を一覧で見る</button>' + (ALL ? '<button class="ghost" data-tts="' + i + '">スプレッドシートに飛ばす</button><button class="primary" data-picklist="' + i + '">店舗ごとの集め先リスト</button>' : (APPROVAL_URL ? '<button class="ghost" data-sheet="' + i + '">店舗オリパシートに書き出す</button>' : '') + saveButtons(pt, i)) + '</div>' + apprLine(pt) +
+        '<div class="acts"><button class="ghost" data-detail="' + i + '">中身を一覧で見る</button><button class="ghost" data-keep="' + i + '">' + (pt.keepId ? 'とっておいた案を上書き' : 'この案をとっておく') + '</button>' + (ALL ? '<button class="ghost" data-tts="' + i + '">スプレッドシートに飛ばす</button><button class="primary" data-picklist="' + i + '">店舗ごとの集め先リスト</button>' : (APPROVAL_URL ? '<button class="ghost" data-sheet="' + i + '">店舗オリパシートに書き出す</button>' : '') + saveButtons(pt, i)) + '</div>' + apprLine(pt) +
         '</div>';
     }).join('') + '</div>';
   }
 
   function bindPatternButtons() {
     root.querySelectorAll('[data-detail]').forEach(function (b) { b.onclick = function () { showDetail(S.patterns[Number(b.dataset.detail)]); }; });
+    root.querySelectorAll('[data-keep]').forEach(function (b) { b.onclick = function () { keepPattern(S.patterns[Number(b.dataset.keep)]); }; });
+    bindKept();
     root.querySelectorAll('[data-save]').forEach(function (b) { b.onclick = function () { confirmSave(S.patterns[Number(b.dataset.save)]); }; });
     root.querySelectorAll('[data-tts]').forEach(function (b) { b.onclick = function () { tiktokSheet(S.patterns[Number(b.dataset.tts)]); }; });
     root.querySelectorAll('[data-sheet]').forEach(function (b) { b.onclick = function () { exportSheet(S.patterns[Number(b.dataset.sheet)]); }; });
@@ -1650,8 +1689,12 @@
       ok.disabled = true; ok.textContent = '書き出し中…';
       try {
         if (!ASSIST_URL) throw new Error('本部の書き出しの仕組みがまだ準備中です。本部に連絡してください');
-        var rows = flatHits(pt.hits).map(function (h) { return { role: h.role.replace('（セット）', ''), name: h.p.name + (h.setOf ? '（セット）' : '') + (h.p.costTmp ? '（原価は仮：マスタの70%）' : ''), cond: sheetCond(h.p), cost: h.p.cost, n: h.n, store: h.p.sname || '' }; });
+        var rows = flatHits(pt.hits).map(function (h) { return { role: h.role.replace('（セット）', ''), name: nameWithNo(h.p) + (h.setOf ? '（セット）' : '') + (h.p.costTmp ? '（原価は仮：マスタの70%）' : ''), cond: sheetCond(h.p), cost: h.p.cost, n: h.n, store: h.p.sname || '' }; });
         var fN = pt.filler.reduce(function (a, x) { return a + x.n; }, 0), fC = pt.filler.reduce(function (a, x) { return a + x.p.cost * x.n; }, 0);
+        if (pt.price >= 10000) { // 1万円以上は下枠も1枚ずつ（どの店のどのカードか）書き出す：他店へのヘルプ申請に使う
+          pt.filler.forEach(function (f2) { if (f2.n > 0) rows.push({ role: '下枠', name: '【下枠】' + nameWithNo(f2.p), cond: sheetCond(f2.p), cost: f2.p.cost, n: f2.n, store: f2.p.sname || '' }); });
+          fN = 0; fC = 0;
+        }
         var fS = []; pt.filler.forEach(function (x) { String(x.p.sname || '').split('・').forEach(function (k) { if (k && fS.indexOf(k) < 0) fS.push(k); }); });
         var r = await fetch(ASSIST_URL, { method: 'POST', body: JSON.stringify({ action: 'tiktoksheet', tab: ymd, title: m.querySelector('#tl').value.trim(), price: pt.price, init: pt.init, rows: rows, fillerN: fN, fillerCost: fC, fillerStore: fS.join('・'), origin: m.querySelector('#org').checked ? originRows(pt) : [] }) }).then(function (x) { return x.json(); });
         if (!r.ok) throw new Error(r.error || '書き出せませんでした');
@@ -1660,10 +1703,15 @@
       } catch (e) { ok.disabled = false; ok.textContent = '書き出す'; var er = m.querySelector('.err') || m.querySelector('.frm').appendChild(document.createElement('div')); er.className = 'err'; er.textContent = e.message; }
     };
   }
+  function nameWithNo(p) { // シングル・PSAは品番（弾の記号と番号）も付ける：例「ピカチュウex（SV2a 205/165）」
+    if (p.kind !== 'card' && p.kind !== 'psa') return p.name;
+    var no = [p.exp, p.cno].filter(Boolean).join(' '); if (!no || String(p.name).indexOf(p.cno || '###') >= 0) return p.name;
+    return p.name + '（' + no + '）';
+  }
   function originRows(pt) { // どの店舗のカードか（当たり・ラストワン・下枠すべて。セットは1枚ずつ）
     var out = [];
-    flatHits(pt.hits).forEach(function (h) { out.push({ store: h.p.sname || '', role: h.role.replace('（セット）', ''), name: h.p.name + (h.setOf ? '（セット）' : ''), cond: sheetCond(h.p), n: h.n, cost: h.p.cost, sell: h.p.sell }); });
-    pt.filler.forEach(function (f) { if (f.n > 0) out.push({ store: f.p.sname || '', role: '下枠', name: f.p.name, cond: sheetCond(f.p), n: f.n, cost: f.p.cost, sell: f.p.sell }); });
+    flatHits(pt.hits).forEach(function (h) { out.push({ store: h.p.sname || '', role: h.role.replace('（セット）', ''), name: nameWithNo(h.p) + (h.setOf ? '（セット）' : ''), cond: sheetCond(h.p), n: h.n, cost: h.p.cost, sell: h.p.sell }); });
+    pt.filler.forEach(function (f) { if (f.n > 0) out.push({ store: f.p.sname || '', role: '下枠', name: nameWithNo(f.p), cond: sheetCond(f.p), n: f.n, cost: f.p.cost, sell: f.p.sell }); });
     return out;
   }
   function themeLabel() { var a = []; THEMES.forEach(function (x) { if ((S.themes || []).indexOf(x.k) >= 0) a.push(x.label.replace(/系$/, '')); }); RARES.forEach(function (x) { if ((S.rares || []).indexOf(x.k) >= 0) a.push(x.label); }); return a.join('・'); }
@@ -1908,7 +1956,7 @@
       '.pn{font-weight:800;font-size:15px}.pnote{font-size:11px;color:#777}',
       '.kpi{display:grid;grid-template-columns:repeat(3,1fr);background:#f6f5f2;border-radius:9px;padding:8px 4px;text-align:center}',
       '.tchk{display:flex;flex-wrap:wrap;gap:6px 12px}.tchk label{display:flex;align-items:center;gap:4px;font-size:13px;font-weight:700;background:#fff7e0;border:1.5px solid #e8c23a;border-radius:8px;padding:4px 10px;cursor:pointer}',
-      '.rfc{display:flex;flex-direction:column;gap:4px;border-radius:8px;padding:2px}.rfc.on{outline:3px solid #c8102e}.rfn{display:flex;align-items:center;justify-content:center;gap:8px}.rfn .ghost{padding:2px 10px}.rfq{display:flex;flex-wrap:wrap;align-items:center;gap:6px;background:#fff;border:1px solid #e5e2da;border-radius:10px;padding:8px 12px;margin:6px 0;font-size:13px}.rfq input,.rff input{width:60px}.rff{display:flex;align-items:center;gap:6px;font-size:13px}.rff select{font-size:13px;padding:5px;max-width:560px}.bigwarn{margin:10px 0 2px;padding:12px 14px;border:2px solid #c8102e;border-radius:10px;background:#fff1f2;color:#c8102e;font-size:18px;font-weight:900;line-height:1.5}.bigwarn span{display:block;font-size:13px;font-weight:700;color:#7a1020}.rfsum{background:#f3f1ea;border-radius:8px;padding:10px 12px;font-size:13px;font-weight:700;margin-top:8px}.rfkpi{display:flex;flex-wrap:wrap;align-items:center;gap:14px;margin-top:6px;font-size:14px}.rfkpi b{font-size:17px}.rfkpi b.neg{color:#c8102e}.rfkpi .sm{font-weight:400}',
+      '.rfc{display:flex;flex-direction:column;gap:4px;border-radius:8px;padding:2px}.rfc.on{outline:3px solid #c8102e}.rfn{display:flex;align-items:center;justify-content:center;gap:8px}.rfn .ghost{padding:2px 10px}.rfq{display:flex;flex-wrap:wrap;align-items:center;gap:6px;background:#fff;border:1px solid #e5e2da;border-radius:10px;padding:8px 12px;margin:6px 0;font-size:13px}.rfq input,.rff input{width:60px}.rff{display:flex;align-items:center;gap:6px;font-size:13px}.rff select{font-size:13px;padding:5px;max-width:560px}.kept{background:#fff;border:1px solid #e5e2da;border-radius:10px;padding:8px 12px;margin:8px 0}.kept .lb{font-weight:800;font-size:13px;display:flex;align-items:center;flex-wrap:wrap}.krow{display:flex;align-items:center;gap:10px;font-size:13px;padding:5px 0;border-top:1px dashed #e5e2da}.krow span{color:#666;flex:1}.krow .ghost{padding:3px 10px}.bigwarn{margin:10px 0 2px;padding:12px 14px;border:2px solid #c8102e;border-radius:10px;background:#fff1f2;color:#c8102e;font-size:18px;font-weight:900;line-height:1.5}.bigwarn span{display:block;font-size:13px;font-weight:700;color:#7a1020}.rfsum{background:#f3f1ea;border-radius:8px;padding:10px 12px;font-size:13px;font-weight:700;margin-top:8px}.rfkpi{display:flex;flex-wrap:wrap;align-items:center;gap:14px;margin-top:6px;font-size:14px}.rfkpi b{font-size:17px}.rfkpi b.neg{color:#c8102e}.rfkpi .sm{font-weight:400}',
       '.kpiraw{margin-top:6px;background:#fdecea}.kpiraw b{color:#c0392b}',
       '.kpi b{display:block;font-size:16px}.kpi span{font-size:10px;color:#777}',
       '.top{display:flex;justify-content:center}',
