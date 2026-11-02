@@ -130,7 +130,7 @@
     $('#bar').innerHTML =
       '<label><input type="radio" name="sh" value="good"' + (S.f.show === 'good' ? ' checked' : '') + '>◎○だけ</label>' +
       '<label><input type="radio" name="sh" value="best"' + (S.f.show === 'best' ? ' checked' : '') + '>◎だけ</label>' +
-      '<label><input type="radio" name="sh" value="all"' + (S.f.show === 'all' ? ' checked' : '') + '>すべて</label>' +
+      '<label><input type="radio" name="sh" value="all"' + (S.f.show === 'all' ? ' checked' : '') + '>優先度低（高めに出品）も出す</label>' +
       '<input type="search" id="q" placeholder="カード名・型番で探す" value="' + esc(S.f.q) + '">' +
       '<span class="prog">' + (S.items.length ? (S.left ? 'eBay相場を調べ中… <b>' + done + '</b> / ' + S.items.length + '件' : '調査済み ' + done + '件') : '') + (note ? '　' + esc(note) : '') + '</span>';
     R.querySelectorAll('input[name=sh]').forEach(function (el) { el.onchange = function () { S.f.show = this.value; draw(''); }; });
@@ -158,7 +158,7 @@
         '<td class="l">' + esc([x.condition, x.specialty].filter(Boolean).join(' ')) + '</td><td>' + x.stock + '</td><td>' + yen(x.price) + '</td>' +
         '<td>' + (r.usd ? '$' + r.usd : '') + '</td><td>' + (r.profit !== '' && r.profit != null ? yen(r.profit) : '') + '</td>' +
         '<td class="' + (d > 0 ? 'pl' : 'mi') + '">' + (d !== '' && d != null ? signed(d) : '') + '</td>' +
-        '<td class="l">' + (r.wait ? '<span class="j d">調査待ち</span>' : '<span class="j ' + cls(r.judge) + '">' + esc(r.judge) + '</span>') + '</td></tr>';
+        '<td class="l">' + (r.wait ? '<span class="j d">調査待ち</span>' : '<span class="j ' + cls(r.judge) + '">' + esc(String(r.judge || '').charAt(0) === '×' ? '優先度低（高めに出品）' : r.judge) + '</span>') + '</td></tr>';
     });
     $('#body').innerHTML = h + '</table>';
   }
