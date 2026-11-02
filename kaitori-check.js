@@ -6,7 +6,7 @@
   if (location.hostname !== 'pos.mycalinks.com') { alert('マイカ（pos.mycalinks.com）を開いてから押してください'); return; }
   var old = document.getElementById('ndk-kaitori-host'); if (old) old.remove();
 
-  var VERSION = '2026-11-02 版T';
+  var VERSION = '2026-11-02 版U';
   var GAS = 'https://script.google.com/macros/s/AKfycbwXHuu-X3L0qzJhvaszEIm-1xdeNIqJACQ0uM7mz5Q0hvwfdF9IuQiTKr3qmscNVmnhcQ/exec';
   var FB_URL = 'https://script.google.com/macros/s/AKfycbwl-ZCZ1LyefvSzEGkBEpTFTuFyvW0p-AYye6jBWaLP9t7-bC9_Owfeh4jKScNkFys6Fw/exec';
   var SHORT = { 322: '柏', 323: '津田沼', 324: '松戸', 325: '横浜', 326: '中野', 327: '町田', 328: '千葉中央', 390: '通販', 409: 'お台場' };
@@ -278,12 +278,11 @@
       var sid = S.sid, today = jstDay(new Date());
       var start = new Date(today + 'T00:00:00+09:00').toISOString();
       var dr = await api('/api/store/' + sid + '/transaction?status=draft&transaction_kind=buy&take=100&skip=0&orderBy=-finished_at');
-      var cp = await api('/api/store/' + sid + '/transaction?status=completed&transaction_kind=buy&finishedAtStart=' + encodeURIComponent(new Date(new Date(start).getTime() - 864e5).toISOString()) + '&take=100&skip=0&orderBy=-finished_at');
       var since = new Date(start).getTime() - 864e5; // 昨日と今日（日本時間0時から）の査定中を出す。マイカに残ったままのそれより前の査定中は出さない
       var tm = function (t) { return Math.max(new Date(t.created_at || 0).getTime() || 0, new Date(t.updated_at || 0).getTime() || 0); };
       var drafts = (dr.transactions || []).filter(function (t) { return tm(t) >= since; }).sort(function (a, b) { return tm(b) - tm(a); });
       S.today0 = new Date(start).getTime();
-      S.list = drafts.concat(cp.transactions || []);
+      S.list = drafts; // 査定中だけ出す（完了した買取は出さない）
       var row = function (t) {
         var w = 0, red = 0; (t.transaction_carts || []).forEach(function (c) { var j = judge(c); j.flags.forEach(function (x) { w++; if (x.lv === 'red') red++; }); });
         var ap = approvalLine(), need = (t.total_price || 0) >= ap.line;
@@ -295,8 +294,7 @@
           '<div class="t">' + yen(t.total_price) + '</div></div>';
       };
       $('#body').innerHTML =
-        '<h2>査定中の買取（お金を払う前にチェック）</h2>' + (drafts.length ? drafts.map(row).join('') : '<div class="sub">査定中の買取はありません。マイカで明細を入れてから「更新」を押してください。</div>') +
-        '<h2>今日の完了した買取</h2>' + ((cp.transactions || []).length ? cp.transactions.map(row).join('') : '<div class="sub">まだありません。</div>');
+        '<h2>査定中の買取（お金を払う前にチェック）</h2>' + (drafts.length ? drafts.map(row).join('') : '<div class="sub">査定中の買取はありません。マイカで明細を入れてから「更新」を押してください。</div>');
       R.querySelectorAll('.tx').forEach(function (el) { el.onclick = function () { openTx(Number(el.dataset.id)); }; });
     } catch (e) { $('#body').innerHTML = '<div class="msg err">買取を読み込めませんでした：' + esc(e.message) + '</div>'; }
   }
