@@ -148,6 +148,11 @@ function kaitoriPost(d) {
     try { send(ch, { type: 'image', fileId: uploadImage(d.image, 'kaitori_' + id + '.jpg') }); sentSheet = true; imgErr = ''; } catch (e) { imgErr = String(e.message || e); console.error(imgErr); Utilities.sleep(1500); }
   }
   if (d.image && !sentSheet) send(ch, { type: 'text', text: '※査定表の画像を送れませんでした。明細を文章で送ります（依頼番号 ' + id + '）' });
+  (d.sheets || []).slice(0, 10).forEach(function (b64, k) { // 2枚目以降の査定表（30枚ずつに分けた画像）
+    var ok = false;
+    for (var tr2 = 0; tr2 < 3 && !ok; tr2++) { try { send(ch, { type: 'image', fileId: uploadImage(b64, 'kaitori_' + id + '_' + (k + 2) + '.jpg') }); ok = true; } catch (e) { imgErr = String(e.message || e); console.error(imgErr); Utilities.sleep(1500); } }
+    if (!ok) send(ch, { type: 'text', text: '※査定表の画像（' + (k + 2) + '枚目）を送れませんでした（依頼番号 ' + id + '）' });
+  });
   if (!sentSheet && d.text) kSplit('［明細］\n' + d.text).forEach(function (x) { send(ch, { type: 'text', text: x }); });
   (d.images || []).slice(0, 10).forEach(function (b64, i) {
     try { send(ch, { type: 'image', fileId: uploadImage(b64, 'kaitori_' + id + '_photo' + (i + 1) + '.jpg') }); } catch (e) { imgErr = String(e.message || e); console.error(imgErr); }
@@ -417,9 +422,9 @@ function kSnkrPsa10(n) {
   try { c.put(key, JSON.stringify(out), 3 * 3600); } catch (e) { }
   return out;
 }
-function kSnkrText(lines) { // 承認依頼の文章に付ける：PSA10のカードだけ（多くても12枚）
+function kSnkrText(lines) { // 承認依頼の文章に付ける：PSA10のカードだけ（全部・多くても80枚）
   var yen = function (n) { return Number(n || 0).toLocaleString() + '円'; }, out = [];
-  (lines || []).filter(function (q) { return kIsPsa10(q.n); }).slice(0, 12).forEach(function (q) {
+  (lines || []).filter(function (q) { return kIsPsa10(q.n); }).slice(0, 80).forEach(function (q) {
     var s; try { s = kSnkrPsa10(q.n); } catch (e) { s = { price: 0, why: '取得できませんでした' }; }
     var nm = String(q.n).replace(/《[^》]*》/g, '').slice(0, 30);
     out.push('・' + nm + '\n　' + (s.url ? s.url : 'スニダン：' + (s.why || '見つかりません'))); // 金額は査定表の画像に載せるので、文章は売買履歴のURLだけ

@@ -6,7 +6,7 @@
   if (location.hostname !== 'pos.mycalinks.com') { alert('マイカ（pos.mycalinks.com）を開いてから押してください'); return; }
   var old = document.getElementById('ndk-kaitori-host'); if (old) old.remove();
 
-  var VERSION = '2026-11-02 版V';
+  var VERSION = '2026-11-02 版W';
   var GAS = 'https://script.google.com/macros/s/AKfycbwXHuu-X3L0qzJhvaszEIm-1xdeNIqJACQ0uM7mz5Q0hvwfdF9IuQiTKr3qmscNVmnhcQ/exec';
   var FB_URL = 'https://script.google.com/macros/s/AKfycbwl-ZCZ1LyefvSzEGkBEpTFTuFyvW0p-AYye6jBWaLP9t7-bC9_Owfeh4jKScNkFys6Fw/exec';
   var SHORT = { 322: '柏', 323: '津田沼', 324: '松戸', 325: '横浜', 326: '中野', 327: '町田', 328: '千葉中央', 390: '通販', 409: 'お台場' };
@@ -248,11 +248,11 @@
     }
     if (m.ref && !f.length) {
       var near = m.sibs.filter(function (r) { return Math.abs(r.y - unit) <= r.y * RULE.near && Math.abs(r.y - m.ref) > m.ref * 0.3; })[0];
-      if (near && Math.abs(unit - m.ref) > m.ref * 0.1) f.push({ lv: 'yel', t: '別のカード（' + near.n + (near.r ? ' ' + near.r : '') + (near.p ? ' ' + near.p : '') + '）の価格になっていないかご確認ください', d: label + '　買取表 ' + yen(m.ref) + ' → 入力 ' + yen(unit) + '（' + near.n + (near.r ? ' ' + near.r : '') + 'の買取表は ' + yen(near.y) + '）' });
+      if (near && unit > m.ref * 1.1) f.push({ lv: 'yel', t: '別のカード（' + near.n + (near.r ? ' ' + near.r : '') + (near.p ? ' ' + near.p : '') + '）の価格になっていないかご確認ください', d: label + '　買取表 ' + yen(m.ref) + ' → 入力 ' + yen(unit) + '（' + near.n + (near.r ? ' ' + near.r : '') + 'の買取表は ' + yen(near.y) + '）' });
     }
     if (m.ref && m.isPsa && unit < m.ref * RULE.psaLow) f.push({ lv: 'yel', t: 'PSAが買取表の' + Math.round(unit / m.ref * 100) + '%です。減額が大きすぎないかご確認ください', d: label + '　買取表 ' + yen(m.ref) + ' → 入力 ' + yen(unit) });
     if (m.ref && m.isBox && unit < m.ref * RULE.boxLow) f.push({ lv: 'yel', t: 'BOXが買取表の' + Math.round(unit / m.ref * 100) + '%です。減額が大きすぎないかご確認ください', d: label + '　買取表 ' + yen(m.ref) + ' → 入力 ' + yen(unit) });
-    if (!m.isBox && !m.hanyo && cnt >= RULE.sameCard && unit >= RULE.sameCardMin) f.push({ lv: 'yel', t: '同じカードが' + cnt + '枚です。枚数をご確認ください', d: label + ' × ' + cnt + '（' + yen(unit) + ' × ' + cnt + ' ＝ ' + yen(unit * cnt) + '）' });
+    if (!m.isBox && !m.hanyo && cnt >= RULE.sameCard) f.push({ lv: 'yel', t: '同じカードが' + cnt + '枚です。枚数をご確認ください', d: label + ' × ' + cnt + '（' + yen(unit) + ' × ' + cnt + ' ＝ ' + yen(unit * cnt) + '）' });
     m.flags = f; m.unitIn = unit; m.cntIn = cnt; m.pid = c.product_id; gradeFlag(m); return m;
   }
   // 状態（ギズランク）に対して高すぎないか：状態は商品名の《》か、あとから読む商品情報で分かる
@@ -316,6 +316,7 @@
     S.lines = (t.transaction_carts || []).map(judge);
     renderDetail();
     loadImages(t);
+    S.snkP = snkFetch(t);
     if (t.customer_id) {
       try { var cs = await api('/api/store/' + S.sid + '/customer?id=' + t.customer_id); S.cust = ((cs || [])[0] || {}).full_name_ruby || ''; } catch (e) { }
       if (S.tx === t) renderDetail();
@@ -525,7 +526,7 @@
     R.querySelector('.win').appendChild(m);
     bindPicker(m.querySelector('#rq'), true);
     var files = [];
-    var imgP = approval ? sheetImage().catch(function () { return sheetImage(); }).then(function (b64) { var bx = m.querySelector('.aprev'); if (bx) bx.innerHTML = '<img src="data:image/jpeg;base64,' + b64 + '" style="width:100%;border-radius:8px;border:1px solid #e5e2da">'; return b64; }, function () { var bx = m.querySelector('.aprev'); if (bx) bx.innerHTML = '<div class="sub">画像を作れなかったので、文章で送ります</div>'; return ''; }) : Promise.resolve('');
+    var imgP = approval ? sheetImages().catch(function () { return sheetImages(); }).then(function (ps) { var bx = m.querySelector('.aprev'); if (bx) bx.innerHTML = (ps.length > 1 ? '<div class="sub">画像は' + ps.length + '枚に分けて送ります</div>' : '') + ps.map(function (b64) { return '<img src="data:image/jpeg;base64,' + b64 + '" style="width:100%;border-radius:8px;border:1px solid #e5e2da;margin-bottom:6px">'; }).join(''); return ps; }, function () { var bx = m.querySelector('.aprev'); if (bx) bx.innerHTML = '<div class="sub">画像を作れなかったので、文章で送ります</div>'; return []; }) : Promise.resolve([]);
     if (approval && m.querySelector('#ph')) m.querySelector('#ph').onchange = function () { files = Array.from(this.files || []).slice(0, 10); m.querySelector('#th').innerHTML = files.map(function (f) { return '<img src="' + URL.createObjectURL(f) + '">'; }).join(''); };
     m.querySelector('#x').onclick = function () { m.remove(); };
     m.querySelector('#ok').onclick = async function () {
@@ -535,12 +536,12 @@
       b.disabled = true; b.textContent = '送信中…';
       try {
         var images = []; for (var i = 0; i < files.length; i++) { var x = await shrink(files[i]); if (x) images.push(x); }
-        b.textContent = '画像を作成中…'; var sheet = await imgP; b.textContent = '送信中…';
+        b.textContent = '画像を作成中…'; var sheets = await imgP, sheet = sheets[0] || ''; b.textContent = '送信中…';
         var flags = []; S.lines.forEach(function (q) { flags = flags.concat(q.flags); });
         var body = { action: 'kaitori', kind: kind, store: SHORT[S.sid], requester: name, customer: approval ? m.querySelector('#cu').value.trim() : S.cust,
           total: t.total_price, line: ap.line, reason: approval ? m.querySelector('#rs').value : '', warnCount: flags.length, warnText: warnText(),
           text: S.lines.slice(0, 60).map(lineText).join('\n') + (S.lines.length > 60 ? '\nほか' + (S.lines.length - 60) + '行' : ''),
-          comment: m.querySelector('#cm').value.trim(), countChecked: S.countOk === t.id, image: sheet, reception: t.reception_number || '',
+          comment: m.querySelector('#cm').value.trim(), countChecked: S.countOk === t.id, image: sheet, sheets: sheets.slice(1), reception: t.reception_number || '',
           lines: approval ? S.lines.map(function (q) { return { n: q.dn, cond: q.cond || '', cat: q.cat || '', cnt: q.cnt, unit: q.unit, ref: q.ref || '', pid: q.pid || '', img: q.img || '', tab: (q.refs[0] || {}).r ? q.refs[0].r.t : '', flags: q.flags.map(function (f) { return (f.lv === 'red' ? '🚨' : '⚠️') + f.t; }).join(' / ') }; }) : [], images: images, txId: t.id, staff: S.staff };
         var j = await fetch(GAS, { method: 'POST', body: JSON.stringify(body) }).then(function (r) { return r.json(); });
         if (!j.ok) throw new Error(j.error || '送信できませんでした');
@@ -550,37 +551,49 @@
     };
   }
 
-  // 承認依頼用：買取の中身を1枚の画像（JPEG・base64）に描く。マイカの画像はGAS経由で受け取る
-  async function sheetImage() {
+  // PSA10のスニダン直近価格：査定を開いたときから裏で取っておく（3枚ずつ・2本同時）。承認依頼の画像に載せる
+  async function snkFetch(t) {
+    var ls = S.lines.filter(function (m) { return /PSA\s*10/i.test(m.dn) && !m.snk; }), chunks = [];
+    for (var i = 0; i < ls.length; i += 3) chunks.push(ls.slice(i, i + 3));
+    var next = 0;
+    var worker = async function () {
+      while (next < chunks.length) {
+        if (S.tx !== t) return;
+        var ch = chunks[next++];
+        try { var j = await fetch(GAS + '?action=ksnkr&n=' + encodeURIComponent(JSON.stringify(ch.map(function (m) { return m.dn; })))).then(function (r) { return r.json(); });
+          (j.r || []).forEach(function (x, k) { if (ch[k] && x) ch[k].snk = x; }); } catch (e) { }
+      }
+    };
+    await Promise.all([worker(), worker()]);
+  }
+  // 承認依頼用：買取の中身を画像（JPEG・base64）に描く。全部のカードを30枚ずつに分けて、何枚かの画像にする。マイカの画像はGAS経由で受け取る
+  async function sheetImages() {
     var t = S.tx, sub = function (m) { return m.unit * m.cnt; };
-    var list = S.lines.filter(function (m) { return !m.hanyo && sub(m) >= 500; }).sort(function (a, b) { return sub(b) - sub(a); })
+    var list = S.lines.filter(function (m) { return !m.hanyo; }).sort(function (a, b) { return sub(b) - sub(a); })
       .concat(S.lines.filter(function (m) { return m.hanyo; }).sort(function (a, b) { return (b.at || 0) - (a.at || 0); }));
-    var rest = S.lines.filter(function (m) { return list.indexOf(m) < 0; });
-    var MAX = 30; if (list.length > MAX) { rest = rest.concat(list.slice(MAX)); list = list.slice(0, MAX); }
     var imgs = {}, urls = []; list.forEach(function (m) { if (m.img && urls.indexOf(m.img) < 0) urls.push(m.img); });
-    await Promise.all(urls.map(function (u) {
+    for (var ui = 0; ui < urls.length; ui += 10) await Promise.all(urls.slice(ui, ui + 10).map(function (u) {
       return fetch(GAS + '?action=img&u=' + encodeURIComponent(u)).then(function (r) { return r.json(); }).then(function (j) {
         if (!j.ok) return;
         return new Promise(function (res) { var im = new Image(); im.onload = function () { imgs[u] = im; res(); }; im.onerror = function () { res(); }; im.src = 'data:' + j.mime + ';base64,' + j.b64; });
       }).catch(function () { });
     }));
-    // PSA10はスニダンの直近の取引価格も載せる（GAS経由・最大12枚を3枚ずつ同時に・20秒で打ち切り）
-    var psaL = list.filter(function (m) { return /PSA\s*10/i.test(m.dn); }).slice(0, 12), chunks = [];
-    for (var ci = 0; ci < psaL.length; ci += 3) chunks.push(psaL.slice(ci, ci + 3));
-    if (psaL.length) await Promise.race([
-      Promise.all(chunks.map(function (ch) {
-        return fetch(GAS + '?action=ksnkr&n=' + encodeURIComponent(JSON.stringify(ch.map(function (m) { return m.dn; })))).then(function (r) { return r.json(); })
-          .then(function (j) { (j.r || []).forEach(function (x, i) { if (ch[i]) ch[i].snk = x; }); }).catch(function () { });
-      })),
-      new Promise(function (r) { setTimeout(r, 20000); })]);
-    var COLS = Math.min(6, Math.max(3, list.length)), CW = 210, CH = psaL.length ? 406 : 380, GAP = 12, PAD = 24, W = PAD * 2 + COLS * CW + (COLS - 1) * GAP;
-    var rows = Math.ceil(list.length / COLS), HEAD = 120, H = HEAD + PAD + rows * (CH + GAP) + (rest.length ? 60 : 20);
+    // スニダン：開いたときから取っている分を待つ（最大30秒）。取れていない分は待たずに描く
+    if (S.snkP) await Promise.race([S.snkP, new Promise(function (r) { setTimeout(r, 30000); })]);
+    var PER = 30, pages = [], np = Math.max(1, Math.ceil(list.length / PER));
+    for (var pg = 0; pg < np; pg++) pages.push(drawSheet(t, list.slice(pg * PER, pg * PER + PER), imgs, pg + 1, np));
+    return pages;
+  }
+  function drawSheet(t, list, imgs, pg, np) {
+    var anySnk = list.some(function (m) { return m.snk; });
+    var COLS = Math.min(6, Math.max(3, list.length)), CW = 210, CH = anySnk ? 406 : 380, GAP = 12, PAD = 24, W = PAD * 2 + COLS * CW + (COLS - 1) * GAP;
+    var rows = Math.ceil(list.length / COLS), HEAD = 120, H = HEAD + PAD + rows * (CH + GAP) + 20;
     var cv = document.createElement('canvas'); cv.width = W; cv.height = H; var c = cv.getContext('2d');
     var F = '"Hiragino Sans","Noto Sans JP","Yu Gothic","Meiryo",sans-serif';
     function fit(s, w) { if (c.measureText(s).width <= w) return s; while (s.length > 1 && c.measureText(s + '…').width > w) s = s.slice(0, -1); return s + '…'; }
     function wrap2(s, w) { if (c.measureText(s).width <= w) return [s]; var k = s.length; while (k > 1 && c.measureText(s.slice(0, k)).width > w) k--; return [s.slice(0, k), fit(s.slice(k), w)]; }
     c.fillStyle = '#f6f5f2'; c.fillRect(0, 0, W, H); c.fillStyle = '#1f1d1a'; c.fillRect(0, 0, W, HEAD - 8); c.textBaseline = 'top';
-    c.fillStyle = '#e8c23a'; c.font = 'bold 32px ' + F; c.fillText(fit(SHORT[S.sid] + '店　買取 ' + yen(t.total_price), W - PAD * 2), PAD, 16);
+    c.fillStyle = '#e8c23a'; c.font = 'bold 32px ' + F; c.fillText(fit(SHORT[S.sid] + '店　買取 ' + yen(t.total_price) + (np > 1 ? '　（' + pg + '/' + np + '枚目）' : ''), W - PAD * 2), PAD, 16);
     c.fillStyle = '#fff'; c.font = 'bold 20px ' + F;
     var pts = S.lines.reduce(function (s, m) { return s + m.cnt; }, 0);
     c.fillText(fit((S.cust ? S.cust + ' 様　' : '') + '受付' + (t.reception_number || '') + '　' + hm(t.updated_at || t.created_at) + '　' + S.lines.length + '行・' + pts + '点', W - PAD * 2), PAD, 64);
@@ -609,10 +622,6 @@
         c.fillText(fit(sk.price ? 'スニダン ' + yen(sk.price) + '（' + Math.round(m.unit / sk.price * 100) + '%）' : 'スニダン：' + (/まだありません/.test(sk.why || '') ? '取引なし' : '見つからない'), CW - 16), x + 8, ty + 140);
         if (sk.price && sk.date) { c.font = '13px ' + F; c.fillStyle = '#888'; c.fillText(fit('直近の取引 ' + sk.date, CW - 16), x + 8, ty + 160); } }
     });
-    if (rest.length) {
-      var rs = rest.reduce(function (s, m) { return s + m.unit * m.cnt; }, 0), rn = rest.reduce(function (s, m) { return s + m.cnt; }, 0);
-      c.fillStyle = '#1f1d1a'; c.font = 'bold 20px ' + F; c.fillText(fit('ほか（低額など）' + rest.length + '行・' + rn + '点　計 ' + yen(rs), W - PAD * 2), PAD, y0 + rows * (CH + GAP) + 10);
-    }
     return cv.toDataURL('image/jpeg', 0.86).split(',')[1];
   }
 
