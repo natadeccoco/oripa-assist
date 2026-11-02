@@ -6,7 +6,7 @@
   if (location.hostname !== 'pos.mycalinks.com') { alert('マイカ（pos.mycalinks.com）を開いてから押してください'); return; }
   var old = document.getElementById('ndk-kaitori-host'); if (old) old.remove();
 
-  var VERSION = '2026-11-02 版X';
+  var VERSION = '2026-11-02 版Y';
   var GAS = 'https://script.google.com/macros/s/AKfycbwXHuu-X3L0qzJhvaszEIm-1xdeNIqJACQ0uM7mz5Q0hvwfdF9IuQiTKr3qmscNVmnhcQ/exec';
   var FB_URL = 'https://script.google.com/macros/s/AKfycbwl-ZCZ1LyefvSzEGkBEpTFTuFyvW0p-AYye6jBWaLP9t7-bC9_Owfeh4jKScNkFys6Fw/exec';
   var SHORT = { 322: '柏', 323: '津田沼', 324: '松戸', 325: '横浜', 326: '中野', 327: '町田', 328: '千葉中央', 390: '通販', 409: 'お台場' };
@@ -15,7 +15,7 @@
   // 状態ごとの買取表に対する上限（A- 90%／B 50%／C 20%／D 5%）。これの1.1倍以上なら⚠️
   var GRADE = { 'A-': 0.9, 'B': 0.5, 'C': 0.2, 'D': 0.05 };
 
-  var S = { sid: null, stores: [], prices: null, idx: null, config: null, list: [], tx: null, lines: [], cust: '', staff: '', pollT: null };
+  var S = { old: {}, sid: null, stores: [], prices: null, idx: null, config: null, list: [], tx: null, lines: [], cust: '', staff: '', pollT: null };
 
   /* ---------- 共通 ---------- */
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
@@ -220,6 +220,9 @@
     if (rar && cands.length > 1) { var c3 = cands.filter(function (r) { return !r.r || N(r.r) === rar; }); if (c3.length) cands = c3; }
     if (cands.length > 1) { var c4 = cands.filter(function (r) { return nameHit(r.bn, bn); }); if (c4.length) cands = c4; }
     if (cands.length && !cands.some(function (r) { return nameHit(r.bn, bn); })) cands = []; // 型番が同じでも名前が違うものは使わない
+    // 旧裏・旧弾（型番がなく、レアリティが★◆●、または マイカの区分が旧裏など）は、名前だけで別の弾のカードを拾わないよう照合しない
+    var oldLike = !model && (/^[★◆●☆]$/.test(String(c.product__item__rarity || '').trim()) || /拡張カード|旧裏/.test(dn) || S.old[c.product_id]);
+    if (oldLike && !isPsa) { o.note = '旧裏・旧弾は照合していません'; return o; }
     if (!cands.length && !model) cands = (S.idx.name[bn] || []).filter(function (r) { return isPsa ? r.k === 'psa' : r.k !== 'psa'; });
     o.refs = cands.filter(function (r) { return r.y; }).map(function (r) { return { r: r, y: r.y }; });
     // 近い別カード：同じ名前の別レアリティ・別の弾、同じ型番の別カード
@@ -340,11 +343,20 @@
     var map = {};
     // 全部の商品を取る（以前は80件までだった）。10件ずつ、失敗したら1回だけ取り直す
     var one = function (id, again) {
-      return api('/api/store/' + S.sid + '/product?id=' + id).then(function (j) { var p = ((j && j.products) || [])[0]; if (p) map[id] = { img: p.image_url || '', cond: p.condition_option_display_name || '' }; })
+      return api('/api/store/' + S.sid + '/product?id=' + id).then(function (j) { var p = ((j && j.products) || [])[0]; if (p) map[id] = { img: p.image_url || '', cond: p.condition_option_display_name || '', item: p.item_id }; })
         .catch(function () { if (!again) return new Promise(function (r) { setTimeout(r, 800); }).then(function () { return one(id, true); }); });
     };
     for (var k = 0; k < ids.length; k += 10) { if (S.tx !== t) return; await Promise.all(ids.slice(k, k + 10).map(function (id) { return one(id); })); }
     if (S.tx !== t) return;
+    // 型番がない商品は、マイカの商品データ（区分・発売日）で旧裏・旧弾かを確かめ、そうなら照合をやめる（名前だけで別の弾を拾わない）
+    var noModel = (t.transaction_carts || []).filter(function (c) { return !c.product__item__cardnumber && map[c.product_id] && map[c.product_id].item && S.old[c.product_id] == null; });
+    for (var q = 0; q < noModel.length; q += 10) { if (S.tx !== t) return; await Promise.all(noModel.slice(q, q + 10).map(function (c) {
+      return api('/api/store/' + S.sid + '/item?id=' + map[c.product_id].item).then(function (j) { var it = ((j && j.items) || [])[0] || {};
+        var y = Number(String(it.release_date || '').slice(0, 4)) || 0;
+        S.old[c.product_id] = /旧裏|[eｅ]カード|カード[eｅ]|^[eｅ]$|PCG|ADV|^DP/i.test(String(it.option3 || '')) || /旧裏/.test(String(it.search_keyword || '')) || (y > 0 && y < 2011); }).catch(function () { });
+    })); }
+    if (S.tx !== t) return;
+    if (noModel.some(function (c) { return S.old[c.product_id]; })) S.lines = (t.transaction_carts || []).map(judge);
     S.lines.forEach(function (m, i) { var x = map[(t.transaction_carts[i] || {}).product_id] || {}; m.img = x.img || ''; if (!m.cond && x.cond) m.cond = x.cond; gradeFlag(m); });
     renderDetail();
   }

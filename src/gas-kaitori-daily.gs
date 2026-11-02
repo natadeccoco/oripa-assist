@@ -66,7 +66,8 @@ function kdJudge(I, l) {
     if (rar && cands.length > 1) { var c3 = cands.filter(function (r) { return !r.r || kdN(r.r) === rar; }); if (c3.length) cands = c3; }
     if (cands.length > 1) { var c4 = cands.filter(function (r) { return kdHit(r.bn, bn); }); if (c4.length) cands = c4; }
     if (cands.length && !cands.some(function (r) { return kdHit(r.bn, bn); })) cands = [];
-    if (!cands.length && !model) cands = (I.name[bn] || []).filter(function (r) { return isPsa ? r.k === 'psa' : r.k !== 'psa'; });
+    var oldLike = !model && (/^[★◆●☆]$/.test(String(l.rar || '').trim()) || /拡張カード|旧裏/.test(dn)); // 旧裏・旧弾は名前だけで別の弾を拾わないよう照合しない
+    if (!cands.length && !model && !(oldLike && !isPsa)) cands = (I.name[bn] || []).filter(function (r) { return isPsa ? r.k === 'psa' : r.k !== 'psa'; });
     o.refs = cands.filter(function (r) { return r.y; }).map(function (r) { return { r: r, y: r.y }; });
   }
   if (!o.refs.length) return o;
