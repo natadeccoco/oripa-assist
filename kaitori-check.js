@@ -252,7 +252,7 @@
     }
     if (m.ref && m.isPsa && unit < m.ref * RULE.psaLow) f.push({ lv: 'yel', t: 'PSAが買取表の' + Math.round(unit / m.ref * 100) + '%です。減額が大きすぎないかご確認ください', d: label + '　買取表 ' + yen(m.ref) + ' → 入力 ' + yen(unit) });
     if (m.ref && m.isBox && unit < m.ref * RULE.boxLow) f.push({ lv: 'yel', t: 'BOXが買取表の' + Math.round(unit / m.ref * 100) + '%です。減額が大きすぎないかご確認ください', d: label + '　買取表 ' + yen(m.ref) + ' → 入力 ' + yen(unit) });
-    if (!m.hanyo && cnt >= RULE.sameCard) f.push({ lv: 'yel', t: '同じカードが' + cnt + '枚です。枚数をご確認ください', d: label + ' × ' + cnt + '（' + yen(unit) + ' × ' + cnt + ' ＝ ' + yen(unit * cnt) + '）' });
+    if (!m.hanyo && cnt >= RULE.sameCard) f.push({ lv: 'yel', t: (m.isBox ? '同じBOXが' + cnt + '個です。個数' : '同じカードが' + cnt + '枚です。枚数') + 'をご確認ください', d: label + ' × ' + cnt + '（' + yen(unit) + ' × ' + cnt + ' ＝ ' + yen(unit * cnt) + '）' });
     m.flags = f; m.unitIn = unit; m.cntIn = cnt; m.pid = c.product_id; gradeFlag(m); return m;
   }
   // 状態（ギズランク）に対して高すぎないか：状態は商品名の《》か、あとから読む商品情報で分かる
