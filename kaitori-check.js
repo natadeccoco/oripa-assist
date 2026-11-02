@@ -6,7 +6,7 @@
   if (location.hostname !== 'pos.mycalinks.com') { alert('マイカ（pos.mycalinks.com）を開いてから押してください'); return; }
   var old = document.getElementById('ndk-kaitori-host'); if (old) old.remove();
 
-  var VERSION = '2026-11-01 版S';
+  var VERSION = '2026-11-02 版T';
   var GAS = 'https://script.google.com/macros/s/AKfycbwXHuu-X3L0qzJhvaszEIm-1xdeNIqJACQ0uM7mz5Q0hvwfdF9IuQiTKr3qmscNVmnhcQ/exec';
   var FB_URL = 'https://script.google.com/macros/s/AKfycbwl-ZCZ1LyefvSzEGkBEpTFTuFyvW0p-AYye6jBWaLP9t7-bC9_Owfeh4jKScNkFys6Fw/exec';
   var SHORT = { 322: '柏', 323: '津田沼', 324: '松戸', 325: '横浜', 326: '中野', 327: '町田', 328: '千葉中央', 390: '通販', 409: 'お台場' };
@@ -277,10 +277,12 @@
     try {
       var sid = S.sid, today = jstDay(new Date());
       var start = new Date(today + 'T00:00:00+09:00').toISOString();
-      var dr = await api('/api/store/' + sid + '/transaction?status=draft&transaction_kind=buy&take=30&skip=0&orderBy=-finished_at');
-      var cp = await api('/api/store/' + sid + '/transaction?status=completed&transaction_kind=buy&finishedAtStart=' + encodeURIComponent(start) + '&take=100&skip=0&orderBy=-finished_at');
-      var since = new Date(start).getTime(); // 今日（日本時間0時から）の査定中だけ出す。マイカに残ったままの前日以前の査定中は出さない
-      var drafts = (dr.transactions || []).filter(function (t) { return new Date(t.created_at || t.updated_at).getTime() >= since; });
+      var dr = await api('/api/store/' + sid + '/transaction?status=draft&transaction_kind=buy&take=100&skip=0&orderBy=-finished_at');
+      var cp = await api('/api/store/' + sid + '/transaction?status=completed&transaction_kind=buy&finishedAtStart=' + encodeURIComponent(new Date(new Date(start).getTime() - 864e5).toISOString()) + '&take=100&skip=0&orderBy=-finished_at');
+      var since = new Date(start).getTime() - 864e5; // 昨日と今日（日本時間0時から）の査定中を出す。マイカに残ったままのそれより前の査定中は出さない
+      var tm = function (t) { return Math.max(new Date(t.created_at || 0).getTime() || 0, new Date(t.updated_at || 0).getTime() || 0); };
+      var drafts = (dr.transactions || []).filter(function (t) { return tm(t) >= since; }).sort(function (a, b) { return tm(b) - tm(a); });
+      S.today0 = new Date(start).getTime();
       S.list = drafts.concat(cp.transactions || []);
       var row = function (t) {
         var w = 0, red = 0; (t.transaction_carts || []).forEach(function (c) { var j = judge(c); j.flags.forEach(function (x) { w++; if (x.lv === 'red') red++; }); });
@@ -289,7 +291,7 @@
           (t.status === 'draft' ? '<span class="pill blue">査定中</span>' : '<span class="pill gr">完了</span>') +
           (red ? '<span class="pill red">🚨 ' + red + '</span>' : '') + (w - red ? '<span class="pill yel">⚠️ ' + (w - red) + '</span>' : '') + (!w ? '<span class="pill ok">OK</span>' : '') +
           (need ? '<span class="pill red">要承認</span>' : '') +
-          '<div class="s">' + hm(t.updated_at || t.created_at) + '　' + (t.transaction_carts || []).length + '行・' + (t.transaction_carts || []).reduce(function (s, c) { return s + (c.item_count || 0); }, 0) + '点</div></div>' +
+          '<div class="s">' + (tm(t) < S.today0 ? '<b style="color:#c2410c">昨日</b> ' : '') + hm(t.updated_at || t.created_at) + '　' + (t.transaction_carts || []).length + '行・' + (t.transaction_carts || []).reduce(function (s, c) { return s + (c.item_count || 0); }, 0) + '点</div></div>' +
           '<div class="t">' + yen(t.total_price) + '</div></div>';
       };
       $('#body').innerHTML =
@@ -556,12 +558,15 @@
         return new Promise(function (res) { var im = new Image(); im.onload = function () { imgs[u] = im; res(); }; im.onerror = function () { res(); }; im.src = 'data:' + j.mime + ';base64,' + j.b64; });
       }).catch(function () { });
     }));
-    // PSA10はスニダンの直近の取引価格も載せる（GAS経由・最大6枚・15秒で打ち切り）
-    var psaL = list.filter(function (m) { return /PSA\s*10/i.test(m.dn); }).slice(0, 6);
+    // PSA10はスニダンの直近の取引価格も載せる（GAS経由・最大12枚を3枚ずつ同時に・20秒で打ち切り）
+    var psaL = list.filter(function (m) { return /PSA\s*10/i.test(m.dn); }).slice(0, 12), chunks = [];
+    for (var ci = 0; ci < psaL.length; ci += 3) chunks.push(psaL.slice(ci, ci + 3));
     if (psaL.length) await Promise.race([
-      fetch(GAS + '?action=ksnkr&n=' + encodeURIComponent(JSON.stringify(psaL.map(function (m) { return m.dn; })))).then(function (r) { return r.json(); })
-        .then(function (j) { (j.r || []).forEach(function (x, i) { if (psaL[i]) psaL[i].snk = x; }); }).catch(function () { }),
-      new Promise(function (r) { setTimeout(r, 15000); })]);
+      Promise.all(chunks.map(function (ch) {
+        return fetch(GAS + '?action=ksnkr&n=' + encodeURIComponent(JSON.stringify(ch.map(function (m) { return m.dn; })))).then(function (r) { return r.json(); })
+          .then(function (j) { (j.r || []).forEach(function (x, i) { if (ch[i]) ch[i].snk = x; }); }).catch(function () { });
+      })),
+      new Promise(function (r) { setTimeout(r, 20000); })]);
     var COLS = Math.min(6, Math.max(3, list.length)), CW = 210, CH = psaL.length ? 406 : 380, GAP = 12, PAD = 24, W = PAD * 2 + COLS * CW + (COLS - 1) * GAP;
     var rows = Math.ceil(list.length / COLS), HEAD = 120, H = HEAD + PAD + rows * (CH + GAP) + (rest.length ? 60 : 20);
     var cv = document.createElement('canvas'); cv.width = W; cv.height = H; var c = cv.getContext('2d');
@@ -595,7 +600,7 @@
       c.fillText(m.ref ? '買取表 ' + yen(m.ref) + '（' + Math.round(m.unit / m.ref * 100) + '%）' : m.hanyo ? (m.at != null && m.unit !== m.at ? '⚠ 単価が@' + m.at + 'とちがう' : '汎用') : '買取表になし', x + 8, ty + 93);
       c.font = 'bold 15px ' + F; c.fillStyle = '#1f1d1a'; c.fillText('小計 ' + yen(m.unit * m.cnt), x + 8, ty + 116);
       if (m.snk) { var sk = m.snk; c.font = 'bold 15px ' + F; c.fillStyle = sk.price ? '#b4235a' : '#999';
-        c.fillText(fit(sk.price ? 'スニダン ' + yen(sk.price) + '（' + Math.round(m.unit / sk.price * 100) + '%）' : 'スニダン：取引なし', CW - 16), x + 8, ty + 140);
+        c.fillText(fit(sk.price ? 'スニダン ' + yen(sk.price) + '（' + Math.round(m.unit / sk.price * 100) + '%）' : 'スニダン：' + (/まだありません/.test(sk.why || '') ? '取引なし' : '見つからない'), CW - 16), x + 8, ty + 140);
         if (sk.price && sk.date) { c.font = '13px ' + F; c.fillStyle = '#888'; c.fillText(fit('直近の取引 ' + sk.date, CW - 16), x + 8, ty + 160); } }
     });
     if (rest.length) {

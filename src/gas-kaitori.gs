@@ -86,7 +86,7 @@ function kaitoriGet(p) {
     if (p.action === 'kconfig') return json({ ok: true, config: kConfig() });
     if (p.action === 'kstaff') return json(kStaff());
     if (p.action === 'ksnkr') { // 査定表の画像用：PSA10カードのスニダン直近の取引価格（最大6枚）
-      var ns = JSON.parse(p.n || '[]').slice(0, 6);
+      var ns = JSON.parse(p.n || '[]').slice(0, 12);
       return json({ ok: true, r: ns.map(function (n) { try { return kIsPsa10(n) ? kSnkrPsa10(n) : null; } catch (e) { return { price: 0, why: '取得できませんでした' }; } }) });
     }
     if (p.action === 'kstatus' && p.tx) { // マイカの取引IDで、その買取の最新の承認依頼・警告の確認を返す（どのPCからでも同じ状態が見える）
@@ -391,29 +391,35 @@ function kSnkrFetch(u) {
 }
 function kSnkrPsa10(n) {
   var md = kSnkrModel(n); if (!md) return { price: 0, why: '型番がわかりません' };
-  var key = 'snk3_' + (md.set + '_' + md.no + '_' + md.tot).toLowerCase(), c = CacheService.getScriptCache(), hit = c.get(key);
+  var mir = /ミラー|mirror/i.test(String(n)); // ミラーかどうか（同じ型番でノーマルとミラーが別の商品になっている）
+  var key = 'snk4_' + (md.set + '_' + md.no + '_' + md.tot + (mir ? '_m' : '')).toLowerCase(), c = CacheService.getScriptCache(), hit = c.get(key);
   if (hit) return JSON.parse(hit);
   var html = kSnkrFetch('https://snkrdunk.com/search?keywords=' + encodeURIComponent(md.set + ' ' + md.no + '/' + md.tot));
-  var ids = [], re = /apparels\/(\d+)/g, mm; while ((mm = re.exec(html)) && ids.length < 4) if (ids.indexOf(mm[1]) < 0) ids.push(mm[1]);
-  var no3 = ('00' + md.no).slice(-3), want = (md.set + '-' + no3).toLowerCase(), out = { price: 0, why: 'スニダンに見つかりません' };
+  var ids = [], re = /apparels\/(\d+)/g, mm; while ((mm = re.exec(html)) && ids.length < 6) if (ids.indexOf(mm[1]) < 0) ids.push(mm[1]);
+  var no3 = ('00' + md.no).slice(-3), setN = md.set.replace(/-/g, '').toLowerCase(), out = { price: 0, why: 'スニダンに見つかりません' };
+  var hits = [];
   for (var i = 0; i < ids.length; i++) {
     var u = JSON.parse(kSnkrFetch('https://snkrdunk.com/v1/apparels/' + ids[i] + '/used?perPage=1'));
-    var it = (u.apparelUsedItems || [])[0], pn = String(it && it.apparel && it.apparel.productNumber || '');
-    if (!pn) { var hh = kSnkrFetch('https://snkrdunk.com/apparels/' + ids[i] + '/sales-histories'); pn = 'pkmn-tcg-' + ((hh.match(/pkmn-tcg-([A-Za-z0-9\-]+)/) || [])[1] || ''); }
-    if (pn.replace(/^pkmn-tcg-/, '').toLowerCase() !== want) continue; // 型番（セット＋番号）が合うカードだけ使う
-    var url = 'https://snkrdunk.com/apparels/' + ids[i]; // 売買履歴が見られるPSA10の出品ページ（なければ商品ページ）
-    try { var pu = JSON.parse(kSnkrFetch('https://snkrdunk.com/v1/apparels/' + ids[i] + '/used?perPage=1&conditionIds=22')); var pi = (pu.apparelUsedItems || [])[0]; if (pi && pi.id) url += '/used/' + pi.id; } catch (e) { }
-    var j = JSON.parse(kSnkrFetch('https://snkrdunk.com/v1/apparels/' + ids[i] + '/sales-history?page=1&per_page=5&condition_id=22')); // 22＝PSA10
+    var ap = ((u.apparelUsedItems || [])[0] || {}).apparel || {}, pn = String(ap.productNumber || ''), nm = String(ap.name || '');
+    if (!pn) { var hh = kSnkrFetch('https://snkrdunk.com/apparels/' + ids[i] + '/sales-histories'); pn = 'pkmn-tcg-' + ((hh.match(/pkmn-tcg-([A-Za-z0-9\-]+)/) || [])[1] || ''); nm = (hh.match(/<title>([^<]*)/) || [])[1] || ''; }
+    var pk = pn.replace(/^pkmn-tcg-/i, '').replace(/-/g, '').toLowerCase();
+    // 型番（セット＋番号）が合うカードだけ使う。プロモは型番に番号がない商品があるので、そのときは商品名の「001/」で確かめる
+    if (pk === setN + no3 || (pk === setN && nm.indexOf(no3 + '/') >= 0)) hits.push({ id: ids[i], mir: /mirror|ミラー/i.test(nm) });
+  }
+  var pick = hits.filter(function (h) { return h.mir === mir; })[0] || hits[0];
+  if (pick) {
+    var url = 'https://snkrdunk.com/apparels/' + pick.id; // 売買履歴が見られるPSA10の出品ページ（なければ商品ページ）
+    try { var pu = JSON.parse(kSnkrFetch('https://snkrdunk.com/v1/apparels/' + pick.id + '/used?perPage=1&conditionIds=22')); var pi = (pu.apparelUsedItems || [])[0]; if (pi && pi.id) url += '/used/' + pi.id; } catch (e) { }
+    var j = JSON.parse(kSnkrFetch('https://snkrdunk.com/v1/apparels/' + pick.id + '/sales-history?page=1&per_page=5&condition_id=22')); // 22＝PSA10
     var rows = (j.history || []).map(function (x) { return { date: x.date, price: Number(x.price) || 0 }; });
-    out = rows.length ? { price: rows[0].price, date: rows[0].date, recent: rows, min: j.minPrice || 0, url: url, id: ids[i] } : { price: 0, why: 'PSA10の取引がまだありません', min: j.minPrice || 0, url: url };
-    break;
+    out = rows.length ? { price: rows[0].price, date: rows[0].date, recent: rows, min: j.minPrice || 0, url: url, id: pick.id } : { price: 0, why: 'PSA10の取引がまだありません', min: j.minPrice || 0, url: url };
   }
   try { c.put(key, JSON.stringify(out), 3 * 3600); } catch (e) { }
   return out;
 }
-function kSnkrText(lines) { // 承認依頼の文章に付ける：PSA10のカードだけ（多くても6枚）
+function kSnkrText(lines) { // 承認依頼の文章に付ける：PSA10のカードだけ（多くても12枚）
   var yen = function (n) { return Number(n || 0).toLocaleString() + '円'; }, out = [];
-  (lines || []).filter(function (q) { return kIsPsa10(q.n); }).slice(0, 6).forEach(function (q) {
+  (lines || []).filter(function (q) { return kIsPsa10(q.n); }).slice(0, 12).forEach(function (q) {
     var s; try { s = kSnkrPsa10(q.n); } catch (e) { s = { price: 0, why: '取得できませんでした' }; }
     var nm = String(q.n).replace(/《[^》]*》/g, '').slice(0, 30);
     out.push('・' + nm + '\n　' + (s.url ? s.url : 'スニダン：' + (s.why || '見つかりません'))); // 金額は査定表の画像に載せるので、文章は売買履歴のURLだけ
