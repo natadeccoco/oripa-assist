@@ -142,7 +142,7 @@
   document.body.appendChild(host);
   var root = host.attachShadow({ mode: 'open' });
   root.innerHTML = '<style>' + CSS() + '</style><div class="wrap"><div class="win">' +
-    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-11-02 版CB</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
+    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-11-03 版CC</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
     (ALL ? '' : '<div class="tabs"><button data-tab="make" class="on">新しく作る</button><button data-tab="refill">補充する</button></div>') +
     '<button class="x" id="close" title="閉じる">×</button></div>' +
     '<div class="bd" id="body"><div class="msg">読み込み中…</div></div></div></div>';
@@ -1770,11 +1770,11 @@
     var hits = [], RL = learnFor(item.sell_price), showAll = !!(RL.fill && RL.fill.kind === 'box'); // 2.5万円など下枠もBOXのオリパは、下枠まで全部出す
     contents.forEach(function (c) {
       var p = prods[c.product_id] || {}; if (/【@\s*\d+】/.test(c.product__display_name || '')) return;
-      var cost = Number(p.average_wholesale_price) || 0, sell0 = Number(p.sell_price) || 0;
+      var cost = Number(p.average_wholesale_price) || 0, sell0 = Number(p.item_sell_price) || Number(p.actual_sell_price) || Number(p.sell_price) || 0; // オリパに入れたカードは店の在庫が0で、店頭価格・原価が0円になっていることが多い → マスタ価格で見る
       if (!showAll && Math.max(sell0, cost) < item.sell_price) return; // 下枠（口単価未満）は出さない。小当たりまで全部出す
       var ex = hits.find(function (h) { return h.id === c.product_id; });
       var hk = p.item_category_handle === 'BOX' ? 'box' : (p.item_category_handle === 'PACK' ? 'pack' : 'card'); // 出た当たりの種類（BOXが出たらBOXで補充を提案する）
-      if (ex) ex.n += c.item_count; else hits.push({ id: c.product_id, name: c.product__displayNameWithMeta || c.product__display_name, img: c.product__image_url, n: c.item_count, cost: cost, sell: p.sell_price || 0, kind: hk });
+      if (ex) ex.n += c.item_count; else hits.push({ id: c.product_id, name: c.product__displayNameWithMeta || c.product__display_name, img: c.product__image_url, n: c.item_count, cost: cost, sell: sell0, kind: hk });
     });
     hits.sort(function (a, b) { return (b.sell || b.cost) - (a.sell || a.cost) || b.cost - a.cost; });
     hits.forEach(function (h, k) { h.role = k === 0 ? 'TOP' : Math.max(h.sell, h.cost) < item.sell_price ? '下枠' : roleOf(RL, item.sell_price, { sell: h.sell || h.cost }); });
@@ -1819,7 +1819,7 @@
     var fills = S.inv.filter(function (p) { return p.kind === 'filler' && p.stock > 0; }).sort(function (a, b) { return (inPack[b.id] || 0) - (inPack[a.id] || 0) || a.fv - b.fv; });
     var R = S.refill = { item: item, hit: hit, pick: {}, fl: [], extra: [], cands: same.concat(cheaper), fills: fills, appr: null };
     function ruleFill(n) { // 新規作成と同じルールの下枠（1,000円＝【@20】、3,000円＝【@200】、1万円＝シングル、2.5万円＝BOX など）
-      var left = {}; S.inv.forEach(function (x) { left[x.id] = x.stock - (R.pick[x.id] || 0); }); var used = {};
+      var left = {}; S.inv.forEach(function (x) { left[x.id] = x.stock - (R.pick[x.id] || 0); }); R.cands.forEach(function (x) { if (x.set && R.pick[x.id]) x.set.forEach(function (m) { if (left[m.id] != null) left[m.id] -= R.pick[x.id]; }); }); var used = {};
       R.cands.forEach(function (x) { if (R.pick[x.id]) markUsed(used, x); });
       return makeFillerByRule(RL, n, left, used, price, []).map(function (m) { return { p: m.p, n: m.n }; });
     }
@@ -1836,12 +1836,28 @@
     }
     function autoFill() { if (R.autoF) R.fl = evenFill(); }
     firstPick.forEach(function (p) { R.pick[p.id] = (R.pick[p.id] || 0) + 1; }); // 最初は、出た当たり1枚ごとに「同じくらい」のいちばん上を1枚
+    function refillMakeSet(a) { // 補充でセット当たり（2枚で1つの当たり・1口）を作る：同じポケモン・進化の仲間を先に出す
+      var usedN = function (id) { var n = 0; R.cands.forEach(function (x) { if (R.pick[x.id]) members(x).forEach(function (m) { if (m.id === id) n += R.pick[x.id]; }); }); return n; };
+      var list = S.inv.filter(function (q) { return (q.kind === 'card' || q.kind === 'psa') && q.id !== a.id && !q.mis && q.stock - usedN(q.id) > 0; })
+        .sort(function (x, y) { return (related(a, y) ? 1 : 0) - (related(a, x) ? 1 : 0) || Math.abs(Math.log(Math.max(x.cost, 1) / Math.max(a.cost, 1))) - Math.abs(Math.log(Math.max(y.cost, 1) / Math.max(a.cost, 1))); }).slice(0, 40);
+      var m = modal('<div class="mh">「' + esc(a.name) + '」とセットにするカードを選ぶ</div><div class="sm">2枚で1つの当たり（1口）になります。同じポケモン・進化の仲間を先に出しています。</div>' +
+        '<div class="srch"><input id="sq" placeholder="カード名で探す"><button class="ghost" id="sqs">探す</button></div><div id="sqr">' + candHTML(list, -1) + '</div><div class="acts"><button class="ghost" data-x>やめる</button></div>');
+      m.querySelector('[data-x]').onclick = function () { m.remove(); };
+      var bindPick = function () { m.querySelectorAll('[data-pick]').forEach(function (b) { b.onclick = function () {
+        var q = S.inv.find(function (x) { return x.id === Number(b.dataset.pick); }); if (!q) return;
+        var st = mkSet(a, q); st.stock = 1;
+        if ((R.pick[a.id] || 0) > 0) R.pick[a.id]--; R.cands.push(st); R.extra.push(st); R.pick[st.id] = 1; m.remove(); draw();
+      }; }); };
+      bindPick();
+      m.querySelector('#sqs').onclick = function () { var qv = m.querySelector('#sq').value.trim(); var r = S.inv.filter(function (q) { return (q.kind === 'card' || q.kind === 'psa') && q.id !== a.id && q.stock - usedN(q.id) > 0 && (!qv || q.name.indexOf(qv) >= 0); }).slice(0, 40); m.querySelector('#sqr').innerHTML = candHTML(r, -1); bindPick(); };
+    }
     function draw() {
       autoFill();
       var hitsSel = R.cands.filter(function (p) { return R.pick[p.id] > 0; });
       var nHit = hitsSel.reduce(function (a, p) { return a + R.pick[p.id]; }, 0), fN = R.fl.reduce(function (a, x) { return a + x.n; }, 0);
       var cost = hitsSel.reduce(function (a, p) { return a + p.cost * R.pick[p.id]; }, 0) + R.fl.reduce(function (a, x) { return a + x.p.cost * x.n; }, 0), add = nHit + fN;
-      var cardSel = function (p, tag) { var n = R.pick[p.id] || 0; return '<div class="rfc' + (n ? ' on' : '') + '">' + card({ p: p, n: Math.max(n, 1), role: tag }, false, 'data-rp="' + p.id + '"') + '<div class="rfn"><button class="ghost" data-rm1="' + p.id + '">−</button><b>' + n + '</b><button class="ghost" data-ad1="' + p.id + '">＋</button></div></div>'; };
+      var cardSel = function (p, tag) { var n = R.pick[p.id] || 0; return '<div class="rfc' + (n ? ' on' : '') + '">' + card({ p: p, n: Math.max(n, 1), role: p.set ? 'セット' : tag }, false, 'data-rp="' + p.id + '"') + '<div class="rfn"><button class="ghost" data-rm1="' + p.id + '">−</button><b>' + n + '</b><button class="ghost" data-ad1="' + p.id + '">＋</button></div>' +
+        (!p.set && (p.kind === 'card' || p.kind === 'psa') ? '<button class="ghost mkset" data-mkset="' + p.id + '">セットにする</button>' : p.set ? '<button class="ghost mkset" data-unset="' + esc(p.id) + '">セットを外す</button>' : '') + '</div>'; };
       var html = '<div class="mh2">出た当たり：' + esc(hit.name) + '（' + drawn.length + '枚・原価計 ' + yen(target) + (tmpRef ? '（原価0のものはマスタの70%で計算）' : '') + '）の補充 — 足すものを選んでください</div>' +
         '<div class="rfq"><span>まとめて提案：</span>当たり <input id="qh" type="number" min="0" value="' + Math.max(nHit, 1) + '"> 枚 ＋ 下枠 <input id="qf" type="number" min="0" value="' + fN + '"> 枚 <button class="ghost" id="qgo">この枚数で選び直す</button></div>' +
         '<div class="mh2 s">同じくらいの当たり' + (firstPick.length ? '' : '（ちょうどいいものが無いので、原価が近い順）') + '</div>' + (same.length ? '<div class="cards">' + same.map(function (p) { return cardSel(p, '近いもの'); }).join('') + '</div>' : '<div class="msg sub">候補がありません。下で探してください</div>') +
@@ -1857,9 +1873,12 @@
         (R.appr ? '<div class="appr ' + (R.appr.status === '承認' ? 'ok' : R.appr.status === '差し戻し' ? 'ng' : 'wait') + '">本部の承認：' + esc(R.appr.status) + (R.appr.by ? '（' + esc(R.appr.by) + '）' : '') + '</div>' : '') +
         '<div class="acts">' + (APPROVAL_URL ? (R.appr && R.appr.status === '承認待ち' ? '<button class="ghost" id="rfchk">承認の結果を確認</button>' : '<button class="ghost" id="rfreq"' + (add ? '' : ' disabled') + '>本部に承認を依頼（任意）</button>') : '') + '<button class="primary" id="rfgo"' + (add ? '' : ' disabled') + '>マイカに補充する</button></div>';
       $('#rsug').innerHTML = html;
-      $('#rsug').querySelectorAll('[data-ad1]').forEach(function (b) { b.onclick = function () { var p = R.cands.find(function (x) { return x.id === Number(b.dataset.ad1); }); var n = R.pick[p.id] || 0; if (n < p.stock) R.pick[p.id] = n + 1; draw(); }; });
-      $('#rsug').querySelectorAll('[data-rm1]').forEach(function (b) { b.onclick = function () { var id = Number(b.dataset.rm1); R.pick[id] = Math.max(0, (R.pick[id] || 0) - 1); draw(); }; });
-      $('#rsug').querySelectorAll('[data-rp]').forEach(function (b) { b.onclick = function () { var id = Number(b.dataset.rp); R.pick[id] = R.pick[id] ? 0 : 1; draw(); }; });
+      var byId = function (v) { return R.cands.find(function (x) { return String(x.id) === String(v); }); };
+      $('#rsug').querySelectorAll('[data-ad1]').forEach(function (b) { b.onclick = function () { var p = byId(b.dataset.ad1); if (!p) return; var n = R.pick[p.id] || 0; if (n < p.stock) R.pick[p.id] = n + 1; draw(); }; });
+      $('#rsug').querySelectorAll('[data-rm1]').forEach(function (b) { b.onclick = function () { var p = byId(b.dataset.rm1); if (!p) return; R.pick[p.id] = Math.max(0, (R.pick[p.id] || 0) - 1); draw(); }; });
+      $('#rsug').querySelectorAll('[data-rp]').forEach(function (b) { b.onclick = function () { var p = byId(b.dataset.rp); if (!p) return; R.pick[p.id] = R.pick[p.id] ? 0 : 1; draw(); }; });
+      $('#rsug').querySelectorAll('[data-mkset]').forEach(function (b) { b.onclick = function () { var p = byId(b.dataset.mkset); if (p) refillMakeSet(p); }; });
+      $('#rsug').querySelectorAll('[data-unset]').forEach(function (b) { b.onclick = function () { var p = byId(b.dataset.unset); if (!p) return; R.pick[p.id] = 0; R.cands.splice(R.cands.indexOf(p), 1); R.extra = R.extra.filter(function (x) { return x !== p; }); p.set.forEach(function (m) { if (R.cands.indexOf(m) < 0) { R.cands.push(m); R.extra.push(m); } R.pick[m.id] = (R.pick[m.id] || 0) + 1; }); draw(); }; });
       $('#rsug').querySelectorAll('[data-fad]').forEach(function (b) { b.onclick = function () { var x = R.fl[Number(b.dataset.fad)]; R.autoF = false; if (x.n < x.p.stock) x.n++; draw(); }; });
       $('#rsug').querySelectorAll('[data-frm]').forEach(function (b) { b.onclick = function () { var k = Number(b.dataset.frm); R.autoF = false; R.fl[k].n--; if (R.fl[k].n <= 0) R.fl.splice(k, 1); draw(); }; });
       var rsearch = function () {
@@ -1899,14 +1918,15 @@
     function confirmRefill() {
       var pt = refillPt();
       var m = modal('<div class="mh">マイカの「' + esc(item.display_name) + '」に補充しますか？</div><div class="frm">' +
-        '<div class="sm">' + pt.hits.concat(pt.filler).map(function (h) { return '・' + esc(h.p.name) + ' ×' + h.n; }).join('<br>') + '</div>' +
+        '<div class="sm">' + pt.hits.concat(pt.filler).map(function (h) { return '・' + (h.p.set ? '【セット】' : '') + esc(h.p.name) + ' ×' + h.n; }).join('<br>') + '</div>' +
         '<div class="sm"><b>口数が ' + pt.init + '口 増えます</b>（足す原価 ' + yen(pt.cost) + '・足した口の売上 ' + yen(pt.rev) + '・足した分の原価率 ' + (pt.init ? Math.round(pt.costr * 1000) / 10 : 0) + '%）。</div><div class="bigwarn">⚠ 「補充する」を押した時点で、マイカの在庫が動きます<br><span>一時保存ではありません。すぐにオリパの口数が増え、店の在庫から減ります</span></div>' + lowCostNote(pt) + '</div>' +
         '<div class="acts"><button class="ghost" data-x>やめる</button><button class="primary" data-ok>補充する</button></div>');
       m.querySelector('[data-x]').onclick = function () { m.remove(); };
       m.querySelector('[data-ok]').onclick = async function () {
         var b = this; b.disabled = true; b.textContent = '補充中…';
         try {
-          var body = { additionalStockNumber: pt.init, additionalProducts: pt.hits.concat(pt.filler).map(function (h) { return { product_id: h.p.id, item_count: h.n }; }) };
+          var agg = {}; pt.hits.concat(pt.filler).forEach(function (h) { members(h.p).forEach(function (m2) { agg[m2.id] = (agg[m2.id] || 0) + h.n; }); }); // セットは2枚とも中身に足す（口数は1口）
+          var body = { additionalStockNumber: pt.init, additionalProducts: Object.keys(agg).map(function (id) { return { product_id: Number(id), item_count: agg[id] }; }) };
           await api('/api/store/' + S.sid + '/item/' + item.id + '/add-original-pack', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
           m.querySelector('.mbox').innerHTML = '<div class="mh">補充しました</div><div class="sm">マイカの「' + esc(item.display_name) + '」に ' + pt.init + '口分を足しました。オリパの詳細で中身と残り口数を確かめてください。</div><div class="acts"><button class="primary" data-x>OK</button></div>';
           m.querySelector('[data-x]').onclick = function () { m.remove(); renderRefill(); };
@@ -1956,7 +1976,7 @@
       '.pn{font-weight:800;font-size:15px}.pnote{font-size:11px;color:#777}',
       '.kpi{display:grid;grid-template-columns:repeat(3,1fr);background:#f6f5f2;border-radius:9px;padding:8px 4px;text-align:center}',
       '.tchk{display:flex;flex-wrap:wrap;gap:6px 12px}.tchk label{display:flex;align-items:center;gap:4px;font-size:13px;font-weight:700;background:#fff7e0;border:1.5px solid #e8c23a;border-radius:8px;padding:4px 10px;cursor:pointer}',
-      '.rfc{display:flex;flex-direction:column;gap:4px;border-radius:8px;padding:2px}.rfc.on{outline:3px solid #c8102e}.rfn{display:flex;align-items:center;justify-content:center;gap:8px}.rfn .ghost{padding:2px 10px}.rfq{display:flex;flex-wrap:wrap;align-items:center;gap:6px;background:#fff;border:1px solid #e5e2da;border-radius:10px;padding:8px 12px;margin:6px 0;font-size:13px}.rfq input,.rff input{width:60px}.rff{display:flex;align-items:center;gap:6px;font-size:13px}.rff select{font-size:13px;padding:5px;max-width:560px}.kept{background:#fff;border:1px solid #e5e2da;border-radius:10px;padding:8px 12px;margin:8px 0}.kept .lb{font-weight:800;font-size:13px;display:flex;align-items:center;flex-wrap:wrap}.krow{display:flex;align-items:center;gap:10px;font-size:13px;padding:5px 0;border-top:1px dashed #e5e2da}.krow span{color:#666;flex:1}.krow .ghost{padding:3px 10px}.bigwarn{margin:10px 0 2px;padding:12px 14px;border:2px solid #c8102e;border-radius:10px;background:#fff1f2;color:#c8102e;font-size:18px;font-weight:900;line-height:1.5}.bigwarn span{display:block;font-size:13px;font-weight:700;color:#7a1020}.rfsum{background:#f3f1ea;border-radius:8px;padding:10px 12px;font-size:13px;font-weight:700;margin-top:8px}.rfkpi{display:flex;flex-wrap:wrap;align-items:center;gap:14px;margin-top:6px;font-size:14px}.rfkpi b{font-size:17px}.rfkpi b.neg{color:#c8102e}.rfkpi .sm{font-weight:400}',
+      '.rfc{display:flex;flex-direction:column;gap:4px;border-radius:8px;padding:2px}.rfc.on{outline:3px solid #c8102e}.rfn{display:flex;align-items:center;justify-content:center;gap:8px}.rfn .ghost{padding:2px 10px}.rfq{display:flex;flex-wrap:wrap;align-items:center;gap:6px;background:#fff;border:1px solid #e5e2da;border-radius:10px;padding:8px 12px;margin:6px 0;font-size:13px}.rfq input,.rff input{width:60px}.rff{display:flex;align-items:center;gap:6px;font-size:13px}.rff select{font-size:13px;padding:5px;max-width:560px}.kept{background:#fff;border:1px solid #e5e2da;border-radius:10px;padding:8px 12px;margin:8px 0}.kept .lb{font-weight:800;font-size:13px;display:flex;align-items:center;flex-wrap:wrap}.krow{display:flex;align-items:center;gap:10px;font-size:13px;padding:5px 0;border-top:1px dashed #e5e2da}.krow span{color:#666;flex:1}.krow .ghost{padding:3px 10px}.rfc .mkset{font-size:11px;padding:2px 8px;margin-top:2px}.bigwarn{margin:10px 0 2px;padding:12px 14px;border:2px solid #c8102e;border-radius:10px;background:#fff1f2;color:#c8102e;font-size:18px;font-weight:900;line-height:1.5}.bigwarn span{display:block;font-size:13px;font-weight:700;color:#7a1020}.rfsum{background:#f3f1ea;border-radius:8px;padding:10px 12px;font-size:13px;font-weight:700;margin-top:8px}.rfkpi{display:flex;flex-wrap:wrap;align-items:center;gap:14px;margin-top:6px;font-size:14px}.rfkpi b{font-size:17px}.rfkpi b.neg{color:#c8102e}.rfkpi .sm{font-weight:400}',
       '.kpiraw{margin-top:6px;background:#fdecea}.kpiraw b{color:#c0392b}',
       '.kpi b{display:block;font-size:16px}.kpi span{font-size:10px;color:#777}',
       '.top{display:flex;justify-content:center}',
