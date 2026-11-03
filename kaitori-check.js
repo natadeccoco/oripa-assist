@@ -6,7 +6,7 @@
   if (location.hostname !== 'pos.mycalinks.com') { alert('マイカ（pos.mycalinks.com）を開いてから押してください'); return; }
   var old = document.getElementById('ndk-kaitori-host'); if (old) old.remove();
 
-  var VERSION = '2026-11-03 版AC';
+  var VERSION = '2026-11-03 版AD';
   var GAS = 'https://script.google.com/macros/s/AKfycbwXHuu-X3L0qzJhvaszEIm-1xdeNIqJACQ0uM7mz5Q0hvwfdF9IuQiTKr3qmscNVmnhcQ/exec';
   var FB_URL = 'https://script.google.com/macros/s/AKfycbwl-ZCZ1LyefvSzEGkBEpTFTuFyvW0p-AYye6jBWaLP9t7-bC9_Owfeh4jKScNkFys6Fw/exec';
   var SHORT = { 322: '柏', 323: '津田沼', 324: '松戸', 325: '横浜', 326: '中野', 327: '町田', 328: '千葉中央', 390: '通販', 409: 'お台場' };
@@ -15,7 +15,7 @@
   // 状態ごとの買取表に対する上限（A- 90%／B 50%／C 20%／D 5%）。これの1.1倍以上なら⚠️
   var GRADE = { 'A-': 0.9, 'B': 0.5, 'C': 0.2, 'D': 0.05 };
 
-  var S = { old: {}, sid: null, stores: [], prices: null, idx: null, config: null, list: [], tx: null, lines: [], cust: '', staff: '', pollT: null };
+  var S = { old: {}, mref: {}, sid: null, stores: [], prices: null, idx: null, config: null, list: [], tx: null, lines: [], cust: '', staff: '', pollT: null };
 
   /* ---------- 共通 ---------- */
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
@@ -225,7 +225,11 @@
     if (cands.length && !cands.some(function (r) { return nameHit(r.bn, bn); })) cands = []; // 型番が同じでも名前が違うものは使わない
     // 旧裏・旧弾（型番がなく、レアリティが★◆●、または マイカの区分が旧裏など）は、名前だけで別の弾のカードを拾わないよう照合しない
     var oldLike = !model && (/^[★◆●☆]$/.test(String(c.product__item__rarity || '').trim()) || /拡張カード|旧裏/.test(dn) || S.old[c.product_id]);
-    if (oldLike && !isPsa) { o.note = '旧裏・旧弾は照合していません'; return o; }
+    if (oldLike && !isPsa) { // 旧裏・旧弾は、マイカの商品マスタの「買取価格」と照らし合わせる（買取表の旧裏タブは使わない）
+      var mp = S.mref[c.product_id];
+      if (mp > 0) { o.refs = [{ r: { t: 'マイカの買取価格（マスタ）', k: 'master', n: nm, m: '', r: '', p: '' }, y: mp }]; o.oldMaster = true; return o; }
+      o.note = mp === 0 ? 'マイカの買取価格が0円のため照合なし' : mp == null ? '旧裏：マイカの買取価格を確認中…' : '旧裏・旧弾は照合していません'; return o;
+    }
     if (!cands.length && !model) cands = (S.idx.name[bn] || []).filter(function (r) { return isPsa ? r.k === 'psa' : r.k !== 'psa'; });
     o.refs = cands.filter(function (r) { return r.y; }).map(function (r) { return { r: r, y: r.y }; });
     // 近い別カード：同じ名前の別レアリティ・別の弾、同じ型番の別カード
@@ -357,14 +361,15 @@
     for (var k = 0; k < ids.length; k += 10) { if (S.tx !== t) return; await Promise.all(ids.slice(k, k + 10).map(function (id) { return one(id); })); }
     if (S.tx !== t) return;
     // 型番がない商品は、マイカの商品データ（区分・発売日）で旧裏・旧弾かを確かめ、そうなら照合をやめる（名前だけで別の弾を拾わない）
-    var noModel = (t.transaction_carts || []).filter(function (c) { return !c.product__item__cardnumber && map[c.product_id] && map[c.product_id].item && S.old[c.product_id] == null; });
+    var noModel = (t.transaction_carts || []).filter(function (c) { return !c.product__item__cardnumber && map[c.product_id] && map[c.product_id].item && (S.old[c.product_id] == null || S.mref[c.product_id] == null); });
     for (var q = 0; q < noModel.length; q += 10) { if (S.tx !== t) return; await Promise.all(noModel.slice(q, q + 10).map(function (c) {
       return api('/api/store/' + S.sid + '/item?id=' + map[c.product_id].item).then(function (j) { var it = ((j && j.items) || [])[0] || {};
+        S.mref[c.product_id] = Number(it.buy_price) || 0;
         var y = Number(String(it.release_date || '').slice(0, 4)) || 0;
         S.old[c.product_id] = /旧裏|[eｅ]カード|カード[eｅ]|^[eｅ]$|PCG|ADV|^DP/i.test(String(it.option3 || '')) || /旧裏/.test(String(it.search_keyword || '')) || (y > 0 && y < 2011); }).catch(function () { });
     })); }
     if (S.tx !== t) return;
-    if (noModel.some(function (c) { return S.old[c.product_id]; })) S.lines = multiFlag((t.transaction_carts || []).map(judge));
+    if (noModel.length) S.lines = multiFlag((t.transaction_carts || []).map(judge));
     S.lines.forEach(function (m, i) { var x = map[(t.transaction_carts[i] || {}).product_id] || {}; m.img = x.img || ''; if (!m.cond && x.cond) m.cond = x.cond; gradeFlag(m); }); multiFlag(S.lines); S.condTx = t.id;
     renderDetail();
   }
