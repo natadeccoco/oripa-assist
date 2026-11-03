@@ -142,7 +142,7 @@
   document.body.appendChild(host);
   var root = host.attachShadow({ mode: 'open' });
   root.innerHTML = '<style>' + CSS() + '</style><div class="wrap"><div class="win">' +
-    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-11-03 版CC</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
+    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-11-03 版CD</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
     (ALL ? '' : '<div class="tabs"><button data-tab="make" class="on">新しく作る</button><button data-tab="refill">補充する</button></div>') +
     '<button class="x" id="close" title="閉じる">×</button></div>' +
     '<div class="bd" id="body"><div class="msg">読み込み中…</div></div></div></div>';
@@ -207,6 +207,12 @@
     if (p.kind === 'box' && c && c.box) return c.box.indexOf(boxState(p)) >= 0;
     return true;
   }
+  // スタッフが検索したときは、提案に使わない在庫（状態B以下・値段なし・カテゴリ違い）も全部出す
+  function searchPool() {
+    var sids = ALL ? (S.useStores || []) : [S.sid], ex = [];
+    sids.forEach(function (sid) { ((S.extraBy || {})[sid] || []).forEach(function (p) { ex.push(p); }); });
+    return (S.invBase || S.inv || []).concat(ex);
+  }
   function refreshInv() { S.inv = (S.invBase || []).filter(condPass); }
   function setConds(c) { S.conds = c || null; refreshInv(); }
   function cardConds() { var o = {}; (S.invBase || []).forEach(function (p) { if (p.kind === 'card' && p.cond) o[p.cond] = (o[p.cond] || 0) + 1; }); return Object.keys(o).sort(); }
@@ -224,6 +230,7 @@
   }
   async function loadInv(sid, sname) {
     var inv = await fetchProducts(sid);
+    var extra = []; (S.extraBy || (S.extraBy = {}))[sid] = extra; // 提案には使わないが、検索では出す在庫（値段が入っていない・カテゴリが違うなど）
     return inv.map(function (p) {
       var bm = p.display_name.match(/【@\s*(\d+)】/);
       var cat = p.item_category_handle || '', catName = p.item_category_display_name || '';
@@ -233,18 +240,22 @@
       // マイカではパックも「ボックス」カテゴリ。名前に BOX が無く、画像が BOX 用（〜_b.jpg）でなく、原価が安いものをパックとして扱う
       var imgf = String(p.image_url || '').split('/').pop();
       var looksPack = cat === 'BOX' && !/BOX|ボックス/i.test(p.display_name) && !/_b(_\w+)?\.\w+$/i.test(imgf) && !/デッキ|スターター|スタート|セット|ジャンボ|コレクション|ファイル|ギフト|キャンペーン|チャレンジ|プロモ/.test(p.display_name) && (Number(p.average_wholesale_price) || 0) <= 3000;
-      var kind = bm ? 'filler' : (cat === 'CARD' ? (isPsa ? 'psa' : 'card') : looksPack ? 'pack' : (cat === 'BOX' ? 'box' : (cat === 'PACK' || /パック/.test(catName) ? 'pack' : (/サプライ/.test(catName) ? 'supply' : 'other'))));
+      var kind = bm ? 'filler' : (cat === 'CARD' ? (isPsa ? 'psa' : 'card') : looksPack ? 'pack' : (cat === 'BOX' ? 'box' : (cat === 'PACK' || /パック/.test(catName) ? 'pack' : (/サプライ/.test(catName) || (cat === 'BUNDLE' && /サプライ/.test(p.display_name)) ? 'supply' : 'other')))); // 名前に「サプライ」が入ったバンドルもサプライ
       // マスタ価格 = 商品マスタの販売価格（item_sell_price）。店頭価格 = この在庫の実際の販売価格（actual_sell_price）
       var bst = ((spec.match(/BOX状態\s*(\S+)/) || [])[1] || ''); // BOXの状態（A-・B など。Bはシュリンクなし）
       var shop = Number(p.actual_sell_price != null ? p.actual_sell_price : p.sell_price) || 0;
       var sell = Number(p.item_sell_price) || shop;
+      if (sell <= 0 && !bm) { var nm2 = String(p.display_name).match(/[@＠]\s*(\d{2,6})|[\s　](\d{3,6})\s*(?:円)?(?:[（(].*)?$/); if (nm2 && (kind === 'supply' || /サプライ|バンドル/.test(catName))) { sell = shop = Number(nm2[1] || nm2[2]); } } // サプライ@500 のように名前に値段があればそれを使う
       return { id: p.id, name: p.display_name, img: p.image_url, sell: sell, shop: shop, cost: Number(p.average_wholesale_price) || 0, stock: p.stock_number, kind: kind,
         bst: kind === 'box' ? bst : '', cond: kind === 'box' && bst ? cond + '・' + bst + (/^B/.test(bst) ? '（シュリンクなし）' : '') : cond, noShrink: kind === 'box' && /^B/.test(bst), sealed: kind !== 'box' && kind !== 'pack' && /未開封/.test(spec + ' ' + p.display_name), exp: p.item_expansion || '', rarity: p.item_rarity || '', cno: p.item_cardnumber || '', fv: bm ? Number(bm[1]) : 0, spec: spec, sid: sid, sname: shortName(sname) };
-    }).filter(function (p) {
-      if (p.kind === 'other') return false;
+    }).filter(function (p, i) {
+      var raw = inv[i] || {};
+      var keepForSearch = function () { if (/ORIGINAL_PACK|DECK/.test(raw.item_category_handle || '')) return false; p.extra = true; if (p.kind === 'other') p.kind = 'supply'; extra.push(p); return false; };
+      if (p.kind === 'other') return keepForSearch();
       if (p.kind === 'filler') return true;
       if (p.kind === 'pack' && p.cost > 0 && p.sell <= 0) { p.noPrice = true; return true; } // ばらのパックはマスタも店頭も0円のことが多い（原価で見る）
-      if (p.cost <= 0 || p.sell <= 0) return false;          // 原価・マスタ価格が入っていないものは使わない
+      if (p.kind === 'supply' && p.sell > 0 && p.cost > 0 && p.cost <= 5) { p.costRaw = p.cost; p.cost = Math.round(p.sell * 0.7); p.costTmp = true; } // サプライの原価¥1など仮の数字は、マスタの70%を仮の原価に
+      if (p.cost <= 0 || p.sell <= 0) return keepForSearch();          // 原価・マスタ価格が入っていないものは提案には使わない（検索では出す）
       if (p.cost <= p.sell * 0.1 && p.sell >= 3000) { p.costRaw = p.cost; p.cost = Math.round(p.sell * 0.7); p.costTmp = true; } // 原価がマスタの1/10以下＝原価の登録ミスとみて、マスタの70%を仮の原価にして計算する
       // シングルの状態（ふだんは状態A・A-だけ）は condPass でしぼる
       if (suspectPrice(p)) { p.mis = true; if (!/BOX|ボックス|デッキ|スターター|スタート|セット|ジャンボ|コレクション/i.test(p.name)) p.kind = 'pack'; } // BOX扱いだが中身はパックらしいもの（原価がマスタの3割未満）→パック扱い。当たりには使わず、下枠（3000円など）にだけ使う
@@ -1023,7 +1034,7 @@
   }
   function openSwap(pi, hi) {
     var pt = S.patterns[pi], h = pt.hits[hi], target = h.p.cost;
-    var avail = function (p) { return p.kind !== 'filler' && !p.mis && p.id !== h.p.id && p.stock - usedIn(pt, p.id) > 0; };
+    var avail = function (p) { return p.kind !== 'filler' && p.id !== h.p.id && p.stock - usedIn(pt, p.id) > 0; }; // マスタ価格が怪しいものも出す（「マスタ価格要確認」の札が付く）
     var all = S.inv.filter(avail);
     var m = modal('<div class="mh">「' + esc(h.p.name) + '」（' + esc(h.role) + '・原価 ' + yen(h.p.cost) + (h.n > 1 ? '・×' + h.n : '') + '）を入れ替える</div>' +
       '<div class="sm">在庫すべて（タップで入れ替え）</div>' + sortBar() + '<div id="cl"></div>' +
@@ -1041,7 +1052,7 @@
     pagedList(m, all, target, pi, bindPick);
     var search = function () {
       var q = m.querySelector('#q').value.trim(); if (!q) return;
-      var r = S.inv.filter(function (p) { return avail(p) && p.name.indexOf(q) >= 0; }).sort(function (a, b) { return b.cost - a.cost; }).slice(0, 24);
+      var r = searchPool().filter(function (p) { return avail(p) && p.name.indexOf(q) >= 0; }).sort(function (a, b) { return b.cost - a.cost; }).slice(0, 40);
       m.querySelector('#qr').innerHTML = candHTML(r, pi); bindPick(m.querySelector('#qr'));
     };
     m.querySelector('#qs').onclick = search; m.querySelector('#q').onkeydown = function (e) { if (e.key === 'Enter') search(); };
@@ -1079,7 +1090,7 @@
       };
       var all = S.inv.filter(free);
       draw(all.filter(function (q) { return related(base, q); }).sort(function (a, b) { return b.sell - a.sell; }).concat(all.filter(function (q) { return !related(base, q); }).sort(function (a, b) { return b.sell - a.sell; }).slice(0, 12)));
-      var go = function () { var q = box.querySelector('#sq').value.trim(); if (q) draw(all.filter(function (x) { return x.name.indexOf(q) >= 0; }).sort(function (a, b) { return b.sell - a.sell; })); };
+      var go = function () { var q = box.querySelector('#sq').value.trim(); if (q) draw(searchPool().filter(free).filter(function (x) { return x.name.indexOf(q) >= 0; }).sort(function (a, b) { return b.sell - a.sell; })); };
       box.querySelector('#sqs').onclick = go; box.querySelector('#sq').onkeydown = function (e) { if (e.key === 'Enter') go(); };
     };
   }
@@ -1108,7 +1119,7 @@
       '<div class="acts"><button class="ghost" data-x>閉じる</button></div>');
     function draw() {
       var q = m.querySelector('#q').value.trim();
-      var list = S.inv.filter(function (p) { return p.kind === kind && p.id !== exclude && fillAvail(pt, p) > 0 && (!q || p.name.indexOf(q) >= 0); }).sort(function (a, b) { return a.cost - b.cost || b.stock - a.stock; }).slice(0, 60);
+      var list = (q ? searchPool() : S.inv).filter(function (p) { return (q || p.kind === kind) && p.id !== exclude && fillAvail(pt, p) > 0 && (!q || p.name.indexOf(q) >= 0); }) // 名前で探すときは種類に関係なく全部の在庫から.sort(function (a, b) { return a.cost - b.cost || b.stock - a.stock; }).slice(0, 60);
       m.querySelector('#cl').innerHTML = '<div class="sm">原価の安い順（60件まで）。在庫が残っているものだけ出ます。</div>' + candHTML(list, pi);
       m.querySelectorAll('#cl [data-pick]').forEach(function (b) { b.onclick = function () { var p = S.inv.find(function (x) { return x.id === Number(b.dataset.pick); }); if (p) { m.remove(); onPick(p); } }; });
     }
@@ -1186,7 +1197,7 @@
     pagedList(m, list, f.p.cost, pi, bindPick);
     var search = function () {
       var q = m.querySelector('#q').value.trim(); if (!q) return;
-      var r = S.inv.filter(function (p) { return avail(p) && p.name.indexOf(q) >= 0; }).sort(function (a, b) { return b.cost - a.cost; }).slice(0, 24);
+      var r = searchPool().filter(function (p) { return avail(p) && p.name.indexOf(q) >= 0; }).sort(function (a, b) { return b.cost - a.cost; }).slice(0, 40);
       m.querySelector('#qr').innerHTML = candHTML(r, pi); bindPick(m.querySelector('#qr'));
     };
     m.querySelector('#qs').onclick = search; m.querySelector('#q').onkeydown = function (e) { if (e.key === 'Enter') search(); };
@@ -1229,7 +1240,7 @@
   }
   function openAdd(pi, fixedRole) {
     var pt = S.patterns[pi], L = pt.L, price = pt.price;
-    var avail = function (p) { return p.kind !== 'filler' && !p.mis && p.stock - usedIn(pt, p.id) > 0; };
+    var avail = function (p) { return p.kind !== 'filler' && p.stock - usedIn(pt, p.id) > 0; };
     var kindRank = function (p) { for (var g = 0; g < L.kinds.length; g++) if (L.kinds[g].indexOf(p.kind) >= 0) return g; return L.kinds.length; };
     var shown = {}, groups = [];
     // ルールの枠ごと：値段の範囲内で、優先する種類→マスタ価格の高い順
@@ -1278,7 +1289,7 @@
     }
     var search = function () {
       var q = m.querySelector('#q').value.trim(); if (!q) return;
-      var r = S.inv.filter(function (p) { return avail(p) && p.name.indexOf(q) >= 0; }).sort(function (a, b) { return b.sell - a.sell; }).slice(0, 36);
+      var r = searchPool().filter(function (p) { return avail(p) && p.name.indexOf(q) >= 0; }).sort(function (a, b) { return b.sell - a.sell; }).slice(0, 40);
       m.querySelector('#qr').innerHTML = '<div class="mh2">「' + esc(q) + '」の検索結果</div>' + candHTML(r, pi, fixedRole || '', cap); bindPick(m.querySelector('#qr'));
     };
     m.querySelector('#qs').onclick = search; m.querySelector('#q').onkeydown = function (e) { if (e.key === 'Enter') search(); };
@@ -1849,7 +1860,7 @@
         if ((R.pick[a.id] || 0) > 0) R.pick[a.id]--; R.cands.push(st); R.extra.push(st); R.pick[st.id] = 1; m.remove(); draw();
       }; }); };
       bindPick();
-      m.querySelector('#sqs').onclick = function () { var qv = m.querySelector('#sq').value.trim(); var r = S.inv.filter(function (q) { return (q.kind === 'card' || q.kind === 'psa') && q.id !== a.id && q.stock - usedN(q.id) > 0 && (!qv || q.name.indexOf(qv) >= 0); }).slice(0, 40); m.querySelector('#sqr').innerHTML = candHTML(r, -1); bindPick(); };
+      m.querySelector('#sqs').onclick = function () { var qv = m.querySelector('#sq').value.trim(); var r = (qv ? searchPool() : S.inv).filter(function (q) { return (qv || q.kind === 'card' || q.kind === 'psa') && q.kind !== 'filler' && q.id !== a.id && q.stock - usedN(q.id) > 0 && (!qv || q.name.indexOf(qv) >= 0); }).slice(0, 40); m.querySelector('#sqr').innerHTML = candHTML(r, -1); bindPick(); };
     }
     function draw() {
       autoFill();
@@ -1885,7 +1896,7 @@
         var q = $('#rq').value.trim(); // 空欄なら在庫すべて（出た当たりと同じ種類を先に、原価が近い順）
         var t = target / Math.max(drawn.length, 1), dk = drawn[0] && drawn[0].kind;
         var sameK = function (p) { return dk === 'box' ? p.kind === 'box' : dk === 'pack' ? p.kind === 'pack' : (p.kind === 'card' || p.kind === 'psa'); };
-        var r = S.inv.filter(function (p) { return p.kind !== 'filler' && p.stock > 0 && (!q || p.name.indexOf(q) >= 0); }).sort(function (x, y) { return (sameK(y) ? 1 : 0) - (sameK(x) ? 1 : 0) || Math.abs(Math.log(Math.max(x.cost, 1) / Math.max(t, 1))) - Math.abs(Math.log(Math.max(y.cost, 1) / Math.max(t, 1))); }).slice(0, q ? 40 : 60);
+        var r = (q ? searchPool() : S.inv).filter(function (p) { return p.kind !== 'filler' && p.stock > 0 && (!q || p.name.indexOf(q) >= 0); }).sort(function (x, y) { return (sameK(y) ? 1 : 0) - (sameK(x) ? 1 : 0) || Math.abs(Math.log(Math.max(x.cost, 1) / Math.max(t, 1))) - Math.abs(Math.log(Math.max(y.cost, 1) / Math.max(t, 1))); }).slice(0, q ? 40 : 60);
         $('#rqr').innerHTML = '<div class="sm">押すと補充に入ります（' + (q ? '「' + esc(q) + '」で' : '在庫すべてから') + '・同じ種類を先に、原価が近い順・' + r.length + '件）</div>' + candHTML(r, -1);
         $('#rqr').querySelectorAll('[data-pick]').forEach(function (b) { b.onclick = function () { var p = S.inv.find(function (x) { return x.id === Number(b.dataset.pick); }); if (!p) return; if (R.cands.indexOf(p) < 0) { R.cands.push(p); R.extra.push(p); } R.pick[p.id] = (R.pick[p.id] || 0) + 1; draw(); }; });
       };
