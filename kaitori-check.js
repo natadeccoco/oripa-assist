@@ -6,7 +6,7 @@
   if (location.hostname !== 'pos.mycalinks.com') { alert('マイカ（pos.mycalinks.com）を開いてから押してください'); return; }
   var old = document.getElementById('ndk-kaitori-host'); if (old) old.remove();
 
-  var VERSION = '2026-11-02 版Z';
+  var VERSION = '2026-11-03 版AA';
   var GAS = 'https://script.google.com/macros/s/AKfycbwXHuu-X3L0qzJhvaszEIm-1xdeNIqJACQ0uM7mz5Q0hvwfdF9IuQiTKr3qmscNVmnhcQ/exec';
   var FB_URL = 'https://script.google.com/macros/s/AKfycbwl-ZCZ1LyefvSzEGkBEpTFTuFyvW0p-AYye6jBWaLP9t7-bC9_Owfeh4jKScNkFys6Fw/exec';
   var SHORT = { 322: '柏', 323: '津田沼', 324: '松戸', 325: '横浜', 326: '中野', 327: '町田', 328: '千葉中央', 390: '通販', 409: 'お台場' };
@@ -78,6 +78,7 @@
     '.acts{display:flex;gap:10px;flex-wrap:wrap;margin:14px 0}' +
     'button.b{all:unset;cursor:pointer;font-weight:800;font-size:14px;padding:10px 18px;border-radius:10px;background:#1d1d22;color:#fff;text-align:center}' +
     'button.b.r{background:#c8102e}button.b.g{background:#fff;color:#1d1d22;border:1.5px solid #d6d2c8}button.b.s{font-size:12px;padding:6px 12px}' +
+    'button.b.bl{background:#2563eb;font-size:15px;padding:12px 20px}.optreq{flex:1 1 100%;display:flex;flex-wrap:wrap;gap:12px;align-items:center;background:#eff6ff;border:2px solid #2563eb;border-radius:12px;padding:12px 14px}.optreq .ot{flex:1 1 320px;display:flex;flex-direction:column;gap:4px;font-size:13px;color:#1e3a8a}.optreq .ot b{font-size:16px}' +
     'button.b[disabled]{opacity:.45;cursor:default}' +
     '.md{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:5}' +
     '.mbox{background:#fff;border-radius:14px;padding:18px 20px;width:min(640px,94vw);max-height:90vh;overflow:auto}' +
@@ -451,7 +452,7 @@
       (mustConf ? '' : fin) +
       '<div class="acts">' +
       (mustConf ? '<button class="b" id="conf">警告を見直しました</button>' : '') +
-      (ri && ri.status !== '差し戻し' ? '' : S.syncing ? '<button class="b g" disabled>本部の記録を確認中…</button>' : need ? '<button class="b r" id="req"' + (mustConf || !ck ? ' disabled title="先に最終チェックをしてください"' : '') + '>本部に承認を依頼する</button>' : (ck ? '<button class="b g" id="req">本部に承認を依頼（任意：古いカードで不安な時など）</button>' : '')) + '</div>' +
+      (ri && ri.status !== '差し戻し' ? '' : S.syncing ? '<button class="b g" disabled>本部の記録を確認中…</button>' : need ? '<button class="b r" id="req"' + (mustConf || !ck ? ' disabled title="先に最終チェックをしてください"' : '') + '>本部に承認を依頼する</button>' : (ck ? '<div class="optreq"><div class="ot"><b>🙋 迷ったら本部に聞けます</b><span>承認は不要な金額ですが、古いカード・高いカード・状態の判断に自信がないときは、本部に確認してから買い取ってください</span></div><button class="b bl" id="req">本部に承認を依頼する（任意）</button></div>' : '')) + '</div>' +
       (mustConf ? '<div class="sub" style="margin:-6px 0 10px">警告はあなた（査定した人）への確認です。マイカの明細を見直して、直したら「更新」、問題なければ「警告を見直しました」を押してください。' + 'そのあと最終チェックをします。' + '</div>' : '') +
       (mustConf ? fin : '') +
       '<table><tr><th></th><th class="l">商品</th><th>数</th><th>入力単価</th><th>買取表</th><th>買取表比</th><th>小計</th></tr>' + rows + '</table>' +
