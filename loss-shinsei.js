@@ -7,7 +7,9 @@
   if (location.hostname !== 'pos.mycalinks.com') { alert('マイカ（pos.mycalinks.com）を開いてから押してください'); return; }
   var old = document.getElementById('ndk-loss-host'); if (old) old.remove();
 
-  var VERSION = '2026-10-30 版B';
+  var VERSION = '2026-11-03 版C';
+  // 全店共通のロス区分（本部で統一 2026-11-03）。マイカの区分をこの順に並べる
+  var GENRES = ['破損・汚れ（販売不可）', '買取ミス（数・金額・真贋）', 'オリパ作成・数合わせ・解体', '大会・イベント景品', 'プレゼント・配信企画', 'ネット販売用（BASE・TikTokなど）', '店舗備品として使用', '在庫数の不一致（原因不明）', 'その他（理由に詳しく）'];
   var GAS = 'https://script.google.com/macros/s/AKfycbwXHuu-X3L0qzJhvaszEIm-1xdeNIqJACQ0uM7mz5Q0hvwfdF9IuQiTKr3qmscNVmnhcQ/exec';
   var FB_URL = 'https://script.google.com/macros/s/AKfycbwl-ZCZ1LyefvSzEGkBEpTFTuFyvW0p-AYye6jBWaLP9t7-bC9_Owfeh4jKScNkFys6Fw/exec';
   var SHORT = { 322: '柏', 323: '津田沼', 324: '松戸', 325: '横浜', 326: '中野', 327: '町田', 328: '千葉中央', 390: '通販', 409: 'お台場' };
@@ -122,6 +124,9 @@
 
   async function loadGenres() {
     try { S.genres = ((await api('/api/store/' + S.sid + '/loss/genre')) || []).filter(function (g) { return !g.is_deleted && g.display_name; }); } catch (e) { S.genres = []; }
+    var ord = function (g) { var i = GENRES.indexOf(g.display_name); return i < 0 ? 99 : i; };
+    S.genres.sort(function (a, b) { return ord(a) - ord(b); });
+    if (!S.genres.length) S.genres = GENRES.map(function (n) { return { display_name: n }; });
     $('#genre').innerHTML = '<option value="">（選んでください）</option>' + S.genres.map(function (g) { return '<option>' + esc(g.display_name) + '</option>'; }).join('');
   }
 
