@@ -6,12 +6,12 @@
   if (location.hostname !== 'pos.mycalinks.com') { alert('マイカ（pos.mycalinks.com）を開いてから押してください'); return; }
   var old = document.getElementById('ndk-kaitori-host'); if (old) old.remove();
 
-  var VERSION = '2026-11-03 版AB';
+  var VERSION = '2026-11-03 版AC';
   var GAS = 'https://script.google.com/macros/s/AKfycbwXHuu-X3L0qzJhvaszEIm-1xdeNIqJACQ0uM7mz5Q0hvwfdF9IuQiTKr3qmscNVmnhcQ/exec';
   var FB_URL = 'https://script.google.com/macros/s/AKfycbwl-ZCZ1LyefvSzEGkBEpTFTuFyvW0p-AYye6jBWaLP9t7-bC9_Owfeh4jKScNkFys6Fw/exec';
   var SHORT = { 322: '柏', 323: '津田沼', 324: '松戸', 325: '横浜', 326: '中野', 327: '町田', 328: '千葉中央', 390: '通販', 409: 'お台場' };
   // 判定ルール（本部の基準 2026-10-28）
-  var RULE = { high: 1.1, psaLow: 0.85, boxLow: 0.6, hanyo: 10000, sameCard: 3, sameCardMin: 1000, near: 0.05 };
+  var RULE = { high: 1.1, psaLow: 0.85, boxLow: 0.6, hanyo: 10000, sameCard: 2, sameCardMin: 1000, near: 0.05 };
   // 状態ごとの買取表に対する上限（A- 90%／B 50%／C 20%／D 5%）。これの1.1倍以上なら⚠️
   var GRADE = { 'A-': 0.9, 'B': 0.5, 'C': 0.2, 'D': 0.05 };
 
@@ -258,7 +258,8 @@
     }
     if (m.ref && m.isPsa && unit < m.ref * RULE.psaLow) f.push({ lv: 'yel', t: 'PSAが買取表の' + Math.round(unit / m.ref * 100) + '%です。減額が大きすぎないかご確認ください', d: label + '　買取表 ' + yen(m.ref) + ' → 入力 ' + yen(unit) });
     if (m.ref && m.isBox && unit < m.ref * RULE.boxLow) f.push({ lv: 'yel', t: 'BOXが買取表の' + Math.round(unit / m.ref * 100) + '%です。減額が大きすぎないかご確認ください', d: label + '　買取表 ' + yen(m.ref) + ' → 入力 ' + yen(unit) });
-    if (!m.hanyo && cnt >= RULE.sameCard) f.push({ lv: 'yel', t: (m.isBox ? '同じBOXが' + cnt + '個です。個数' : '同じカードが' + cnt + '枚です。枚数') + 'をご確認ください', d: label + ' × ' + cnt + '（' + yen(unit) + ' × ' + cnt + ' ＝ ' + yen(unit * cnt) + '）' });
+    if (!m.hanyo && cnt >= RULE.sameCard) f.push({ k: 'same', lv: 'yel', t: (m.isBox ? '同じBOXが' + cnt + '個です。個数' : '同じカードが' + cnt + '枚です。枚数') + 'をご確認ください', d: label + ' × ' + cnt + '（' + yen(unit) + ' × ' + cnt + ' ＝ ' + yen(unit * cnt) + '）' });
+    m.ckey = m.hanyo ? '' : (N(c.product__item__cardnumber) || '') + '|' + baseName(c.product_name || m.dn);
     m.flags = f; m.unitIn = unit; m.cntIn = cnt; m.pid = c.product_id; gradeFlag(m); return m;
   }
   // 状態（ギズランク）に対して高すぎないか：状態は商品名の《》か、あとから読む商品情報で分かる
@@ -301,7 +302,7 @@
       S.list = all;
       var ago = function (t) { var d = Math.ceil((S.today0 - tm(t)) / 864e5); return tm(t) >= S.today0 ? '' : '<b style="color:#c2410c">' + (d <= 1 ? '昨日' : d + '日前') + '</b> '; };
       var row = function (t) {
-        var w = 0, red = 0; (t.transaction_carts || []).forEach(function (c) { var j = judge(c); j.flags.forEach(function (x) { w++; if (x.lv === 'red') red++; }); });
+        var w = 0, red = 0; multiFlag((t.transaction_carts || []).map(judge)).forEach(function (j) { j.flags.forEach(function (x) { w++; if (x.lv === 'red') red++; }); });
         var ap = approvalLine(), need = (t.total_price || 0) >= ap.line;
         return '<div class="tx" data-id="' + t.id + '"><div class="g"><b>受付 ' + esc(t.reception_number || '') + '</b>' +
           (t.status !== 'draft' ? '<span class="pill gr">完了</span>' : unassessed(t) ? '<span class="pill blue">未査定</span>' : '<span class="pill blue">査定完了・未会計</span>') +
@@ -323,7 +324,7 @@
     var t = S.list.find(function (x) { return x.id === id; });
     if (!t) { await loadList(); t = S.list.find(function (x) { return x.id === id; }); if (!t) return; }
     S.tx = t; S.cust = ''; S.syncing = true; S.pick = ''; S.staff = '';
-    S.lines = (t.transaction_carts || []).map(judge);
+    S.lines = multiFlag((t.transaction_carts || []).map(judge));
     renderDetail();
     loadImages(t);
     S.snkP = snkFetch(t);
@@ -363,8 +364,8 @@
         S.old[c.product_id] = /旧裏|[eｅ]カード|カード[eｅ]|^[eｅ]$|PCG|ADV|^DP/i.test(String(it.option3 || '')) || /旧裏/.test(String(it.search_keyword || '')) || (y > 0 && y < 2011); }).catch(function () { });
     })); }
     if (S.tx !== t) return;
-    if (noModel.some(function (c) { return S.old[c.product_id]; })) S.lines = (t.transaction_carts || []).map(judge);
-    S.lines.forEach(function (m, i) { var x = map[(t.transaction_carts[i] || {}).product_id] || {}; m.img = x.img || ''; if (!m.cond && x.cond) m.cond = x.cond; gradeFlag(m); }); S.condTx = t.id;
+    if (noModel.some(function (c) { return S.old[c.product_id]; })) S.lines = multiFlag((t.transaction_carts || []).map(judge));
+    S.lines.forEach(function (m, i) { var x = map[(t.transaction_carts[i] || {}).product_id] || {}; m.img = x.img || ''; if (!m.cond && x.cond) m.cond = x.cond; gradeFlag(m); }); multiFlag(S.lines); S.condTx = t.id;
     renderDetail();
   }
   // 差し戻し：本部の指示（カードごと）を今のマイカの明細と照らし合わせる
@@ -511,6 +512,21 @@
   }
 
   // 画像のない汎用（トレーナーズ）は、カードの形に「@20」を描いた代わりの画像
+  // 同じカード（同じ型番・名前）が状態違い・別の行に分かれていても、合計2枚以上なら警告（トレーナーズ【@】は除く）
+  function multiFlag(lines) {
+    var g = {};
+    lines.forEach(function (m) { m.flags = m.flags.filter(function (x) { return x.k !== 'multi'; }); if (m.ckey) (g[m.ckey] = g[m.ckey] || []).push(m); });
+    Object.keys(g).forEach(function (k) {
+      var ls = g[k]; if (ls.length < 2) return;
+      var tot = ls.reduce(function (s, m) { return s + m.cnt; }, 0);
+      var det = ls.map(function (m) { return (m.cond ? String(m.cond).replace(/状態/, '') : '状態なし') + '×' + m.cnt; }).join('・');
+      ls.forEach(function (m) {
+        m.flags = m.flags.filter(function (x) { return x.k !== 'same'; });
+        m.flags.push({ k: 'multi', lv: 'yel', t: '同じカードが' + ls.length + '行に分かれて合計' + tot + '枚あります（' + det + '）。枚数・状態をご確認ください', d: m.dn.replace(/《[^》]*》/g, '') + '　' + det + '　合計 ' + tot + '枚' });
+      });
+    });
+    return lines;
+  }
   // 状態の札（色分け）。状態をマイカから読み終わっても入っていないカードは「状態なし」
   function condBadge(m) {
     if (m.hanyo) return '';
