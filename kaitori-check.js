@@ -6,7 +6,7 @@
   if (location.hostname !== 'pos.mycalinks.com') { alert('マイカ（pos.mycalinks.com）を開いてから押してください'); return; }
   var old = document.getElementById('ndk-kaitori-host'); if (old) old.remove();
 
-  var VERSION = '2026-11-03 版AA';
+  var VERSION = '2026-11-03 版AB';
   var GAS = 'https://script.google.com/macros/s/AKfycbwXHuu-X3L0qzJhvaszEIm-1xdeNIqJACQ0uM7mz5Q0hvwfdF9IuQiTKr3qmscNVmnhcQ/exec';
   var FB_URL = 'https://script.google.com/macros/s/AKfycbwl-ZCZ1LyefvSzEGkBEpTFTuFyvW0p-AYye6jBWaLP9t7-bC9_Owfeh4jKScNkFys6Fw/exec';
   var SHORT = { 322: '柏', 323: '津田沼', 324: '松戸', 325: '横浜', 326: '中野', 327: '町田', 328: '千葉中央', 390: '通販', 409: 'お台場' };
@@ -71,6 +71,8 @@
     'td.cnt{font-size:20px;font-weight:900}td.cnt.many{color:#c8102e}' +
     'td.th{width:58px;padding:5px 4px 5px 8px}td.th img{width:48px;height:66px;object-fit:contain;border-radius:4px;background:#f2f0ea;display:block}td.th .noimg{display:block;width:48px;height:66px;border-radius:4px;background:#f2f0ea}' +
     '.pill.cond{background:#1d1d22;color:#fff}' +
+    '.cb{display:inline-block;font-size:13px;font-weight:900;padding:2px 9px;border-radius:7px;margin-left:8px;border:2px solid;white-space:nowrap;vertical-align:1px}.cb-a{background:#dcfce7;color:#166534;border-color:#16a34a}.cb-am{background:#e0f2fe;color:#075985;border-color:#0284c7}.cb-b{background:#fef9c3;color:#854d0e;border-color:#ca8a04}.cb-c{background:#ffedd5;color:#9a3412;border-color:#ea580c}.cb-d{background:#fee2e2;color:#991b1b;border-color:#dc2626}.cb-u{background:#f3e8ff;color:#6b21a8;border-color:#9333ea}.cb-x{background:#f3f4f6;color:#374151;border-color:#9ca3af}.cb-n{background:#fff;color:#dc2626;border-color:#dc2626;border-style:dashed}' +
+    '.chk{margin:4px 0 8px;max-height:46vh;overflow:auto;border:1px solid #eee;border-radius:10px}.chk table{width:100%;border-collapse:collapse}.chk td{padding:6px;border-bottom:1px solid #f0eee8;font-size:13px}.chk td.c{text-align:center}.chk td.r{text-align:right;white-space:nowrap}.chk .n{font-weight:800}.chk .q{font-size:18px;font-weight:900;text-align:center}.chk .q.m{color:#c8102e}' +
     '.trn{display:flex;flex-direction:column;align-items:center;justify-content:center;width:48px;height:66px;border-radius:5px;background:linear-gradient(160deg,#2e7d4f,#14532d);color:#fff;border:2px solid #e8c23a;line-height:1.1}.trn small{font-size:7.5px;font-weight:700;letter-spacing:.02em}.trn b{font-size:15px;font-weight:900;margin-top:3px}' +
     'tr.red td{background:#fff0f2}tr.yel td{background:#fffbe6}' +
     'td .f{display:block;font-size:12px;font-weight:700;white-space:normal;text-align:left;margin-top:3px}td .f.red{color:#c8102e}td .f.yel{color:#8a6100}' +
@@ -362,7 +364,7 @@
     })); }
     if (S.tx !== t) return;
     if (noModel.some(function (c) { return S.old[c.product_id]; })) S.lines = (t.transaction_carts || []).map(judge);
-    S.lines.forEach(function (m, i) { var x = map[(t.transaction_carts[i] || {}).product_id] || {}; m.img = x.img || ''; if (!m.cond && x.cond) m.cond = x.cond; gradeFlag(m); });
+    S.lines.forEach(function (m, i) { var x = map[(t.transaction_carts[i] || {}).product_id] || {}; m.img = x.img || ''; if (!m.cond && x.cond) m.cond = x.cond; gradeFlag(m); }); S.condTx = t.id;
     renderDetail();
   }
   // 差し戻し：本部の指示（カードごと）を今のマイカの明細と照らし合わせる
@@ -433,7 +435,7 @@
       var lv = m.flags.some(function (f) { return f.lv === 'red'; }) ? 'red' : m.flags.length ? 'yel' : '';
       var fbi = fbm.byLine[li];
       var ref = m.ref ? yen(m.ref) + '<div class="sub">' + esc((m.refs[0] || {}).r ? m.refs[0].r.t : '') + '</div>' : '<span class="sub">' + esc(m.note || (m.hanyo ? '汎用' : '買取表になし')) + '</span>';
-      return '<tr class="' + lv + (fbi ? ' fbrow' : '') + '"><td class="th">' + thumb(m) + '</td><td class="l nm"><b>' + esc(m.dn) + '</b>' + (m.cond ? ' <span class="pill cond">' + esc(m.cond) + '</span>' : '') +
+      return '<tr class="' + lv + (fbi ? ' fbrow' : '') + '"><td class="th">' + thumb(m) + '</td><td class="l nm"><b>' + esc(m.dn) + '</b>' + condBadge(m) +
         (fbi ? '<span class="f fbx">' + (fbi.ok ? '✅' : '↩️') + ' 本部の指示' + (fbi.no ? '（' + fbi.no + '）' : '') + '：' + esc(fbi.text) + '</span>' : '') +
         m.flags.map(function (f) { return '<span class="f ' + f.lv + '">' + (f.lv === 'red' ? '🚨 ' : '⚠️ ') + esc(f.t) + '</span>'; }).join('') + '</td>' +
         '<td class="cnt' + (m.cnt >= 2 ? ' many' : '') + '">×' + m.cnt + '</td><td><b>' + yen(m.unit) + '</b></td><td>' + ref + '</td>' +
@@ -470,7 +472,7 @@
     if (!list.length || S.countOk === (S.tx && S.tx.id)) { next(); return; }
     var m = document.createElement('div'); m.className = 'md';
     m.innerHTML = '<div class="mbox"><div class="mh">枚数はあっていますか？</div><div class="sub" style="margin-bottom:8px">2枚（2個）以上の商品です。実物の枚数とマイカの数をもう一度数えてください。</div>' +
-      '<table>' + list.map(function (q) { return '<tr><td class="th">' + thumb(q) + '</td><td class="l nm"><b>' + esc(q.dn) + '</b>' + (q.cond ? ' <span class="pill cond">' + esc(q.cond) + '</span>' : '') + '<div class="sub">' + yen(q.unit) + ' × ' + q.cnt + ' ＝ ' + yen(q.unit * q.cnt) + '</div></td><td class="cnt many" style="font-size:30px">×' + q.cnt + '</td></tr>'; }).join('') + '</table>' +
+      '<table>' + list.map(function (q) { return '<tr><td class="th">' + thumb(q) + '</td><td class="l nm"><b>' + esc(q.dn) + '</b>' + condBadge(q) + '<div class="sub">' + yen(q.unit) + ' × ' + q.cnt + ' ＝ ' + yen(q.unit * q.cnt) + '</div></td><td class="cnt many" style="font-size:30px">×' + q.cnt + '</td></tr>'; }).join('') + '</table>' +
       '<div class="acts" style="justify-content:flex-end"><button class="b g" id="x">ちがう（マイカを直す）</button><button class="b r" id="ok">枚数はあっています</button></div></div>';
     R.querySelector('.win').appendChild(m);
     m.querySelector('#x').onclick = function () { m.remove(); };
@@ -483,9 +485,11 @@
     var flags = []; S.lines.forEach(function (q) { flags = flags.concat(q.flags); });
     var red = flags.filter(function (f) { return f.lv === 'red'; }).length, pts = S.lines.reduce(function (s, q) { return s + q.cnt; }, 0);
     var m = document.createElement('div'); m.className = 'md';
-    m.innerHTML = '<div class="mbox"><div class="mh">確認しましたか？</div>' +
-      '<div style="font-size:15px;line-height:1.9;margin:6px 0 12px">受付 ' + esc(t.reception_number || '') + '　<b>' + yen(t.total_price) + '</b>（' + S.lines.length + '行・' + pts + '点）<br>' +
-      '・商品と状態（A・B・Cなど）は合っていますか？<br>・枚数は実物と合っていますか？<br>・単価の桁、見た買取表の行は合っていますか？' +
+    var rowsH = S.lines.map(function (q) { return '<tr><td class="th">' + thumb(q) + '</td><td class="n">' + esc(q.dn.replace(/《[^》]*》/g, '')) + '</td><td class="c">' + condBadge(q) + '</td><td class="q' + (q.cnt > 1 ? ' m' : '') + '">×' + q.cnt + '</td><td class="r">' + yen(q.unit) + '</td></tr>'; }).join('');
+    m.innerHTML = '<div class="mbox"><div class="mh">確認しましたか？　実物と見比べてください</div>' +
+      '<div style="font-size:14px;margin:2px 0 6px">受付 ' + esc(t.reception_number || '') + '　<b>' + yen(t.total_price) + '</b>（' + S.lines.length + '行・' + pts + '点）</div>' +
+      '<div class="chk"><table>' + rowsH + '</table></div>' +
+      '<div style="font-size:14px;line-height:1.8;margin:6px 0 12px">・上の<b>状態</b>と<b>枚数</b>は実物と合っていますか？<br>・単価の桁、見た買取表の行は合っていますか？' +
       (flags.length ? '<br>・警告 ' + flags.length + '件（🚨' + red + '）は見直しましたか？' : '') + '</div>' +
       '<div class="sub">査定した人：<b>' + esc(name) + '</b>　この確認は本部に記録されます。</div><div class="err" id="er"></div>' +
       '<div class="acts" style="justify-content:flex-end"><button class="b g" id="x">いいえ（見直す）</button><button class="b r" id="ok">はい、確認しました</button></div></div>';
@@ -507,6 +511,16 @@
   }
 
   // 画像のない汎用（トレーナーズ）は、カードの形に「@20」を描いた代わりの画像
+  // 状態の札（色分け）。状態をマイカから読み終わっても入っていないカードは「状態なし」
+  function condBadge(m) {
+    if (m.hanyo) return '';
+    var c = String(m.cond || '').normalize('NFKC').trim();
+    if (!c) return (!m.isPsa && !m.isBox && S.tx && S.condTx === S.tx.id) ? '<span class="cb cb-n">状態なし</span>' : '';
+    var g = c.replace(/[−ー‐]/g, '-').replace(/状態|ランク|\s/g, ''), k = 'x', lb = c;
+    if (/未開封/.test(c)) { k = 'u'; lb = '未開封'; }
+    else { var mm = g.match(/^([A-D])(-)?/); if (mm) { k = mm[2] ? 'am' : mm[1].toLowerCase(); lb = mm[1] + (mm[2] || ''); } }
+    return '<span class="cb cb-' + k + '">' + esc(lb) + '</span>';
+  }
   function thumb(m) {
     if (m.img) return '<img src="' + esc(m.img) + '" loading="lazy">';
     if (m.hanyo) return '<span class="trn"><small>トレーナーズ</small><b>' + (m.at != null ? '@' + m.at : '汎用') + '</b></span>';
