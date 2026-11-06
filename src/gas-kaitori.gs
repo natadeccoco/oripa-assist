@@ -10,7 +10,7 @@
  */
 var KAITORI_SHEET_ID = '1gtUjjGDQvFAE2PR_QDe343wFHS48PbqcHuuLTmT-4YQ'; // ナタデココ買取表(MM/DD)
 var K_SKIP_TABS = /バックアップ|^シート\d+$|最低保証|テスト中/; // 「（テスト中）」のタブ（旧裏・eカード・その他旧弾）は本番で使うまで読まない
-var K_COLS = ['依頼番号', '日時', '種類', '店舗', '依頼者', 'お客様', '買取合計', '承認ライン', '警告数', '内容', '警告', 'コメント', '状態', '判断した人', '判断日時', 'マイカ取引ID', '担当スタッフ', '明細データ', '差し戻し内容', '差し戻しキー'];
+var K_COLS = ['依頼番号', '日時', '種類', '店舗', '依頼者', 'お客様', '買取合計', '承認ライン', '警告数', '内容', '警告', 'コメント', '状態', '判断した人', '判断日時', 'マイカ取引ID', '担当スタッフ', '明細データ', '差し戻し内容', '差し戻しキー', '受付番号'];
 var K_DEFAULT_LINE = 50000;
 
 function kBook() { return SpreadsheetApp.openById(prop('SHEET_ID')); }
@@ -18,6 +18,7 @@ function kSheet() {
   var ss = kBook(), sh = ss.getSheetByName('買取');
   if (!sh) { sh = ss.insertSheet('買取'); sh.appendRow(K_COLS); sh.setFrozenRows(1); }
   if (sh.getRange(1, 18).getValue() !== K_COLS[17]) sh.getRange(1, 18, 1, 3).setValues([K_COLS.slice(17, 20)]); // 差し戻し用の列（あとから追加）
+  if (sh.getRange(1, 21).getValue() !== K_COLS[20]) sh.getRange(1, 21).setValue(K_COLS[20]); // 受付番号（あとから追加）
   return sh;
 }
 function kSettingSheet() {
@@ -135,12 +136,13 @@ function kaitoriPost(d) {
     }
     id = (approval ? 'K' : 'C') + Utilities.formatDate(new Date(), 'Asia/Tokyo', 'MMdd-HHmmss') + '-' + Math.floor(Math.random() * 90 + 10);
     kSheet().appendRow([id, new Date(), approval ? '承認依頼' : '警告の確認', d.store, d.requester, d.customer || '', Number(d.total) || 0, Number(d.line) || '', Number(d.warnCount) || 0,
-      String(d.text || '').slice(0, 45000), String(d.warnText || '').slice(0, 45000), d.comment || '', approval ? '承認待ち' : '確認済み', approval ? '' : d.requester, approval ? '' : new Date(), d.txId || '', d.staff || '', approval ? kLinesJson(d.lines) : '', '', '']);
+      String(d.text || '').slice(0, 45000), String(d.warnText || '').slice(0, 45000), d.comment || '', approval ? '承認待ち' : '確認済み', approval ? '' : d.requester, approval ? '' : new Date(), d.txId || '', d.staff || '', approval ? kLinesJson(d.lines) : '', '', '', d.reception || '']);
   } finally { lock.releaseLock(); }
   if (!approval) return json({ ok: true, id: id }); // 警告の確認は査定者向け：記録だけ残し、グループには送らない
   try { kLogLines(id, d); } catch (e) { console.error('査定ログ: ' + e); }
   var yen = function (n) { return Number(n || 0).toLocaleString() + '円'; };
-  var head = '【買取承認依頼】' + d.store + '店　依頼者：' + d.requester + '\n' + (d.customer ? d.customer + ' 様　' : '') + yen(d.total) + (d.reason ? '（' + d.reason + '）' : '') + '\n依頼番号：' + id;
+  var label = kLabelOf(d.store, d.reception, d.customer, d.total, d.lines, d.requester);
+  var head = '【買取承認依頼】' + label + (d.reason ? '\n理由：' + d.reason : '') + '\n依頼番号：' + id;
   var imgErr = '';
   var snk = ''; try { snk = kSnkrText(d.lines); } catch (e) { console.error('スニダン: ' + e); }
   send(ch, { type: 'text', text: (head + (d.comment ? '\nコメント：' + d.comment : '') + snk).slice(0, 1990) });
@@ -158,10 +160,31 @@ function kaitoriPost(d) {
   (d.images || []).slice(0, 10).forEach(function (b64, i) {
     try { send(ch, { type: 'image', fileId: uploadImage(b64, 'kaitori_' + id + '_photo' + (i + 1) + '.jpg') }); } catch (e) { imgErr = String(e.message || e); console.error(imgErr); }
   });
-  send(ch, { type: 'button_template', contentText: '依頼番号 ' + id + '（' + d.store + '店・' + yen(d.total) + '）の買取を承認しますか？',
+  send(ch, { type: 'button_template', contentText: ('📝 ' + label + '\nこの買取を承認しますか？（依頼番号 ' + id + '）').slice(0, 900),
     actions: [{ type: 'message', label: '承認する', text: '承認する（' + id + '）', postback: 'kapprove:' + id },
               { type: 'message', label: '差し戻す', text: '差し戻す（' + id + '）', postback: 'kreject:' + id }] });
   return json({ ok: true, id: id, imageErr: imgErr });
+}
+
+/* ---------- 役員が見分けやすいように：依頼を「店・受付番号・お客様・金額・いちばん高いカード・査定者」で書く ---------- */
+function kYen(n) { return Number(n || 0).toLocaleString() + '円'; }
+function kTopCard(lines) {
+  var ls = lines || [], top = null, pts = 0;
+  ls.forEach(function (q) { pts += Number(q.cnt) || 0; if (!top || (Number(q.unit) || 0) * (Number(q.cnt) || 0) > (Number(top.unit) || 0) * (Number(top.cnt) || 0)) top = q; });
+  if (!top) return '';
+  var nm = String(top.n || '').replace(/《(PSA\s*\d+)》/i, '$1 ').replace(/《[^》]*》/g, '').trim(); if (nm.length > 30) nm = nm.slice(0, 30) + '…';
+  var rest = pts - (Number(top.cnt) || 0);
+  return nm + (Number(top.cnt) > 1 ? '×' + top.cnt : '') + (rest > 0 ? ' ほか' + rest + '点' : '');
+}
+function kLabelOf(store, rec, cust, total, lines, staff) {
+  return [store + '店' + (rec ? ' 受付' + rec : ''), cust ? cust + ' 様' : '', kYen(total), kTopCard(lines)].filter(String).join('／') + (staff ? '（査定：' + staff + '）' : '');
+}
+function kLabel(v) { return kLabelOf(v[3], v[20], v[5], v[6], kParse(v[17]) || [], v[16] || v[4]); }
+function kShort(v) { return [(v[20] ? '受付' + v[20] : ''), v[5] ? v[5] + ' 様' : '', kYen(v[6]), kTopCard(kParse(v[17]) || [])].filter(String).join('　'); }
+function kPendingText(store) { // その店の残りの承認待ち（直近7日）
+  var vs = kSheet().getDataRange().getValues(), lim = Date.now() - 7 * 864e5, out = [];
+  for (var i = 1; i < vs.length; i++) { var v = vs[i]; if (v[2] === '承認依頼' && v[3] === store && v[12] === '承認待ち' && new Date(v[1]).getTime() >= lim) out.push('・' + kShort(v)); }
+  return out.length ? '⏳ ' + store + '店の承認待ち あと' + out.length + '件\n' + out.join('\n') : '（' + store + '店の承認待ちはありません）';
 }
 
 function kCancel(p) { // 承認待ちの依頼を店舗で取り消す。承認・差し戻し済みなら今の状態を返すだけ
@@ -173,7 +196,7 @@ function kCancel(p) { // 承認待ちの依頼を店舗で取り消す。承認�
     if (v[12] !== '承認待ち') return { ok: true, id: v[0], status: v[12], by: v[13] || '' };
     kSheet().getRange(row.r, 13, 1, 3).setValues([['取り消し', '店舗で取り消し', new Date()]]);
     var ch = v[3] === 'テスト' ? P.getProperty('K_WARN_CHANNEL') : CH[v[3]];
-    if (ch) try { send(ch, { type: 'text', text: '🗑 依頼番号 ' + v[0] + '（' + v[3] + '店・' + Number(v[6] || 0).toLocaleString() + '円）は、店舗で取り消しました。\nこの依頼の「承認する／差し戻す」は押さなくて大丈夫です（押しても反映されません）。直した内容で、あらためて依頼が届きます。' }); } catch (e) { console.error('取り消しの連絡: ' + e); }
+    if (ch) try { send(ch, { type: 'text', text: ('🗑 店舗で取り消しました：' + kLabel(v) + '\nこの依頼の「承認する／差し戻す」は押さなくて大丈夫です（押しても反映されません）。直した内容で、あらためて依頼が届きます。（依頼番号 ' + v[0] + '）\n\n' + kPendingText(v[3])).slice(0, 1990) }); } catch (e) { console.error('取り消しの連絡: ' + e); }
     return { ok: true, id: v[0], status: '取り消し' };
   } finally { lock.releaseLock(); }
 }
@@ -187,26 +210,26 @@ function kaitoriCallback(ev, data) {
   try {
     var row = kFind(m[2]); if (!row) return;
     var name = userName(userId);
-    if (row.values[12] !== '承認待ち') { if (ch) send(ch, { type: 'text', text: '依頼番号 ' + m[2] + ' はすでに「' + row.values[12] + '」です（' + row.values[13] + '）。' }); return; }
+    if (row.values[12] !== '承認待ち') { if (ch) send(ch, { type: 'text', text: ('「' + kLabel(row.values) + '」はすでに「' + row.values[12] + '」です（' + row.values[13] + '・依頼番号 ' + m[2] + '）。\n\n' + kPendingText(row.values[3])).slice(0, 1990) }); return; }
     if (m[1] === 'reject') { // 差し戻し：押したグループに「差し戻し内容を書く」ボタンを出し、カードごとの指示を書いてもらう
       var old = String(row.values[19] || '').split('|'), key = old[0] && old[1] === userId ? old[0] : Utilities.getUuid().replace(/-/g, '').slice(0, 16);
       if (key !== old[0]) kSheet().getRange(row.r, 20).setValue(key + '|' + userId);
       var url = WEBAPP_URL + '?action=kreject&id=' + encodeURIComponent(m[2]) + '&k=' + key;
-      var msg = { type: 'button_template', contentText: '↩️ 依頼番号 ' + m[2] + '（' + row.values[3] + '店・' + Number(row.values[6] || 0).toLocaleString() + '円）を差し戻します。下のボタンから、どのカードをどうするか（価格・買取しない・状態・枚数）を書いてください。（' + name + '）',
+      var msg = { type: 'button_template', contentText: ('↩️ ' + kLabel(row.values) + ' を差し戻します。下のボタンから、どのカードをどうするか（価格・買取しない・状態・枚数）を書いてください。（' + name + '）').slice(0, 900),
         actions: [{ type: 'uri', label: '差し戻し内容を書く', uri: url }] };
       try { if (ch) send(ch, msg); else sendUser(userId, msg); }
       catch (e) { // ボタンを送れないときは、今までどおりすぐ差し戻す
         console.error('差し戻しボタン: ' + e);
         kSheet().getRange(row.r, 13, 1, 3).setValues([['差し戻し', name, new Date()]]);
-        if (ch) send(ch, { type: 'text', text: '↩️ 買取を差し戻しました（依頼番号 ' + m[2] + '・' + name + '）\n直してほしい点をこのトークで伝えてください。' });
+        if (ch) send(ch, { type: 'text', text: ('↩️ 差し戻しました：' + kLabel(row.values) + '（' + name + '）\n直してほしい点をこのトークで伝えてください。\n\n' + kPendingText(row.values[3])).slice(0, 1990) });
       }
       return;
     }
     var st = m[1] === 'approve' ? '承認' : '差し戻し';
     kSheet().getRange(row.r, 13, 1, 3).setValues([[st, name, new Date()]]);
     try { kSummary(); } catch (e) { console.error('査定集計: ' + e); }
-    if (ch) send(ch, { type: 'text', text: (st === '承認' ? '✅ 買取を承認しました' : '↩️ 買取を差し戻しました') + '（依頼番号 ' + m[2] + '・' + name + '）' +
-      (st === '承認' ? '' : '\n直してほしい点をこのトークで伝えてください。') });
+    if (ch) send(ch, { type: 'text', text: ((st === '承認' ? '✅ 承認しました：' : '↩️ 差し戻しました：') + kLabel(row.values) + '（' + name + '）' +
+      (st === '承認' ? '' : '\n直してほしい点をこのトークで伝えてください。') + '\n\n' + kPendingText(row.values[3])).slice(0, 1990) });
   } finally { lock.releaseLock(); }
 }
 
@@ -304,9 +327,9 @@ function kRejectSubmit(id, key, d) {
   try { kSummary(); } catch (e) { console.error('査定集計: ' + e); }
   var test = v[3] === 'テスト', ch = test ? P.getProperty('K_WARN_CHANNEL') : CH[v[3]], yen = function (n) { return Number(n || 0).toLocaleString() + '円'; }; // 店舗「テスト」は役員の買取警告グループに送る（見た目の確認用）
   var nums = '①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳';
-  var txt = (test ? '【テスト】' : '') + '↩️ 買取を差し戻しました（依頼番号 ' + id + '・' + name + '）\n' + v[3] + '店　' + (v[5] ? v[5] + ' 様　' : '') + yen(v[6]) + '\n' +
+  var txt = (test ? '【テスト】' : '') + '↩️ 差し戻しました：' + kLabel(v) + '（' + name + '・依頼番号 ' + id + '）\n' +
     (fb.items.length ? '\n' + fb.items.map(function (it, k) { return (nums[k] || '・') + ' ' + it.n + (it.cond ? '《' + it.cond + '》' : '') + '\n　' + kFbText(it, yen); }).join('\n') : '') +
-    (fb.comment ? '\n\nコメント：' + fb.comment : '') + '\n\nマイカを直したら、買取チェックで「更新」→ もう一度承認を依頼してください。';
+    (fb.comment ? '\n\nコメント：' + fb.comment : '') + '\n\nマイカを直したら、買取チェックで「更新」→ もう一度承認を依頼してください。\n\n' + kPendingText(v[3]);
   if (ch) {
     kSplit(txt).forEach(function (x) { send(ch, { type: 'text', text: x }); });
     if (d.image) try { send(ch, { type: 'image', fileId: uploadImage(d.image, 'kaitori_back_' + id + '.jpg') }); } catch (e) { console.error(e); }
