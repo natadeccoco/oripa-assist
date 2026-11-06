@@ -87,7 +87,7 @@ function kaitoriGet(p) {
     if (p.action === 'kstaff') return json(kStaff());
     if (p.action === 'ksnkr') { // 査定表の画像用：PSA10カードのスニダン直近の取引価格（最大6枚）
       var ns = JSON.parse(p.n || '[]').slice(0, 12);
-      return json({ ok: true, r: ns.map(function (n) { try { return kIsPsa10(n) ? kSnkrPsa10(n) : null; } catch (e) { return { price: 0, why: '取得できませんでした' }; } }) });
+      return json({ ok: true, r: ns.map(function (n) { try { return kIsPsa10(n) ? kSnkrPsa10(n) : null; } catch (e) { return { price: 0, err: 1, why: '取得失敗（スニダンが混んでいる等）' }; } }) });
     }
     if (p.action === 'kstatus' && p.tx) { // マイカの取引IDで、その買取の最新の承認依頼・警告の確認を返す（どのPCからでも同じ状態が見える）
       var vals = kSheet().getDataRange().getValues(), ap = null, cf = null;
@@ -385,34 +385,47 @@ draw();
 
 /* ---------- スニダン：PSA10の直近の売買価格（売買履歴ページのいちばん上） ---------- */
 function kIsPsa10(n) { return /PSA\s*10/i.test(String(n || '')); }
-function kSnkrModel(n) { // 商品名の（sv2a 203/165 SAR）から「sv2a」「203」「165」
-  var m = String(n || '').normalize('NFKC').match(/([A-Za-z][A-Za-z0-9\-]*)\s+(\d{1,3})\/(\d{1,3}|[A-Za-z\-]+)/);
+function kSnkrModel(n) { // 商品名の（sv2a 203/165 SAR）から「sv2a」「203」「165」。sm2+ のような記号入りも読む
+  var m = String(n || '').normalize('NFKC').match(/([A-Za-z][A-Za-z0-9\-\+]*)\s+(\d{1,3})\/(\d{1,3}|[A-Za-z\-]+)/);
   return m ? { set: m[1], no: m[2], tot: m[3] } : null;
 }
-function kSnkrFetch(u) {
-  var r = UrlFetchApp.fetch(u, { muteHttpExceptions: true, headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)', 'Accept-Language': 'ja' } });
-  if (r.getResponseCode() >= 300) throw new Error('スニダン ' + r.getResponseCode());
-  return r.getContentText();
+function kSnkrCardName(n) { // 「《PSA10》アセロラ（sm2+ 056/049 SR）」→「アセロラ」
+  return String(n || '').normalize('NFKC').replace(/《[^》]*》/g, '').replace(/[（(].*$/, '').trim();
+}
+function kSnkrFetch(u) { // 一時的なエラー（混雑など）は1回だけ取り直す。それでもだめならエラーにする（「見つからない」とは分ける）
+  for (var a = 0; a < 2; a++) {
+    var r = UrlFetchApp.fetch(u, { muteHttpExceptions: true, headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)', 'Accept-Language': 'ja' } });
+    var code = r.getResponseCode();
+    if (code < 300) return r.getContentText();
+    if (a === 0 && (code === 429 || code >= 500)) { Utilities.sleep(1200); continue; }
+    throw new Error('スニダン ' + code);
+  }
 }
 function kSnkrPsa10(n) {
   var md = kSnkrModel(n); if (!md) return { price: 0, why: '型番がわかりません' };
   var mir = /ミラー|mirror/i.test(String(n)); // ミラーかどうか（同じ型番でノーマルとミラーが別の商品になっている）
-  var key = 'snk5_' + (md.set + '_' + md.no + '_' + md.tot + (mir ? '_m' : '')).toLowerCase(), c = CacheService.getScriptCache(), hit = c.get(key);
+  var key = 'snk6_' + (md.set + '_' + md.no + '_' + md.tot + (mir ? '_m' : '')).toLowerCase(), c = CacheService.getScriptCache(), hit = c.get(key);
   if (hit) return JSON.parse(hit);
-  var html = kSnkrFetch('https://snkrdunk.com/search?keywords=' + encodeURIComponent(md.set + ' ' + md.no + '/' + md.tot));
-  var ids = [], re = /apparels\/(\d+)/g, mm; while ((mm = re.exec(html)) && ids.length < 6) if (ids.indexOf(mm[1]) < 0) ids.push(mm[1]);
   var no3 = ('00' + md.no).slice(-3), setN = md.set.replace(/-/g, '').toLowerCase(), out = { price: 0, why: 'スニダンに見つかりません' };
-  var hits = [];
-  for (var i = 0; i < ids.length; i++) {
-    var u = JSON.parse(kSnkrFetch('https://snkrdunk.com/v1/apparels/' + ids[i] + '/used?perPage=1'));
-    var ap = ((u.apparelUsedItems || [])[0] || {}).apparel || {}, pn = String(ap.productNumber || ''), nm = String(ap.name || '');
-    if (!pn) { var hh = kSnkrFetch('https://snkrdunk.com/apparels/' + ids[i] + '/sales-histories'); pn = 'pkmn-tcg-' + ((hh.match(/pkmn-tcg-([A-Za-z0-9\-]+)/) || [])[1] || ''); nm = (hh.match(/<title>([^<]*)/) || [])[1] || ''; }
-    var pk = pn.replace(/^pkmn-tcg-/i, '').replace(/-/g, '').toLowerCase();
-    // 型番（セット＋番号）が合うカードだけ使う。プロモは型番に番号がない商品があるので、そのときは商品名の「001/」で確かめる
-    // 型番（セット＋番号）が合うカードだけ使う。スニダンの型番が通し番号などで合わないときは、商品名の「[S9a 084/067]」「[S-P 340]」で確かめる
-    var nmN = nm.toLowerCase().replace(/\s+/g, ''), tag = '[' + (md.set + md.no).toLowerCase().replace(/\s+/g, ''), tagE = tag.slice(-1);
-    var byName = nmN.indexOf(tag + '/') >= 0 || nmN.indexOf(tag + ']') >= 0;
-    if (pk === setN + no3 || (pk === setN && nm.indexOf(no3 + '/') >= 0) || byName) hits.push({ id: ids[i], mir: /mirror|ミラー/i.test(nm) });
+  var tag = '[' + (md.set + md.no).toLowerCase().replace(/\s+/g, ''), tagR = '[' + (md.no + md.set).toLowerCase() + ']', cname = kSnkrCardName(n);
+  // 探し方は3段階：①型番（sv2a 203/165）②カード名＋番号（アセロラ 056）③カード名だけ。見つかった候補は必ず型番で確かめる
+  var qs = [md.set + ' ' + md.no + '/' + md.tot];
+  if (cname) { qs.push(cname + ' ' + md.no); qs.push(cname); }
+  var seen = {}, hits = [];
+  for (var s = 0; s < qs.length && !hits.length; s++) {
+    var html = kSnkrFetch('https://snkrdunk.com/search?keywords=' + encodeURIComponent(qs[s]));
+    var ids = [], re = /apparels\/(\d+)/g, mm; while ((mm = re.exec(html)) && ids.length < 8) if (!seen[mm[1]]) { seen[mm[1]] = 1; ids.push(mm[1]); }
+    for (var i = 0; i < ids.length; i++) {
+      var u = JSON.parse(kSnkrFetch('https://snkrdunk.com/v1/apparels/' + ids[i] + '/used?perPage=1'));
+      var ap = ((u.apparelUsedItems || [])[0] || {}).apparel || {}, pn = String(ap.productNumber || ''), nm = String(ap.name || '') + ' ' + String(ap.localizedName || '');
+      var img = (ap.primaryMedia || {}).imageUrl || '';
+      if (!pn) { var hh = kSnkrFetch('https://snkrdunk.com/apparels/' + ids[i] + '/sales-histories'); pn = 'pkmn-tcg-' + ((hh.match(/pkmn-tcg-([A-Za-z0-9\-]+)/) || [])[1] || ''); nm = (hh.match(/<title>([^<]*)/) || [])[1] || ''; img = img || (hh.match(/property="og:image"\s+content="([^"]+)"/) || [])[1] || ''; }
+      var pk = pn.replace(/^pkmn-tcg-/i, '').replace(/\/.*$/, '').replace(/-/g, '').toLowerCase(); // 「S8a-P-008/025」の「/025」は外して比べる
+      // 型番（セット＋番号）が合うカードだけ使う。スニダンの型番が通し番号などで合わないときは、商品名の「[S9a 084/067]」「[S-P 340]」で確かめる
+      var nmN = nm.toLowerCase().replace(/\s+/g, '');
+      var byName = nmN.indexOf(tag + '/') >= 0 || nmN.indexOf(tag + ']') >= 0 || nmN.indexOf(tagR) >= 0; // 「[323 S-P]」のように番号が先の登録もある
+      if (pk === setN + no3 || (pk === setN && nm.indexOf(no3 + '/') >= 0) || byName) hits.push({ id: ids[i], mir: /mirror|ミラー/i.test(nm), img: img, nm: String(ap.localizedName || ap.name || nm).slice(0, 80) });
+    }
   }
   var pick = hits.filter(function (h) { return h.mir === mir; })[0] || hits[0];
   if (pick) {
@@ -420,15 +433,15 @@ function kSnkrPsa10(n) {
     try { var pu = JSON.parse(kSnkrFetch('https://snkrdunk.com/v1/apparels/' + pick.id + '/used?perPage=1&conditionIds=22')); var pi = (pu.apparelUsedItems || [])[0]; if (pi && pi.id) url += '/used/' + pi.id; } catch (e) { }
     var j = JSON.parse(kSnkrFetch('https://snkrdunk.com/v1/apparels/' + pick.id + '/sales-history?page=1&per_page=5&condition_id=22')); // 22＝PSA10
     var rows = (j.history || []).map(function (x) { return { date: x.date, price: Number(x.price) || 0 }; });
-    out = rows.length ? { price: rows[0].price, date: rows[0].date, recent: rows, min: j.minPrice || 0, url: url, id: pick.id } : { price: 0, why: 'PSA10の取引がまだありません', min: j.minPrice || 0, url: url };
+    out = rows.length ? { price: rows[0].price, date: rows[0].date, recent: rows, min: j.minPrice || 0, url: url, id: pick.id, img: pick.img, snm: pick.nm } : { price: 0, why: 'PSA10の取引がまだありません', min: j.minPrice || 0, url: url, img: pick.img, snm: pick.nm };
   }
   try { c.put(key, JSON.stringify(out), 3 * 3600); } catch (e) { }
   return out;
 }
-function kSnkrText(lines) { // 承認依頼の文章に付ける：PSA10のカードだけ（全部・多くても80枚）
+function kSnkrText(lines) { // 承認依頼の文章に付ける：PSA10のカードだけ（全部。画像に間に合わなかった分もここには載る）
   var yen = function (n) { return Number(n || 0).toLocaleString() + '円'; }, out = [];
-  (lines || []).filter(function (q) { return kIsPsa10(q.n); }).slice(0, 80).forEach(function (q) {
-    var s; try { s = kSnkrPsa10(q.n); } catch (e) { s = { price: 0, why: '取得できませんでした' }; }
+  (lines || []).filter(function (q) { return kIsPsa10(q.n); }).slice(0, 200).forEach(function (q) {
+    var s; try { s = kSnkrPsa10(q.n); } catch (e) { try { Utilities.sleep(1500); s = kSnkrPsa10(q.n); } catch (e2) { s = { price: 0, why: '取得失敗' }; } }
     var nm = String(q.n).replace(/《[^》]*》/g, '').slice(0, 30);
     out.push('・' + nm + '\n　' + (s.url ? s.url : 'スニダン：' + (s.why || '見つかりません'))); // 金額は査定表の画像に載せるので、文章は売買履歴のURLだけ
   });

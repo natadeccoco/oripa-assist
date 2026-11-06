@@ -6,7 +6,7 @@
   if (location.hostname !== 'pos.mycalinks.com') { alert('マイカ（pos.mycalinks.com）を開いてから押してください'); return; }
   var old = document.getElementById('ndk-kaitori-host'); if (old) old.remove();
 
-  var VERSION = '2026-11-06 版AE';
+  var VERSION = '2026-11-06 版AF';
   var GAS = 'https://script.google.com/macros/s/AKfycbwXHuu-X3L0qzJhvaszEIm-1xdeNIqJACQ0uM7mz5Q0hvwfdF9IuQiTKr3qmscNVmnhcQ/exec';
   var FB_URL = 'https://script.google.com/macros/s/AKfycbwl-ZCZ1LyefvSzEGkBEpTFTuFyvW0p-AYye6jBWaLP9t7-bC9_Owfeh4jKScNkFys6Fw/exec';
   var SHORT = { 322: '柏', 323: '津田沼', 324: '松戸', 325: '横浜', 326: '中野', 327: '町田', 328: '千葉中央', 390: '通販', 409: 'お台場' };
@@ -90,6 +90,7 @@
     '.pick{font:inherit;font-size:14px;font-weight:700;padding:5px 8px;border:1.5px solid #1f1d1a;border-radius:8px;width:220px;background:#fff}' +
     '.fin{background:#fff;border:2px solid #1f1d1a;border-radius:12px;padding:12px 14px;margin:10px 0;display:flex;flex-wrap:wrap;gap:10px;align-items:center}.fin .t{flex:1 1 320px}.fin .who{order:2}.fin #fin{order:3}.fin input{padding:8px 10px;border:1.5px solid #d6d2c8;border-radius:8px;font:inherit;width:150px}.fin .b{font-size:15px}' +
     '.fbbox{background:#fff;border:2px solid #c8102e;border-radius:12px;padding:8px 12px;margin:-4px 0 10px}.fbi{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;padding:5px 0;border-bottom:1px dashed #eee}.fbi .mk{font-size:16px}.fbc{padding-top:6px;font-weight:700}.f.fb{background:#c8102e;color:#fff}tr.fbrow td{background:#fff0f2}td .f.fbx{display:inline-block;background:#c8102e;color:#fff;padding:2px 8px;border-radius:6px}' +
+    '.snkb{margin-top:6px}.snk{display:flex;gap:8px;align-items:center;text-decoration:none;color:#1f1d1a;background:#fdf2f6;border:1px solid #f1c6d6;border-radius:8px;padding:5px 8px;max-width:440px}.snk img{width:46px;height:64px;object-fit:contain;background:#fff;border-radius:4px;flex:none}.snk b{color:#b4235a;font-size:13px;display:block}.snk small{display:block;color:#666;font-size:11px;line-height:1.35;font-weight:400}.snk small.chk{color:#b4235a}' +
     '.st{padding:10px 14px;border-radius:10px;font-weight:800;margin:10px 0}.st.wait{background:#fff4c2}.st.ok{background:#e3f4e6;color:#15803d}.st.ng{background:#fff0f2;color:#c8102e}' +
     '.fb{position:absolute;right:18px;bottom:18px}' +
     '.photo{margin:10px 0;padding:10px 12px;border-radius:8px;background:#e3f4e6;color:#14532d;font-weight:700;font-size:13px}' +
@@ -444,7 +445,8 @@
       var ref = m.ref ? yen(m.ref) + '<div class="sub">' + esc((m.refs[0] || {}).r ? m.refs[0].r.t : '') + '</div>' : '<span class="sub">' + esc(m.note || (m.hanyo ? '汎用' : '買取表になし')) + '</span>';
       return '<tr class="' + lv + (fbi ? ' fbrow' : '') + '"><td class="th">' + thumb(m) + '</td><td class="l nm"><b>' + esc(m.dn) + '</b>' + condBadge(m) +
         (fbi ? '<span class="f fbx">' + (fbi.ok ? '✅' : '↩️') + ' 本部の指示' + (fbi.no ? '（' + fbi.no + '）' : '') + '：' + esc(fbi.text) + '</span>' : '') +
-        m.flags.map(function (f) { return '<span class="f ' + f.lv + '">' + (f.lv === 'red' ? '🚨 ' : '⚠️ ') + esc(f.t) + '</span>'; }).join('') + '</td>' +
+        m.flags.map(function (f) { return '<span class="f ' + f.lv + '">' + (f.lv === 'red' ? '🚨 ' : '⚠️ ') + esc(f.t) + '</span>'; }).join('') +
+        (/PSA\s*10/i.test(m.dn) ? '<div class="snkb" data-li="' + li + '">' + snkHtml(m) + '</div>' : '') + '</td>' +
         '<td class="cnt' + (m.cnt >= 2 ? ' many' : '') + '">×' + m.cnt + '</td><td><b>' + yen(m.unit) + '</b></td><td>' + ref + '</td>' +
         '<td><span class="ratio' + (m.ratio && m.ratio >= RULE.high ? ' red' : '') + '">' + (m.ratio ? Math.round(m.ratio * 100) + '%' : '-') + '</span></td><td><b>' + yen(m.unit * m.cnt) + '</b></td></tr>';
     }).join('');
@@ -543,6 +545,17 @@
     else { var mm = g.match(/^([A-D])(-)?/); if (mm) { k = mm[2] ? 'am' : mm[1].toLowerCase(); lb = mm[1] + (mm[2] || ''); } }
     return '<span class="cb cb-' + k + '">' + esc(lb) + '</span>';
   }
+  // PSA10：スニダンで拾ったカードの画像・登録名・直近の取引を、マイカの画像と見比べられるように出す
+  function snkHtml(m) {
+    var sk = m.snk;
+    if (!sk) return '<span class="sub">' + (m.snkErr ? '⚠ スニダン：取得失敗（承認依頼の文章にはあとでURLが載ります）' : '⏳ スニダンを確認中…') + '</span>';
+    if (!sk.url) return '<span class="sub">スニダン：' + esc(sk.why || '見つかりません') + '</span>';
+    return '<a class="snk" href="' + esc(sk.url) + '" target="_blank" rel="noopener">' + (sk.img ? '<img src="' + esc(sk.img) + '" loading="lazy">' : '') +
+      '<span><b>スニダン PSA10 ' + (sk.price ? '直近 ' + yen(sk.price) + (m.unit ? '（買取は' + Math.round(m.unit / sk.price * 100) + '%）' : '') : '取引なし') + '</b>' +
+      (sk.date ? '<small>' + esc(sk.date) + '</small>' : '') + (sk.snm ? '<small>スニダンの登録名：' + esc(sk.snm) + '</small>' : '') +
+      '<small class="chk">↑ 画像が同じカードか見比べてください</small></span></a>';
+  }
+  function snkPaint() { R.querySelectorAll('.snkb[data-li]').forEach(function (el) { var m = S.lines[+el.getAttribute('data-li')]; if (m) el.innerHTML = snkHtml(m); }); }
   function thumb(m) {
     if (m.img) return '<img src="' + esc(m.img) + '" loading="lazy">';
     if (m.hanyo) return '<span class="trn"><small>トレーナーズ</small><b>' + (m.at != null ? '@' + m.at : '汎用') + '</b></span>';
@@ -606,18 +619,25 @@
 
   // PSA10のスニダン直近価格：査定を開いたときから裏で取っておく（3枚ずつ・2本同時）。承認依頼の画像に載せる
   async function snkFetch(t) {
-    var ls = S.lines.filter(function (m) { return /PSA\s*10/i.test(m.dn) && !m.snk; }), chunks = [];
-    for (var i = 0; i < ls.length; i += 3) chunks.push(ls.slice(i, i + 3));
-    var next = 0;
-    var worker = async function () {
-      while (next < chunks.length) {
-        if (S.tx !== t) return;
-        var ch = chunks[next++];
-        try { var j = await fetch(GAS + '?action=ksnkr&n=' + encodeURIComponent(JSON.stringify(ch.map(function (m) { return m.dn; })))).then(function (r) { return r.json(); });
-          (j.r || []).forEach(function (x, k) { if (ch[k] && x) ch[k].snk = x; }); } catch (e) { }
-      }
-    };
-    await Promise.all([worker(), worker()]);
+    // 取得失敗（スニダンが混んでいる等）は「見つからない」と分けて、少し待ってからもう1回取りに行く
+    for (var pass = 0; pass < 2; pass++) {
+      var ls = S.lines.filter(function (m) { return /PSA\s*10/i.test(m.dn) && !m.snk; }), chunks = [];
+      if (!ls.length || S.tx !== t) break;
+      if (pass) await new Promise(function (r) { setTimeout(r, 2500); });
+      for (var i = 0; i < ls.length; i += 3) chunks.push(ls.slice(i, i + 3));
+      var next = 0;
+      var worker = async function () {
+        while (next < chunks.length) {
+          if (S.tx !== t) return;
+          var ch = chunks[next++];
+          try { var j = await fetch(GAS + '?action=ksnkr&n=' + encodeURIComponent(JSON.stringify(ch.map(function (m) { return m.dn; })))).then(function (r) { return r.json(); });
+            (j.r || []).forEach(function (x, k) { if (!ch[k] || !x) return; if (x.err) ch[k].snkErr = 1; else { ch[k].snk = x; ch[k].snkErr = 0; } }); }
+          catch (e) { ch.forEach(function (m) { m.snkErr = 1; }); }
+          if (S.tx === t) snkPaint();
+        }
+      };
+      await Promise.all([worker(), worker()]);
+    }
   }
   // 承認依頼用：買取の中身を画像（JPEG・base64）に描く。全部のカードを30枚ずつに分けて、何枚かの画像にする。マイカの画像はGAS経由で受け取る
   async function sheetImages() {
@@ -638,7 +658,7 @@
     return pages;
   }
   function drawSheet(t, list, imgs, pg, np) {
-    var anySnk = list.some(function (m) { return m.snk; });
+    var anySnk = list.some(function (m) { return m.snk || /PSA\s*10/i.test(m.dn); });
     var COLS = Math.min(6, Math.max(3, list.length)), CW = 210, CH = anySnk ? 406 : 380, GAP = 12, PAD = 24, W = PAD * 2 + COLS * CW + (COLS - 1) * GAP;
     var rows = Math.ceil(list.length / COLS), HEAD = 120, H = HEAD + PAD + rows * (CH + GAP) + 20;
     var cv = document.createElement('canvas'); cv.width = W; cv.height = H; var c = cv.getContext('2d');
@@ -674,6 +694,7 @@
       if (m.snk) { var sk = m.snk; c.font = 'bold 15px ' + F; c.fillStyle = sk.price ? '#b4235a' : '#999';
         c.fillText(fit(sk.price ? 'スニダン ' + yen(sk.price) + '（' + Math.round(m.unit / sk.price * 100) + '%）' : 'スニダン：' + (/まだありません/.test(sk.why || '') ? '取引なし' : '見つからない'), CW - 16), x + 8, ty + 140);
         if (sk.price && sk.date) { c.font = '13px ' + F; c.fillStyle = '#888'; c.fillText(fit('直近の取引 ' + sk.date, CW - 16), x + 8, ty + 160); } }
+      else if (/PSA\s*10/i.test(m.dn)) { c.font = 'bold 15px ' + F; c.fillStyle = '#999'; c.fillText(fit('スニダン：' + (m.snkErr ? '取得失敗' : '取得中') + '→URLは文章に', CW - 16), x + 8, ty + 140); }
     });
     return cv.toDataURL('image/jpeg', 0.86).split(',')[1];
   }
