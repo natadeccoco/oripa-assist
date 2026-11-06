@@ -43,7 +43,7 @@ function kNum(v) {
 function kPrices() {
   var ss = SpreadsheetApp.openById(KAITORI_SHEET_ID), out = [];
   ss.getSheets().forEach(function (sh) {
-    var tab = sh.getName(); if (K_SKIP_TABS.test(tab)) return;
+    var tab = sh.getName(); if (K_SKIP_TABS.test(tab) || sh.isSheetHidden()) return; // 非表示のタブ（古い新弾タブなど）は読まない
     var vals = sh.getDataRange().getDisplayValues(); if (vals.length < 2) return;
     var h = vals[0].map(function (x) { return String(x).replace(/\s/g, ''); });
     var col = function (names) { for (var i = 0; i < names.length; i++) { var k = h.indexOf(names[i]); if (k >= 0) return k; } return -1; };
@@ -397,7 +397,7 @@ function kSnkrFetch(u) {
 function kSnkrPsa10(n) {
   var md = kSnkrModel(n); if (!md) return { price: 0, why: '型番がわかりません' };
   var mir = /ミラー|mirror/i.test(String(n)); // ミラーかどうか（同じ型番でノーマルとミラーが別の商品になっている）
-  var key = 'snk4_' + (md.set + '_' + md.no + '_' + md.tot + (mir ? '_m' : '')).toLowerCase(), c = CacheService.getScriptCache(), hit = c.get(key);
+  var key = 'snk5_' + (md.set + '_' + md.no + '_' + md.tot + (mir ? '_m' : '')).toLowerCase(), c = CacheService.getScriptCache(), hit = c.get(key);
   if (hit) return JSON.parse(hit);
   var html = kSnkrFetch('https://snkrdunk.com/search?keywords=' + encodeURIComponent(md.set + ' ' + md.no + '/' + md.tot));
   var ids = [], re = /apparels\/(\d+)/g, mm; while ((mm = re.exec(html)) && ids.length < 6) if (ids.indexOf(mm[1]) < 0) ids.push(mm[1]);
@@ -409,7 +409,10 @@ function kSnkrPsa10(n) {
     if (!pn) { var hh = kSnkrFetch('https://snkrdunk.com/apparels/' + ids[i] + '/sales-histories'); pn = 'pkmn-tcg-' + ((hh.match(/pkmn-tcg-([A-Za-z0-9\-]+)/) || [])[1] || ''); nm = (hh.match(/<title>([^<]*)/) || [])[1] || ''; }
     var pk = pn.replace(/^pkmn-tcg-/i, '').replace(/-/g, '').toLowerCase();
     // 型番（セット＋番号）が合うカードだけ使う。プロモは型番に番号がない商品があるので、そのときは商品名の「001/」で確かめる
-    if (pk === setN + no3 || (pk === setN && nm.indexOf(no3 + '/') >= 0)) hits.push({ id: ids[i], mir: /mirror|ミラー/i.test(nm) });
+    // 型番（セット＋番号）が合うカードだけ使う。スニダンの型番が通し番号などで合わないときは、商品名の「[S9a 084/067]」「[S-P 340]」で確かめる
+    var nmN = nm.toLowerCase().replace(/\s+/g, ''), tag = '[' + (md.set + md.no).toLowerCase().replace(/\s+/g, ''), tagE = tag.slice(-1);
+    var byName = nmN.indexOf(tag + '/') >= 0 || nmN.indexOf(tag + ']') >= 0;
+    if (pk === setN + no3 || (pk === setN && nm.indexOf(no3 + '/') >= 0) || byName) hits.push({ id: ids[i], mir: /mirror|ミラー/i.test(nm) });
   }
   var pick = hits.filter(function (h) { return h.mir === mir; })[0] || hits[0];
   if (pick) {

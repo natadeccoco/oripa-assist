@@ -6,7 +6,7 @@
   if (location.hostname !== 'pos.mycalinks.com') { alert('マイカ（pos.mycalinks.com）を開いてから押してください'); return; }
   var old = document.getElementById('ndk-kaitori-host'); if (old) old.remove();
 
-  var VERSION = '2026-11-03 版AD';
+  var VERSION = '2026-11-06 版AE';
   var GAS = 'https://script.google.com/macros/s/AKfycbwXHuu-X3L0qzJhvaszEIm-1xdeNIqJACQ0uM7mz5Q0hvwfdF9IuQiTKr3qmscNVmnhcQ/exec';
   var FB_URL = 'https://script.google.com/macros/s/AKfycbwl-ZCZ1LyefvSzEGkBEpTFTuFyvW0p-AYye6jBWaLP9t7-bC9_Owfeh4jKScNkFys6Fw/exec';
   var SHORT = { 322: '柏', 323: '津田沼', 324: '松戸', 325: '横浜', 326: '中野', 327: '町田', 328: '千葉中央', 390: '通販', 409: 'お台場' };
@@ -262,6 +262,7 @@
     }
     if (m.ref && m.isPsa && unit < m.ref * RULE.psaLow) f.push({ lv: 'yel', t: 'PSAが買取表の' + Math.round(unit / m.ref * 100) + '%です。減額が大きすぎないかご確認ください', d: label + '　買取表 ' + yen(m.ref) + ' → 入力 ' + yen(unit) });
     if (m.ref && m.isBox && unit < m.ref * RULE.boxLow) f.push({ lv: 'yel', t: 'BOXが買取表の' + Math.round(unit / m.ref * 100) + '%です。減額が大きすぎないかご確認ください', d: label + '　買取表 ' + yen(m.ref) + ' → 入力 ' + yen(unit) });
+    if (/マスターボール/.test(m.dn)) f.push({ k: 'mball', lv: 'yel', t: 'マスターボールミラーです。モンスターボールミラーと見間違えていないか、実物のミラーの柄を確認してください', d: m.dn.replace(/《[^》]*》/g, '') + '　' + yen(unit) }); // 見間違えやすいので金額に関係なく出す
     if (!m.hanyo && cnt >= RULE.sameCard) f.push({ k: 'same', lv: 'yel', t: (m.isBox ? '同じBOXが' + cnt + '個です。個数' : '同じカードが' + cnt + '枚です。枚数') + 'をご確認ください', d: label + ' × ' + cnt + '（' + yen(unit) + ' × ' + cnt + ' ＝ ' + yen(unit * cnt) + '）' });
     m.ckey = m.hanyo ? '' : (N(c.product__item__cardnumber) || '') + '|' + baseName(c.product_name || m.dn);
     m.flags = f; m.unitIn = unit; m.cntIn = cnt; m.pid = c.product_id; gradeFlag(m); return m;
