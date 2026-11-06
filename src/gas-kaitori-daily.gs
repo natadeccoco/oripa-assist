@@ -218,7 +218,7 @@ function kdUnchecked(lines) {
   if (fs && fs.getLastRow() >= 2) fs.getRange(2, 1, fs.getLastRow() - 1, 6).getValues().forEach(function (v) { if (v[4]) done[String(v[4])] = { at: v[1], by: v[5] }; });
   var kv = kSheet().getDataRange().getValues(); // 買取タブ：承認依頼の状態（承認待ち・承認・差し戻し）
   var req = {}; // 承認依頼を出した人（最終チェックがないときの査定者の代わり）
-  for (var i = 1; i < kv.length; i++) if (kv[i][2] === '承認依頼' && kv[i][15]) { var k = String(kv[i][15]); if (!appr[k] || kv[i][12] === '承認') appr[k] = kv[i][12]; req[k] = kv[i][16] || kv[i][4]; }
+  for (var i = 1; i < kv.length; i++) if (kv[i][2] === '承認依頼' && kv[i][15]) { var k = String(kv[i][15]); if (appr[k] !== '承認') appr[k] = kv[i][12]; /* いちばん新しい依頼の状態（承認が1回でもあれば承認） */ req[k] = kv[i][16] || kv[i][4]; }
   var cfg = kConfig();
   Object.keys(tx).forEach(function (id) {
     var o = tx[id], c = done[id]; o.by = c ? c.by : ''; o.line = kdLineFor(cfg, o.store, o.by);

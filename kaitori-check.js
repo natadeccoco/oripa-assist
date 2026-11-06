@@ -6,7 +6,7 @@
   if (location.hostname !== 'pos.mycalinks.com') { alert('マイカ（pos.mycalinks.com）を開いてから押してください'); return; }
   var old = document.getElementById('ndk-kaitori-host'); if (old) old.remove();
 
-  var VERSION = '2026-11-06 版AF';
+  var VERSION = '2026-11-06 版AG';
   var GAS = 'https://script.google.com/macros/s/AKfycbwXHuu-X3L0qzJhvaszEIm-1xdeNIqJACQ0uM7mz5Q0hvwfdF9IuQiTKr3qmscNVmnhcQ/exec';
   var FB_URL = 'https://script.google.com/macros/s/AKfycbwl-ZCZ1LyefvSzEGkBEpTFTuFyvW0p-AYye6jBWaLP9t7-bC9_Owfeh4jKScNkFys6Fw/exec';
   var SHORT = { 322: '柏', 323: '津田沼', 324: '松戸', 325: '横浜', 326: '中野', 327: '町田', 328: '千葉中央', 390: '通販', 409: 'お台場' };
@@ -346,7 +346,8 @@
     try {
       var j = await gas({ action: 'kstatus', tx: t.id });
       if (S.tx !== t) return;
-      if (j.approval) saveReq({ kind: 'approval', id: j.approval.id, status: j.approval.status, by: j.approval.status === '承認待ち' ? '' : j.approval.by, fb: j.approval.fb || null });
+      if (j.approval && j.approval.status === '取り消し') clearReq();
+      else if (j.approval) saveReq({ kind: 'approval', id: j.approval.id, status: j.approval.status, by: j.approval.status === '承認待ち' ? '' : j.approval.by, fb: j.approval.fb || null });
       if (j.confirm) saveConf({ id: j.confirm.id, by: j.confirm.by });
       if (j.check) saveChk({ id: j.check.id, by: j.check.by, at: j.check.at });
     } catch (e) { }
@@ -409,6 +410,7 @@
   function stKey() { return 'ndk_kaitori_req_' + S.tx.id; }
   function reqInfo() { try { return JSON.parse(localStorage.getItem(stKey()) || 'null'); } catch (e) { return null; } }
   function saveReq(o) { try { localStorage.setItem(stKey(), JSON.stringify(o)); } catch (e) { } }
+  function clearReq() { try { localStorage.removeItem(stKey()); } catch (e) { } } // 店舗で取り消した依頼は「依頼なし」に戻す
   function confInfo() { try { return JSON.parse(localStorage.getItem('ndk_kaitori_conf_' + S.tx.id) || 'null'); } catch (e) { return null; } }
   function saveConf(o) { try { localStorage.setItem('ndk_kaitori_conf_' + S.tx.id, JSON.stringify(o)); } catch (e) { } }
   function chkInfo() { try { return JSON.parse(localStorage.getItem('ndk_kaitori_chk_' + S.tx.id) || 'null'); } catch (e) { return null; } }
@@ -432,7 +434,7 @@
     var st = '';
     var apSt = ri && ri.kind === 'approval' ? ri.status : ''; // 承認の結果は上の「本部承認」の枠に出す
     var fbm = fbMatch(ri);
-    if (ri && ri.kind === 'approval' && ri.status !== '承認') st = ri.status === '差し戻し' ? fbPanel(ri, fbm) : '<div class="st wait">承認待ち（依頼番号 ' + esc(ri.id) + '）… 結果は自動で反映されます</div>';
+    if (ri && ri.kind === 'approval' && ri.status !== '承認') st = ri.status === '差し戻し' ? fbPanel(ri, fbm) : '<div class="st wait">承認待ち（依頼番号 ' + esc(ri.id) + '）… 結果は自動で反映されます<button class="b g s" id="cancelReq" style="margin-left:10px">依頼を取り消す</button></div>';
     if (ci && flags.length) st = '<div class="st ok">✅ 警告を確認しました（' + esc(ci.by || '') + '）</div>' + st;
     var mustConf = flags.length && !ci, ck = chkInfo();
     if (ck && !S.pick && ck.by) { S.pick = S.staff = ck.by; }
@@ -471,6 +473,13 @@
     $('#back').onclick = function () { loadList(); };
     if ($('#req')) $('#req').onclick = function () { if (!this.disabled) countCheck(function () { openSend('approval'); }); };
     if ($('#conf')) $('#conf').onclick = function () { openSend('confirm'); };
+    if ($('#cancelReq')) $('#cancelReq').onclick = async function () { // 承認待ちの依頼を店舗で取り消す（間違いに気づいたとき）。承認済みは取り消せない
+      var b = this, r0 = reqInfo(); if (!r0 || !r0.id) return;
+      if (!confirm('依頼番号 ' + r0.id + ' の承認依頼を取り消しますか？\n店舗のグループにも「取り消しました」と流れます。マイカで直したら、もう一度依頼してください。')) return;
+      b.disabled = true; b.textContent = '取り消し中…';
+      try { var j = await gas({ action: 'kcancel', id: r0.id, tx: S.tx.id }); if (j.status === '取り消し') clearReq(); else { r0.status = j.status; r0.by = j.by || ''; saveReq(r0); } clearInterval(S.pollT); renderDetail(); }
+      catch (e) { b.disabled = false; b.textContent = '依頼を取り消す'; alert('取り消せませんでした：' + e.message); renderDetail(); }
+    };
     if ($('#chgName')) $('#chgName').onclick = function () { S.pick = S.staff = ''; renderDetail(); };
     if ($('#fin')) $('#fin').onclick = function () { if (this.disabled) return; var nm = (S.pick || '').trim(); if (!nm) { var w = R.querySelector('.who .sub'); if (w) { w.textContent = '↓ 先に自分の名前を選んでください'; w.style.color = '#c8102e'; } return; } countCheck(function () { finalCheck(nm); }); };
   }
@@ -707,6 +716,7 @@
       if (S.tx !== tx) { clearInterval(S.pollT); return; }
       try {
         var j = await gas({ action: 'kstatus', id: ri.id });
+        if (j.status === '取り消し') { clearReq(); clearInterval(S.pollT); renderDetail(); return; }
         if (j.status && j.status !== '承認待ち') { ri.status = j.status; ri.by = j.by; ri.fb = j.fb || null; saveReq(ri); clearInterval(S.pollT); renderDetail(); }
       } catch (e) { }
     }, 8000);

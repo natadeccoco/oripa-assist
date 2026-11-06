@@ -100,6 +100,7 @@ function kaitoriGet(p) {
       if (fs && fs.getLastRow() >= 2) { var fv = fs.getRange(2, 1, fs.getLastRow() - 1, 6).getValues(); for (var k = fv.length - 1; k >= 0; k--) if (String(fv[k][4]) === String(p.tx)) { ck = { id: fv[k][0], by: fv[k][5], at: fv[k][1] ? new Date(fv[k][1]).toISOString() : '' }; break; } }
       return json({ ok: true, approval: ap, confirm: cf, check: ck });
     }
+    if (p.action === 'kcancel') return json(kCancel(p)); // 店舗で承認依頼を取り消す（承認待ちのときだけ）
     if (p.action === 'kstatus') {
       var row = kFind(p.id); if (!row) return json({ ok: false, error: '依頼が見つかりません' });
       return json({ ok: true, id: row.values[0], status: row.values[12], by: row.values[13], at: row.values[14] ? String(row.values[14]) : '', fb: kParse(row.values[18]) });
@@ -161,6 +162,20 @@ function kaitoriPost(d) {
     actions: [{ type: 'message', label: '承認する', text: '承認する（' + id + '）', postback: 'kapprove:' + id },
               { type: 'message', label: '差し戻す', text: '差し戻す（' + id + '）', postback: 'kreject:' + id }] });
   return json({ ok: true, id: id, imageErr: imgErr });
+}
+
+function kCancel(p) { // 承認待ちの依頼を店舗で取り消す。承認・差し戻し済みなら今の状態を返すだけ
+  var lock = LockService.getScriptLock(); lock.waitLock(20000);
+  try {
+    var row = kFind(p.id); if (!row) throw new Error('依頼が見つかりません');
+    var v = row.values;
+    if (v[2] !== '承認依頼' || (p.tx && String(v[15]) !== String(p.tx))) throw new Error('この買取の依頼ではありません');
+    if (v[12] !== '承認待ち') return { ok: true, id: v[0], status: v[12], by: v[13] || '' };
+    kSheet().getRange(row.r, 13, 1, 3).setValues([['取り消し', '店舗で取り消し', new Date()]]);
+    var ch = v[3] === 'テスト' ? P.getProperty('K_WARN_CHANNEL') : CH[v[3]];
+    if (ch) try { send(ch, { type: 'text', text: '🗑 依頼番号 ' + v[0] + '（' + v[3] + '店・' + Number(v[6] || 0).toLocaleString() + '円）は、店舗で取り消しました。\nこの依頼の「承認する／差し戻す」は押さなくて大丈夫です（押しても反映されません）。直した内容で、あらためて依頼が届きます。' }); } catch (e) { console.error('取り消しの連絡: ' + e); }
+    return { ok: true, id: v[0], status: '取り消し' };
+  } finally { lock.releaseLock(); }
 }
 
 function kaitoriCallback(ev, data) {
