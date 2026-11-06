@@ -553,7 +553,7 @@
     return '<a class="snk" href="' + esc(sk.url) + '" target="_blank" rel="noopener">' + (sk.img ? '<img src="' + esc(sk.img) + '" loading="lazy">' : '') +
       '<span><b>スニダン PSA10 ' + (sk.price ? '直近 ' + yen(sk.price) + (m.unit ? '（買取は' + Math.round(m.unit / sk.price * 100) + '%）' : '') : '取引なし') + '</b>' +
       (sk.date ? '<small>' + esc(sk.date) + '</small>' : '') + (sk.snm ? '<small>スニダンの登録名：' + esc(sk.snm) + '</small>' : '') +
-      '<small class="chk">↑ 画像が同じカードか見比べてください</small></span></a>';
+      '<small class="chk">左のマイカの画像と同じカードか見比べてください</small></span></a>';
   }
   function snkPaint() { R.querySelectorAll('.snkb[data-li]').forEach(function (el) { var m = S.lines[+el.getAttribute('data-li')]; if (m) el.innerHTML = snkHtml(m); }); }
   function thumb(m) {
