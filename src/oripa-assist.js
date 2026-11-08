@@ -142,7 +142,7 @@
   document.body.appendChild(host);
   var root = host.attachShadow({ mode: 'open' });
   root.innerHTML = '<style>' + CSS() + '</style><div class="wrap"><div class="win">' +
-    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-11-06 版CE</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
+    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-11-08 版CF</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
     (ALL ? '' : '<div class="tabs"><button data-tab="make" class="on">新しく作る</button><button data-tab="refill">補充する</button></div>') +
     '<button class="x" id="close" title="閉じる">×</button></div>' +
     '<div class="bd" id="body"><div class="msg">読み込み中…</div></div></div></div>';
@@ -213,6 +213,10 @@
     sids.forEach(function (sid) { ((S.extraBy || {})[sid] || []).forEach(function (p) { ex.push(p); }); });
     return (S.invBase || S.inv || []).concat(ex);
   }
+  // 検索：商品名のほか、型番（070・070/067）・弾（s7D）・レアリティ（SR）でも当たる。全角/半角・大文字小文字は区別しない
+  function qNorm(t) { return String(t || '').replace(/[\uFF01-\uFF5E]/g, function (c) { return String.fromCharCode(c.charCodeAt(0) - 0xFEE0); }).replace(/\u3000/g, ' ').toLowerCase(); }
+  function qHit(p, q) { if (!q) return true; var hay = qNorm([p.name, p.cno, p.exp, p.rarity, p.exp + ' ' + p.cno].join(' ')); return qNorm(q).split(/\s+/).filter(Boolean).every(function (w) { return hay.indexOf(w) >= 0; }); }
+  function findInv(id) { id = Number(id); return S.inv.find(function (x) { return x.id === id; }) || searchPool().find(function (x) { return x.id === id; }); } // 検索でだけ出る在庫も選べるように
   function refreshInv() { S.inv = (S.invBase || []).filter(condPass); }
   function setConds(c) { S.conds = c || null; refreshInv(); }
   function cardConds() { var o = {}; (S.invBase || []).forEach(function (p) { if (p.kind === 'card' && p.cond) o[p.cond] = (o[p.cond] || 0) + 1; }); return Object.keys(o).sort(); }
@@ -255,6 +259,7 @@
       if (p.kind === 'filler') return true;
       if (p.kind === 'pack' && p.cost > 0 && p.sell <= 0) { p.noPrice = true; return true; } // ばらのパックはマスタも店頭も0円のことが多い（原価で見る）
       if (p.kind === 'supply' && p.sell > 0 && p.cost > 0 && p.cost <= 5) { p.costRaw = p.cost; p.cost = Math.round(p.sell * 0.7); p.costTmp = true; } // サプライの原価¥1など仮の数字は、マスタの70%を仮の原価に
+      if (p.cost <= 0 && p.sell > 0 && p.kind !== 'supply') { p.costRaw = 0; p.cost = Math.round(p.sell * 0.7); p.costTmp = true; p.noCost = true; return keepForSearch(); } // 原価が未登録（¥0）：提案には使わないが、検索で選べる（仮の原価＝マスタの70%）
       if (p.cost <= 0 || p.sell <= 0) return keepForSearch();          // 原価・マスタ価格が入っていないものは提案には使わない（検索では出す）
       if (p.cost <= p.sell * 0.1 && p.sell >= 3000) { p.costRaw = p.cost; p.cost = Math.round(p.sell * 0.7); p.costTmp = true; } // 原価がマスタの1/10以下＝原価の登録ミスとみて、マスタの70%を仮の原価にして計算する
       // シングルの状態（ふだんは状態A・A-だけ）は condPass でしぼる
@@ -1030,7 +1035,7 @@
     return '<div class="cards">' + list.map(function (p) {
       var over = cap != null && p.cost > cap;
       var pt0 = S.patterns[pi], hc = pt0 ? histCount(p, pt0.L.base) : 0;
-      return '<div class="cwrap' + (over ? ' over' : '') + '">' + card({ p: p, n: 1, role: p.kind === 'box' ? 'BOX' : p.kind === 'psa' ? 'PSA' : (p.cond || '').replace('状態', '') || 'カード' }, false, 'data-pick="' + p.id + '"' + (prole ? ' data-prole="' + esc(prole) + '"' : '')) + (over ? '<div class="overtag">上限オーバー</div>' : '') + (suspectPrice(p) ? '<div class="overtag">マスタ価格要確認（原価がマスタの3割未満）</div>' : '') + '<div class="stocktag">在庫 残り' + Math.max(p.stock - (pt0 ? usedIn(pt0, p.id) : 0), 0) + '個' + (pt0 && usedIn(pt0, p.id) ? '（このオリパで' + usedIn(pt0, p.id) + '個使用中）' : '') + '</div>' + (hc ? '<div class="histtag">過去' + hc + '回使用</div>' : '') + '</div>';
+      return '<div class="cwrap' + (over ? ' over' : '') + '">' + card({ p: p, n: 1, role: p.kind === 'box' ? 'BOX' : p.kind === 'psa' ? 'PSA' : (p.cond || '').replace('状態', '') || 'カード' }, false, 'data-pick="' + p.id + '"' + (prole ? ' data-prole="' + esc(prole) + '"' : '')) + (over ? '<div class="overtag">上限オーバー</div>' : '') + (p.noCost ? '<div class="overtag">原価未登録（仮にマスタの70%で計算）</div>' : '') + (suspectPrice(p) ? '<div class="overtag">マスタ価格要確認（原価がマスタの3割未満）</div>' : '') + '<div class="stocktag">在庫 残り' + Math.max(p.stock - (pt0 ? usedIn(pt0, p.id) : 0), 0) + '個' + (pt0 && usedIn(pt0, p.id) ? '（このオリパで' + usedIn(pt0, p.id) + '個使用中）' : '') + '</div>' + (hc ? '<div class="histtag">過去' + hc + '回使用</div>' : '') + '</div>';
     }).join('') + '</div>';
   }
   function openSwap(pi, hi) {
@@ -1044,7 +1049,7 @@
       '<div class="acts"><button class="ghost danger" data-rm>この当たりを外す' + (h.n > 1 ? '（1枚）' : '') + '</button><button class="ghost" data-x>閉じる</button></div>');
     bindSetSwap(m, pt, hi);
     function pick(id) {
-      var p = S.inv.find(function (x) { return x.id === id; }); if (!p) return;
+      var p = findInv(id); if (!p) return;
       if (h.n > 1) { h.n--; pt.hits.splice(hi + 1, 0, { p: p, n: 1, role: h.role }); } else { h.p = p; }
       recalc(pt); m.remove(); renderMake();
     }
@@ -1053,7 +1058,7 @@
     pagedList(m, all, target, pi, bindPick);
     var search = function () {
       var q = m.querySelector('#q').value.trim(); if (!q) return;
-      var r = searchPool().filter(function (p) { return avail(p) && p.name.indexOf(q) >= 0; }).sort(function (a, b) { return b.cost - a.cost; }).slice(0, 40);
+      var r = searchPool().filter(function (p) { return avail(p) && qHit(p, q); }).sort(function (a, b) { return b.cost - a.cost; }).slice(0, 40);
       m.querySelector('#qr').innerHTML = candHTML(r, pi); bindPick(m.querySelector('#qr'));
     };
     m.querySelector('#qs').onclick = search; m.querySelector('#q').onkeydown = function (e) { if (e.key === 'Enter') search(); };
@@ -1091,7 +1096,7 @@
       };
       var all = S.inv.filter(free);
       draw(all.filter(function (q) { return related(base, q); }).sort(function (a, b) { return b.sell - a.sell; }).concat(all.filter(function (q) { return !related(base, q); }).sort(function (a, b) { return b.sell - a.sell; }).slice(0, 12)));
-      var go = function () { var q = box.querySelector('#sq').value.trim(); if (q) draw(searchPool().filter(free).filter(function (x) { return x.name.indexOf(q) >= 0; }).sort(function (a, b) { return b.sell - a.sell; })); };
+      var go = function () { var q = box.querySelector('#sq').value.trim(); if (q) draw(searchPool().filter(free).filter(function (x) { return qHit(x, q); }).sort(function (a, b) { return b.sell - a.sell; })); };
       box.querySelector('#sqs').onclick = go; box.querySelector('#sq').onkeydown = function (e) { if (e.key === 'Enter') go(); };
     };
   }
@@ -1120,9 +1125,9 @@
       '<div class="acts"><button class="ghost" data-x>閉じる</button></div>');
     function draw() {
       var q = m.querySelector('#q').value.trim();
-      var list = (q ? searchPool() : S.inv).filter(function (p) { return (q || p.kind === kind) && p.id !== exclude && fillAvail(pt, p) > 0 && (!q || p.name.indexOf(q) >= 0); }) // 名前で探すときは種類に関係なく全部の在庫から.sort(function (a, b) { return a.cost - b.cost || b.stock - a.stock; }).slice(0, 60);
+      var list = (q ? searchPool() : S.inv).filter(function (p) { return (q || p.kind === kind) && p.id !== exclude && fillAvail(pt, p) > 0 && (!q || qHit(p, q)); }) /* 名前で探すときは種類に関係なく全部の在庫から */.sort(function (a, b) { return a.cost - b.cost || b.stock - a.stock; }).slice(0, 60);
       m.querySelector('#cl').innerHTML = '<div class="sm">原価の安い順（60件まで）。在庫が残っているものだけ出ます。</div>' + candHTML(list, pi);
-      m.querySelectorAll('#cl [data-pick]').forEach(function (b) { b.onclick = function () { var p = S.inv.find(function (x) { return x.id === Number(b.dataset.pick); }); if (p) { m.remove(); onPick(p); } }; });
+      m.querySelectorAll('#cl [data-pick]').forEach(function (b) { b.onclick = function () { var p = findInv(b.dataset.pick); if (p) { m.remove(); onPick(p); } }; });
     }
     m.querySelectorAll('[data-kt]').forEach(function (b) { b.onclick = function () { kind = b.dataset.kt; m.querySelectorAll('[data-kt]').forEach(function (x) { x.classList.toggle('on', x === b); }); draw(); }; });
     m.querySelector('#qs').onclick = draw; m.querySelector('#q').onkeydown = function (e) { if (e.key === 'Enter') draw(); };
@@ -1189,7 +1194,7 @@
       '<div class="srch"><input id="q" placeholder="カード名で探す"><button class="ghost" id="qs">探す</button></div><div id="qr"></div>' +
       '<div class="acts"><button class="ghost" data-x>閉じる</button></div>');
     function pick(id) {
-      var p = S.inv.find(function (x) { return x.id === id; }); if (!p) return;
+      var p = findInv(id); if (!p) return;
       if (f.n > 1) { f.n--; pt.filler.push({ p: p, n: 1 }); } else { f.p = p; }
       recalc(pt); m.remove(); renderMake();
     }
@@ -1198,7 +1203,7 @@
     pagedList(m, list, f.p.cost, pi, bindPick);
     var search = function () {
       var q = m.querySelector('#q').value.trim(); if (!q) return;
-      var r = searchPool().filter(function (p) { return avail(p) && p.name.indexOf(q) >= 0; }).sort(function (a, b) { return b.cost - a.cost; }).slice(0, 40);
+      var r = searchPool().filter(function (p) { return avail(p) && qHit(p, q); }).sort(function (a, b) { return b.cost - a.cost; }).slice(0, 40);
       m.querySelector('#qr').innerHTML = candHTML(r, pi); bindPick(m.querySelector('#qr'));
     };
     m.querySelector('#qs').onclick = search; m.querySelector('#q').onkeydown = function (e) { if (e.key === 'Enter') search(); };
@@ -1279,7 +1284,7 @@
     function bindPick(el) {
       el.querySelectorAll('[data-pick]').forEach(function (b) {
         b.onclick = function () {
-          var p = S.inv.find(function (x) { return x.id === Number(b.dataset.pick); }); if (!p) return;
+          var p = findInv(b.dataset.pick); if (!p) return;
           var role = fixedRole || b.dataset.prole || roleOf(L, price, p);
           var ex = pt.hits.find(function (x) { return x.p.id === p.id && x.role === role; });
           if (ex) ex.n++; else pt.hits.push({ p: p, n: 1, role: role });
@@ -1290,7 +1295,7 @@
     }
     var search = function () {
       var q = m.querySelector('#q').value.trim(); if (!q) return;
-      var r = searchPool().filter(function (p) { return avail(p) && p.name.indexOf(q) >= 0; }).sort(function (a, b) { return b.sell - a.sell; }).slice(0, 40);
+      var r = searchPool().filter(function (p) { return avail(p) && qHit(p, q); }).sort(function (a, b) { return b.sell - a.sell; }).slice(0, 40);
       m.querySelector('#qr').innerHTML = '<div class="mh2">「' + esc(q) + '」の検索結果</div>' + candHTML(r, pi, fixedRole || '', cap); bindPick(m.querySelector('#qr'));
     };
     m.querySelector('#qs').onclick = search; m.querySelector('#q').onkeydown = function (e) { if (e.key === 'Enter') search(); };
@@ -1863,12 +1868,12 @@
         '<div class="srch"><input id="sq" placeholder="カード名で探す"><button class="ghost" id="sqs">探す</button></div><div id="sqr">' + candHTML(list, -1) + '</div><div class="acts"><button class="ghost" data-x>やめる</button></div>');
       m.querySelector('[data-x]').onclick = function () { m.remove(); };
       var bindPick = function () { m.querySelectorAll('[data-pick]').forEach(function (b) { b.onclick = function () {
-        var q = S.inv.find(function (x) { return x.id === Number(b.dataset.pick); }); if (!q) return;
+        var q = findInv(b.dataset.pick); if (!q) return;
         var st = mkSet(a, q); st.stock = 1;
         if ((R.pick[a.id] || 0) > 0) R.pick[a.id]--; R.cands.push(st); R.extra.push(st); R.pick[st.id] = 1; m.remove(); draw();
       }; }); };
       bindPick();
-      m.querySelector('#sqs').onclick = function () { var qv = m.querySelector('#sq').value.trim(); var r = (qv ? searchPool() : S.inv).filter(function (q) { return (qv || sameKind(q)) && q.kind !== 'filler' && q.id !== a.id && q.stock - usedN(q.id) > 0 && (!qv || q.name.indexOf(qv) >= 0); }).slice(0, 40); m.querySelector('#sqr').innerHTML = candHTML(r, -1); bindPick(); };
+      m.querySelector('#sqs').onclick = function () { var qv = m.querySelector('#sq').value.trim(); var r = (qv ? searchPool() : S.inv).filter(function (q) { return (qv || sameKind(q)) && q.kind !== 'filler' && q.id !== a.id && q.stock - usedN(q.id) > 0 && (!qv || qHit(q, qv)); }).slice(0, 40); m.querySelector('#sqr').innerHTML = candHTML(r, -1); bindPick(); };
     }
     function draw() {
       autoFill();
@@ -1904,9 +1909,9 @@
         var q = $('#rq').value.trim(); // 空欄なら在庫すべて（出た当たりと同じ種類を先に、原価が近い順）
         var t = target / Math.max(drawn.length, 1), dk = drawn[0] && drawn[0].kind;
         var sameK = function (p) { return dk === 'box' ? p.kind === 'box' : dk === 'pack' ? p.kind === 'pack' : (p.kind === 'card' || p.kind === 'psa'); };
-        var r = (q ? searchPool() : S.inv).filter(function (p) { return p.kind !== 'filler' && p.stock > 0 && (!q || p.name.indexOf(q) >= 0); }).sort(function (x, y) { return (sameK(y) ? 1 : 0) - (sameK(x) ? 1 : 0) || Math.abs(Math.log(Math.max(x.cost, 1) / Math.max(t, 1))) - Math.abs(Math.log(Math.max(y.cost, 1) / Math.max(t, 1))); }).slice(0, q ? 40 : 60);
+        var r = (q ? searchPool() : S.inv).filter(function (p) { return p.kind !== 'filler' && p.stock > 0 && (!q || qHit(p, q)); }).sort(function (x, y) { return (sameK(y) ? 1 : 0) - (sameK(x) ? 1 : 0) || Math.abs(Math.log(Math.max(x.cost, 1) / Math.max(t, 1))) - Math.abs(Math.log(Math.max(y.cost, 1) / Math.max(t, 1))); }).slice(0, q ? 40 : 60);
         $('#rqr').innerHTML = '<div class="sm">押すと補充に入ります（' + (q ? '「' + esc(q) + '」で' : '在庫すべてから') + '・同じ種類を先に、原価が近い順・' + r.length + '件）</div>' + candHTML(r, -1);
-        $('#rqr').querySelectorAll('[data-pick]').forEach(function (b) { b.onclick = function () { var p = S.inv.find(function (x) { return x.id === Number(b.dataset.pick); }); if (!p) return; if (R.cands.indexOf(p) < 0) { R.cands.push(p); R.extra.push(p); } R.pick[p.id] = (R.pick[p.id] || 0) + 1; draw(); }; });
+        $('#rqr').querySelectorAll('[data-pick]').forEach(function (b) { b.onclick = function () { var p = findInv(b.dataset.pick); if (!p) return; if (R.cands.indexOf(p) < 0) { R.cands.push(p); R.extra.push(p); } R.pick[p.id] = (R.pick[p.id] || 0) + 1; draw(); }; });
       };
       $('#rqs').onclick = rsearch; $('#rq').onkeydown = function (e) { if (e.key === 'Enter') rsearch(); };
       $('#rfadd').onclick = function () {
