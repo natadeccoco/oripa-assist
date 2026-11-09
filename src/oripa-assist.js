@@ -142,7 +142,7 @@
   document.body.appendChild(host);
   var root = host.attachShadow({ mode: 'open' });
   root.innerHTML = '<style>' + CSS() + '</style><div class="wrap"><div class="win">' +
-    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-11-08 版CF</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
+    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-11-09 版CG</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
     (ALL ? '' : '<div class="tabs"><button data-tab="make" class="on">新しく作る</button><button data-tab="refill">補充する</button></div>') +
     '<button class="x" id="close" title="閉じる">×</button></div>' +
     '<div class="bd" id="body"><div class="msg">読み込み中…</div></div></div></div>';
@@ -215,7 +215,7 @@
   }
   // 検索：商品名のほか、型番（070・070/067）・弾（s7D）・レアリティ（SR）でも当たる。全角/半角・大文字小文字は区別しない
   function qNorm(t) { return String(t || '').replace(/[\uFF01-\uFF5E]/g, function (c) { return String.fromCharCode(c.charCodeAt(0) - 0xFEE0); }).replace(/\u3000/g, ' ').toLowerCase(); }
-  function qHit(p, q) { if (!q) return true; var hay = qNorm([p.name, p.cno, p.exp, p.rarity, p.exp + ' ' + p.cno].join(' ')); return qNorm(q).split(/\s+/).filter(Boolean).every(function (w) { return hay.indexOf(w) >= 0; }); }
+  function qHit(p, q) { if (!q) return true; var hay = qNorm([p.name, p.cno, p.exp, p.rarity, p.exp + ' ' + p.cno, p.kind === 'psa' ? 'psa ' + (p.spec || '') : ''].join(' ')); return qNorm(q).split(/\s+/).filter(Boolean).every(function (w) { return hay.indexOf(w) >= 0; }); }
   function findInv(id) { id = Number(id); return S.inv.find(function (x) { return x.id === id; }) || searchPool().find(function (x) { return x.id === id; }); } // 検索でだけ出る在庫も選べるように
   function refreshInv() { S.inv = (S.invBase || []).filter(condPass); }
   function setConds(c) { S.conds = c || null; refreshInv(); }
@@ -249,14 +249,16 @@
       var bst = ((spec.match(/BOX状態\s*(\S+)/) || [])[1] || ''); // BOXの状態（A-・B など。Bはシュリンクなし）
       var shop = Number(p.actual_sell_price != null ? p.actual_sell_price : p.sell_price) || 0;
       var sell = Number(p.item_sell_price) || shop;
+      var noShop = false; if (kind === 'psa') { if (shop > 0) sell = shop; else noShop = true; } // PSAのマスタ価格は素のカードの値段なので、店頭価格を使う。店頭が0円なら提案には使わない（検索では出す）
       if (sell <= 0 && !bm) { var nm2 = String(p.display_name).match(/[@＠]\s*(\d{2,6})|[\s　](\d{3,6})\s*(?:円)?(?:[（(].*)?$/); if (nm2 && (kind === 'supply' || /サプライ|バンドル/.test(catName))) { sell = shop = Number(nm2[1] || nm2[2]); } } // サプライ@500 のように名前に値段があればそれを使う
       return { id: p.id, name: p.display_name, img: p.image_url, sell: sell, shop: shop, cost: Number(p.average_wholesale_price) || 0, stock: p.stock_number, kind: kind,
-        bst: kind === 'box' ? bst : '', cond: kind === 'box' && bst ? cond + '・' + bst + (/^B/.test(bst) ? '（シュリンクなし）' : '') : cond, noShrink: kind === 'box' && /^B/.test(bst), sealed: kind !== 'box' && kind !== 'pack' && /未開封/.test(spec + ' ' + p.display_name), exp: p.item_expansion || '', rarity: p.item_rarity || '', cno: p.item_cardnumber || '', fv: bm ? Number(bm[1]) : 0, spec: spec, sid: sid, sname: shortName(sname) };
+        bst: kind === 'box' ? bst : '', cond: kind === 'box' && bst ? cond + '・' + bst + (/^B/.test(bst) ? '（シュリンクなし）' : '') : cond, noShrink: kind === 'box' && /^B/.test(bst), sealed: kind !== 'box' && kind !== 'pack' && /未開封/.test(spec + ' ' + p.display_name), exp: p.item_expansion || '', rarity: p.item_rarity || '', cno: p.item_cardnumber || '', noShop: noShop, fv: bm ? Number(bm[1]) : 0, spec: spec, sid: sid, sname: shortName(sname) };
     }).filter(function (p, i) {
       var raw = inv[i] || {};
       var keepForSearch = function () { if (/ORIGINAL_PACK|DECK/.test(raw.item_category_handle || '')) return false; p.extra = true; if (p.kind === 'other') p.kind = 'supply'; extra.push(p); return false; };
       if (p.kind === 'other') return keepForSearch();
       if (p.kind === 'filler') return true;
+      if (p.noShop) { if (p.cost <= 0 && p.sell > 0) { p.costRaw = 0; p.cost = Math.round(p.sell * 0.7); p.costTmp = true; p.noCost = true; } return keepForSearch(); } // 店頭価格なしのPSA：検索でだけ出す
       if (p.kind === 'pack' && p.cost > 0 && p.sell <= 0) { p.noPrice = true; return true; } // ばらのパックはマスタも店頭も0円のことが多い（原価で見る）
       if (p.kind === 'supply' && p.sell > 0 && p.cost > 0 && p.cost <= 5) { p.costRaw = p.cost; p.cost = Math.round(p.sell * 0.7); p.costTmp = true; } // サプライの原価¥1など仮の数字は、マスタの70%を仮の原価に
       if (p.cost <= 0 && p.sell > 0 && p.kind !== 'supply') { p.costRaw = 0; p.cost = Math.round(p.sell * 0.7); p.costTmp = true; p.noCost = true; return keepForSearch(); } // 原価が未登録（¥0）：提案には使わないが、検索で選べる（仮の原価＝マスタの70%）
@@ -996,7 +998,7 @@
       (h.p.kind === 'psa' ? '<span class="psa">' + esc(psaLabel(h.p)) + '</span>' : '') + (h.p.sealed ? '<span class="psa seal">未開封</span>' : '') +
       (attrs ? '<span class="edit">入れ替え</span>' : '') + '</div>' +
       (ALL && h.p.sname ? '<div class="sttag">' + esc(h.p.sname) + '</div>' : '') + '<div class="nm">' + (h.p.kind === 'psa' ? '《' + esc(psaLabel(h.p)) + '》' : '') + esc(h.p.name) + '</div>' + (h.p.kind === 'psa' ? '<div class="cond psa2">PSA鑑定品</div>' : (h.p.cond && !h.p.set ? '<div class="cond' + (h.p.noShrink ? ' nosh' : '') + '">' + esc(h.p.cond) + '</div>' : '')) + (h.p.sealed ? '<div class="cond seal2">未開封</div>' : '') +
-      (h.p.set ? '<div class="cond">' + esc(h.p.set.map(function (m) { return m.kind === 'psa' ? psaLabel(m) : (m.cond || ''); }).join('＋')) + '</div>' : '') + '<div class="pr">マスタ ' + yen(h.p.sell) + (h.p.set ? '（2枚合計）' : '') + '</div>' + (h.p.shop != null ? '<div class="cs">店頭 ' + yen(h.p.shop) + '</div>' : '') + '<div class="cs">原価 ' + yen(h.p.cost) + (tmpCost(h.p) ? '<b style="color:#c0392b">（仮）</b>' : '') + '</div>' + (h.p.costRaw != null ? '<div class="cs" style="color:#c0392b">マイカの原価 ' + yen(h.p.costRaw) + '</div>' : '') + '</' + tag + '>';
+      (h.p.set ? '<div class="cond">' + esc(h.p.set.map(function (m) { return m.kind === 'psa' ? psaLabel(m) : (m.cond || ''); }).join('＋')) + '</div>' : '') + '<div class="pr">' + (h.p.kind === 'psa' && !h.p.noShop ? '店頭 ' : 'マスタ ') + yen(h.p.sell) + (h.p.set ? '（2枚合計）' : '') + '</div>' + (h.p.shop != null && !(h.p.kind === 'psa' && !h.p.noShop) ? '<div class="cs">店頭 ' + yen(h.p.shop) + '</div>' : '') + '<div class="cs">原価 ' + yen(h.p.cost) + (tmpCost(h.p) ? '<b style="color:#c0392b">（仮）</b>' : '') + '</div>' + (h.p.costRaw != null ? '<div class="cs" style="color:#c0392b">マイカの原価 ' + yen(h.p.costRaw) + '</div>' : '') + '</' + tag + '>';
   }
 
   /* ---------- 入れ替え・追加・外す ---------- */
@@ -1035,7 +1037,7 @@
     return '<div class="cards">' + list.map(function (p) {
       var over = cap != null && p.cost > cap;
       var pt0 = S.patterns[pi], hc = pt0 ? histCount(p, pt0.L.base) : 0;
-      return '<div class="cwrap' + (over ? ' over' : '') + '">' + card({ p: p, n: 1, role: p.kind === 'box' ? 'BOX' : p.kind === 'psa' ? 'PSA' : (p.cond || '').replace('状態', '') || 'カード' }, false, 'data-pick="' + p.id + '"' + (prole ? ' data-prole="' + esc(prole) + '"' : '')) + (over ? '<div class="overtag">上限オーバー</div>' : '') + (p.noCost ? '<div class="overtag">原価未登録（仮にマスタの70%で計算）</div>' : '') + (suspectPrice(p) ? '<div class="overtag">マスタ価格要確認（原価がマスタの3割未満）</div>' : '') + '<div class="stocktag">在庫 残り' + Math.max(p.stock - (pt0 ? usedIn(pt0, p.id) : 0), 0) + '個' + (pt0 && usedIn(pt0, p.id) ? '（このオリパで' + usedIn(pt0, p.id) + '個使用中）' : '') + '</div>' + (hc ? '<div class="histtag">過去' + hc + '回使用</div>' : '') + '</div>';
+      return '<div class="cwrap' + (over ? ' over' : '') + '">' + card({ p: p, n: 1, role: p.kind === 'box' ? 'BOX' : p.kind === 'psa' ? 'PSA' : (p.cond || '').replace('状態', '') || 'カード' }, false, 'data-pick="' + p.id + '"' + (prole ? ' data-prole="' + esc(prole) + '"' : '')) + (over ? '<div class="overtag">上限オーバー</div>' : '') + (p.noShop ? '<div class="overtag">店頭価格なし（マスタの値段で表示）</div>' : '') + (p.noCost ? '<div class="overtag">原価未登録（仮にマスタの70%で計算）</div>' : '') + (suspectPrice(p) ? '<div class="overtag">マスタ価格要確認（原価がマスタの3割未満）</div>' : '') + '<div class="stocktag">在庫 残り' + Math.max(p.stock - (pt0 ? usedIn(pt0, p.id) : 0), 0) + '個' + (pt0 && usedIn(pt0, p.id) ? '（このオリパで' + usedIn(pt0, p.id) + '個使用中）' : '') + '</div>' + (hc ? '<div class="histtag">過去' + hc + '回使用</div>' : '') + '</div>';
     }).join('') + '</div>';
   }
   function openSwap(pi, hi) {
@@ -1044,7 +1046,7 @@
     var all = S.inv.filter(avail);
     var m = modal('<div class="mh">「' + esc(h.p.name) + '」（' + esc(h.role) + '・原価 ' + yen(h.p.cost) + (h.n > 1 ? '・×' + h.n : '') + '）を入れ替える</div>' +
       '<div class="sm">在庫すべて（タップで入れ替え）</div>' + sortBar() + '<div id="cl"></div>' +
-      '<div class="srch"><input id="q" placeholder="カード名・BOX名で探す"><button class="ghost" id="qs">探す</button></div><div id="qr"></div>' +
+      '<div class="srch"><input id="q" placeholder="カード名・BOX名で探す"><button class="ghost" id="qs">探す</button><button class="ghost" data-psa>PSAだけ</button></div><div id="qr"></div>' +
       setSwapHTML(pt, h) +
       '<div class="acts"><button class="ghost danger" data-rm>この当たりを外す' + (h.n > 1 ? '（1枚）' : '') + '</button><button class="ghost" data-x>閉じる</button></div>');
     bindSetSwap(m, pt, hi);
@@ -1088,7 +1090,7 @@
     mk.onclick = function () {
       var box = m.querySelector('#relr'), base = h.p;
       box.innerHTML = '<div class="sm">「' + esc(base.name) + '」と一緒にするもう1枚を選んでください（関連しそうなものを先に出しています）</div>' +
-        '<div class="srch"><input id="sq" placeholder="カード名・BOX名で探す"><button class="ghost" id="sqs">探す</button></div><div id="sqr"></div>';
+        '<div class="srch"><input id="sq" placeholder="カード名・BOX名で探す"><button class="ghost" id="sqs">探す</button><button class="ghost" data-psa>PSAだけ</button></div><div id="sqr"></div>';
       var draw = function (list) {
         var arr = list.slice(0, 36), el = box.querySelector('#sqr');
         el.innerHTML = arr.length ? '<div class="cards">' + arr.map(function (q, k) { return '<div class="cwrap">' + card({ p: q, n: 1, role: q.kind === 'box' ? 'BOX' : q.kind === 'psa' ? 'PSA' : (q.cond || '').replace('状態', '') || 'カード' }, false, 'data-sp="' + k + '"') + '<div class="stocktag">セットにすると マスタ ' + yen(base.sell + q.sell) + '・原価 ' + yen(base.cost + q.cost) + '</div></div>'; }).join('') + '</div>' : '<div class="msg sub">見つかりません</div>';
@@ -1121,11 +1123,11 @@
     var KT = [['filler', '【@】商品'], ['pack', 'パック'], ['card', 'シングル'], ['box', 'BOX'], ['psa', 'PSA'], ['supply', 'サプライ']];
     var first = (pt.filler[0] && pt.filler[0].p.kind) || 'filler', kind = first;
     var m = modal('<div class="mh">' + esc(title) + '</div><div class="sortbar">' + KT.map(function (k) { return '<button class="ghost' + (k[0] === kind ? ' on' : '') + '" data-kt="' + k[0] + '">' + k[1] + '</button>'; }).join('') + '</div>' +
-      '<div class="srch"><input id="q" placeholder="名前で探す（空なら全部）"><button class="ghost" id="qs">探す</button></div><div id="cl"></div>' +
+      '<div class="srch"><input id="q" placeholder="名前で探す（空なら全部）"><button class="ghost" id="qs">探す</button><button class="ghost" data-psa>PSAだけ</button></div><div id="cl"></div>' +
       '<div class="acts"><button class="ghost" data-x>閉じる</button></div>');
     function draw() {
       var q = m.querySelector('#q').value.trim();
-      var list = (q ? searchPool() : S.inv).filter(function (p) { return (q || p.kind === kind) && p.id !== exclude && fillAvail(pt, p) > 0 && (!q || qHit(p, q)); }) /* 名前で探すときは種類に関係なく全部の在庫から */.sort(function (a, b) { return a.cost - b.cost || b.stock - a.stock; }).slice(0, 60);
+      var list = (q ? searchPool() : searchPool()).filter(function (p) { return (q || p.kind === kind) && p.id !== exclude && fillAvail(pt, p) > 0 && (!q || qHit(p, q)); }) /* 名前で探すときは種類に関係なく全部の在庫から */.sort(function (a, b) { return a.cost - b.cost || b.stock - a.stock; }).slice(0, 60);
       m.querySelector('#cl').innerHTML = '<div class="sm">原価の安い順（60件まで）。在庫が残っているものだけ出ます。</div>' + candHTML(list, pi);
       m.querySelectorAll('#cl [data-pick]').forEach(function (b) { b.onclick = function () { var p = findInv(b.dataset.pick); if (p) { m.remove(); onPick(p); } }; });
     }
@@ -1191,7 +1193,7 @@
     var list = S.inv.filter(avail);
     var m = modal('<div class="mh">下枠「' + esc(f.p.name) + '」（原価 ' + yen(f.p.cost) + '）を入れ替える</div>' +
       '<div class="sm">' + fillKindName(L) + 'の在庫すべて（目安：マスタ' + yen(L.fill.single) + '以上・小当たり未満）</div>' + sortBar() + '<div id="cl"></div>' +
-      '<div class="srch"><input id="q" placeholder="カード名で探す"><button class="ghost" id="qs">探す</button></div><div id="qr"></div>' +
+      '<div class="srch"><input id="q" placeholder="カード名で探す"><button class="ghost" id="qs">探す</button><button class="ghost" data-psa>PSAだけ</button></div><div id="qr"></div>' +
       '<div class="acts"><button class="ghost" data-x>閉じる</button></div>');
     function pick(id) {
       var p = findInv(id); if (!p) return;
@@ -1271,7 +1273,7 @@
     var cap = pt.rev * (L.costMax || 1) - pt.cost; // 上限まであといくら（下枠1枚分は戻る）
     var m = modal('<div class="mh">' + esc(pt.name) + ' に' + (fixedRole === 'ラストワン' ? 'ラストワン賞を入れる' : '当たりを足す') + '</div>' +
       '<div class="sm">足すと、下枠が1枚減ります（口数は' + pt.init + '口のまま）。今の原価率 ' + pct(pt.costr) + '／上限 ' + pct(L.costMax) + '。種類は「' + esc(L.label) + '」の順に並べています。</div>' +
-      '<div class="srch"><input id="q" placeholder="カード名・BOX名で探す"><button class="ghost" id="qs">探す</button></div><div id="qr"></div>' +
+      '<div class="srch"><input id="q" placeholder="カード名・BOX名で探す"><button class="ghost" id="qs">探す</button><button class="ghost" data-psa>PSAだけ</button></div><div id="qr"></div>' +
       groups.map(function (g, gi) { return '<div class="mh2' + (g.other ? ' s' : '') + '">' + esc(g.title) + '　<span class="cs">' + g.list.length + '件</span></div><div id="g' + gi + '"></div>'; }).join('') +
       '<div class="acts"><button class="ghost" data-x>閉じる</button></div>');
     function drawGroup(gi, n) {
@@ -1354,6 +1356,11 @@
     root.querySelectorAll('[data-add]').forEach(function (b) { b.onclick = function () { openAdd(Number(b.dataset.add), b.dataset.role); }; });
   }
 
+  root.addEventListener('click', function (e) { // 「PSAだけ」：PSAの在庫を全部出す（店頭価格0円のものも）
+    var b = e.target && e.target.closest && e.target.closest('[data-psa]'); if (!b) return;
+    var box = b.parentNode, inp = box.querySelector('input'), go = box.querySelector('button:not([data-psa])');
+    if (inp && go) { inp.value = 'PSA'; go.click(); }
+  });
   function modal(html) {
     var m = document.createElement('div'); m.className = 'modal'; m.innerHTML = '<div class="mbox">' + html + '</div>';
     root.querySelector('.win').appendChild(m); return m;
@@ -1793,7 +1800,7 @@
     var hits = [], RL = learnFor(item.sell_price), showAll = !!(RL.fill && RL.fill.kind === 'box'); // 2.5万円など下枠もBOXのオリパは、下枠まで全部出す
     contents.forEach(function (c) {
       var p = prods[c.product_id] || {}; if (/【@\s*\d+】/.test(c.product__display_name || '')) return;
-      var cost = Number(p.average_wholesale_price) || 0, sell0 = Number(p.item_sell_price) || Number(p.actual_sell_price) || Number(p.sell_price) || 0; // オリパに入れたカードは店の在庫が0で、店頭価格・原価が0円になっていることが多い → マスタ価格で見る
+      var cost = Number(p.average_wholesale_price) || 0, sell0 = Number(p.item_sell_price) || Number(p.actual_sell_price) || Number(p.sell_price) || 0; if (/PSA/i.test((p.specialty__display_name || '') + ' ' + (p.condition_option_display_name || '') + ' ' + (p.display_name || '')) && (Number(p.actual_sell_price) || 0) > 0) sell0 = Number(p.actual_sell_price); /* PSAは店頭価格（あれば） */ // オリパに入れたカードは店の在庫が0で、店頭価格・原価が0円になっていることが多い → マスタ価格で見る
       if (!showAll && Math.max(sell0, cost) < item.sell_price) return; // 下枠（口単価未満）は出さない。小当たりまで全部出す
       var ex = hits.find(function (h) { return h.id === c.product_id; });
       var hk = p.item_category_handle === 'BOX' ? 'box' : (p.item_category_handle === 'PACK' ? 'pack' : 'card'); // 出た当たりの種類（BOXが出たらBOXで補充を提案する）
@@ -1865,7 +1872,7 @@
       var list = S.inv.filter(function (q) { return sameKind(q) && q.id !== a.id && q.stock - usedN(q.id) > 0; })
         .sort(function (x, y) { return (related(a, y) ? 1 : 0) - (related(a, x) ? 1 : 0) || Math.abs(Math.log(Math.max(x.cost, 1) / Math.max(a.cost, 1))) - Math.abs(Math.log(Math.max(y.cost, 1) / Math.max(a.cost, 1))); }).slice(0, 40);
       var m = modal('<div class="mh">「' + esc(a.name) + '」とセットにするカードを選ぶ</div><div class="sm">2枚で1つの当たり（1口）になります。同じポケモン・進化の仲間を先に出しています。</div>' +
-        '<div class="srch"><input id="sq" placeholder="カード名で探す"><button class="ghost" id="sqs">探す</button></div><div id="sqr">' + candHTML(list, -1) + '</div><div class="acts"><button class="ghost" data-x>やめる</button></div>');
+        '<div class="srch"><input id="sq" placeholder="カード名で探す"><button class="ghost" id="sqs">探す</button><button class="ghost" data-psa>PSAだけ</button></div><div id="sqr">' + candHTML(list, -1) + '</div><div class="acts"><button class="ghost" data-x>やめる</button></div>');
       m.querySelector('[data-x]').onclick = function () { m.remove(); };
       var bindPick = function () { m.querySelectorAll('[data-pick]').forEach(function (b) { b.onclick = function () {
         var q = findInv(b.dataset.pick); if (!q) return;
@@ -1886,7 +1893,7 @@
         '<div class="rfq"><span>まとめて提案：</span>当たり <input id="qh" type="number" min="0" value="' + Math.max(nHit, 1) + '"> 枚 ＋ 下枠 <input id="qf" type="number" min="0" value="' + fN + '"> 枚 <button class="ghost" id="qgo">この枚数で選び直す</button></div>' +
         '<div class="mh2 s">同じくらいの当たり' + (firstPick.length ? '' : '（ちょうどいいものが無いので、原価が近い順）') + '</div>' + (same.length ? '<div class="cards">' + same.map(function (p) { return cardSel(p, '近いもの'); }).join('') + '</div>' : '<div class="msg sub">候補がありません。下で探してください</div>') +
         (R.extra.length ? '<div class="mh2 s">探して足したもの</div><div class="cards">' + R.extra.map(function (p) { return cardSel(p, '探した'); }).join('') + '</div>' : '') +
-        '<div class="srch"><input id="rq" placeholder="カード名・BOX名で在庫から探す（空欄で押すと全部）"><button class="ghost" id="rqs">探す</button></div><div id="rqr"></div>' +
+        '<div class="srch"><input id="rq" placeholder="カード名・BOX名で在庫から探す（空欄で押すと全部）"><button class="ghost" id="rqs">探す</button><button class="ghost" data-psa>PSAだけ</button></div><div id="rqr"></div>' +
         (cheaper.length ? '<div class="mh2 s">原価を抑えたいとき（少し下の当たり）</div><div class="cards">' + cheaper.map(function (p) { return cardSel(p, '控えめ'); }).join('') + '</div>' : '') +
         '<div class="mh2 s">下枠（' + esc(RL.fill.at ? '【@' + RL.fill.at + '】' : RL.fill.packOnly ? 'パック' : 'マスタ' + yen(RL.fill.single) + '以上の' + fillKindName(RL)) + 'が基本。ほかのものも足せます）</div><div class="cards">' +
           R.fl.map(function (x, k) { return '<div class="rfc on">' + card({ p: x.p, n: x.n, role: '下枠' }, false) + '<div class="rfn"><button class="ghost" data-frm="' + k + '">−</button><b>' + x.n + '</b><button class="ghost" data-fad="' + k + '">＋</button></div></div>'; }).join('') +
