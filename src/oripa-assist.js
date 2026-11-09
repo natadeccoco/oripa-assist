@@ -142,7 +142,7 @@
   document.body.appendChild(host);
   var root = host.attachShadow({ mode: 'open' });
   root.innerHTML = '<style>' + CSS() + '</style><div class="wrap"><div class="win">' +
-    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-11-09 版CH</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
+    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-11-09 版CI</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
     (ALL ? '' : '<div class="tabs"><button data-tab="make" class="on">新しく作る</button><button data-tab="refill">補充する</button></div>') +
     '<button class="x" id="close" title="閉じる">×</button></div>' +
     '<div class="bd" id="body"><div class="msg">読み込み中…</div></div></div></div>';
@@ -1327,8 +1327,8 @@
         '<div class="kpi"><div><b>' + pct(pt.costr) + '</b><span>原価率' + (rawCost(pt) != null ? '（仮の原価で計算）' : '') + '</span></div><div><b>' + yen(pt.rev - pt.cost) + '</b><span>粗利（完売時）' + (rawCost(pt) != null ? '（仮の原価で計算）' : '') + '</span></div><div><b>' + nHit + '枚' + (hasLast ? '＋ラストワン' : '') + '</b><span>当たり</span></div></div>' +
         (rawCost(pt) != null ? '<div class="kpi kpiraw"><div><b>' + pct(rawCost(pt) / pt.rev) + '</b><span>原価率（マイカの原価のまま）</span></div><div><b>' + yen(pt.rev - rawCost(pt)) + '</b><span>粗利（マイカの原価のまま）</span></div><div><b>' + yen(pt.cost - rawCost(pt)) + '</b><span>仮で足している原価</span></div></div>' : '') +
         (pt.edited ? '<div class="edited">入れ替え済み</div>' : '') + lowCostNote(pt) +
+        '<div class="addrow"><button class="ghost" data-add="' + i + '">＋ 当たりを足す</button></div>' + // 当たりの一覧の上に（下までスクロールしなくていいように）
         sec('大当たり', ['TOP', '大当たり']) + sec('中当たり', ['中当たり', '当たり']) + sec('小当たり', ['小当たり']) + sec('ラストワン賞', ['ラストワン'], 'ラストワン') +
-        '<div class="addrow"><button class="ghost" data-add="' + i + '">＋ 当たりを足す</button></div>' +
         '<div class="sec"><div class="sech">下枠<span>' + fN + '口（1口平均 原価' + yen(fC / Math.max(fN, 1)) + (pt.L.fill.single ? '・マスタ' + yen(pt.L.fill.single) + '以上の' + fillKindName(pt.L) : '') + '）　押すと枚数の変更・入れ替え・外すができます</span></div><div class="cards">' +
           pt.filler.map(function (f, fi) { return card({ p: f.p, n: f.n, role: '下枠' }, false, 'data-pi="' + i + '" data-fi="' + fi + '"'); }).join('') +
           '<button class="addc" data-fadd="' + i + '">＋<br>下枠を<br>足す</button></div></div>' +
