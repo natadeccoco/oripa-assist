@@ -142,7 +142,7 @@
   document.body.appendChild(host);
   var root = host.attachShadow({ mode: 'open' });
   root.innerHTML = '<style>' + CSS() + '</style><div class="wrap"><div class="win">' +
-    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-11-09 版CG</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
+    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-11-09 版CH</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
     (ALL ? '' : '<div class="tabs"><button data-tab="make" class="on">新しく作る</button><button data-tab="refill">補充する</button></div>') +
     '<button class="x" id="close" title="閉じる">×</button></div>' +
     '<div class="bd" id="body"><div class="msg">読み込み中…</div></div></div></div>';
@@ -1045,8 +1045,8 @@
     var avail = function (p) { return p.kind !== 'filler' && p.id !== h.p.id && p.stock - usedIn(pt, p.id) > 0; }; // マスタ価格が怪しいものも出す（「マスタ価格要確認」の札が付く）
     var all = S.inv.filter(avail);
     var m = modal('<div class="mh">「' + esc(h.p.name) + '」（' + esc(h.role) + '・原価 ' + yen(h.p.cost) + (h.n > 1 ? '・×' + h.n : '') + '）を入れ替える</div>' +
+      '<div class="srch"><input id="q" placeholder="カード名・型番・BOX名で探す"><button class="ghost" id="qs">探す</button><button class="ghost" data-psa>PSAだけ</button></div><div id="qr"></div>' +
       '<div class="sm">在庫すべて（タップで入れ替え）</div>' + sortBar() + '<div id="cl"></div>' +
-      '<div class="srch"><input id="q" placeholder="カード名・BOX名で探す"><button class="ghost" id="qs">探す</button><button class="ghost" data-psa>PSAだけ</button></div><div id="qr"></div>' +
       setSwapHTML(pt, h) +
       '<div class="acts"><button class="ghost danger" data-rm>この当たりを外す' + (h.n > 1 ? '（1枚）' : '') + '</button><button class="ghost" data-x>閉じる</button></div>');
     bindSetSwap(m, pt, hi);
@@ -1192,8 +1192,8 @@
     var avail = function (p) { return p.kind === (L.fill.kind || 'card') && !p.mis && p.id !== f.p.id && p.stock - usedIn(pt, p.id) > 0; };
     var list = S.inv.filter(avail);
     var m = modal('<div class="mh">下枠「' + esc(f.p.name) + '」（原価 ' + yen(f.p.cost) + '）を入れ替える</div>' +
-      '<div class="sm">' + fillKindName(L) + 'の在庫すべて（目安：マスタ' + yen(L.fill.single) + '以上・小当たり未満）</div>' + sortBar() + '<div id="cl"></div>' +
-      '<div class="srch"><input id="q" placeholder="カード名で探す"><button class="ghost" id="qs">探す</button><button class="ghost" data-psa>PSAだけ</button></div><div id="qr"></div>' +
+      '<div class="sm">' + fillKindName(L) + 'の在庫すべて（目安：マスタ' + yen(L.fill.single) + '以上・小当たり未満）</div>' +
+      '<div class="srch"><input id="q" placeholder="カード名・型番で探す"><button class="ghost" id="qs">探す</button><button class="ghost" data-psa>PSAだけ</button></div><div id="qr"></div>' + sortBar() + '<div id="cl"></div>' +
       '<div class="acts"><button class="ghost" data-x>閉じる</button></div>');
     function pick(id) {
       var p = findInv(id); if (!p) return;
