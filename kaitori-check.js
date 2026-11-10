@@ -6,7 +6,7 @@
   if (location.hostname !== 'pos.mycalinks.com') { alert('マイカ（pos.mycalinks.com）を開いてから押してください'); return; }
   var old = document.getElementById('ndk-kaitori-host'); if (old) old.remove();
 
-  var VERSION = '2026-11-06 版AG';
+  var VERSION = '2026-11-06 版AH';
   var GAS = 'https://script.google.com/macros/s/AKfycbwXHuu-X3L0qzJhvaszEIm-1xdeNIqJACQ0uM7mz5Q0hvwfdF9IuQiTKr3qmscNVmnhcQ/exec';
   var FB_URL = 'https://script.google.com/macros/s/AKfycbwl-ZCZ1LyefvSzEGkBEpTFTuFyvW0p-AYye6jBWaLP9t7-bC9_Owfeh4jKScNkFys6Fw/exec';
   var SHORT = { 322: '柏', 323: '津田沼', 324: '松戸', 325: '横浜', 326: '中野', 327: '町田', 328: '千葉中央', 390: '通販', 409: 'お台場' };
@@ -199,6 +199,24 @@
   }
   function nameHit(a, b) { return a && b && (a === b || (a.length >= 3 && b.indexOf(a) >= 0) || (b.length >= 3 && a.indexOf(b) >= 0)); }
 
+
+  // 同じ型番・同じ名前で、最後の（ ）だけ違う行（※表面加工エラー・ミラー・マスターボールミラー・15周年・未開封など）から1行を選ぶ。
+  // ①（ ）の言葉がマイカの商品名に入っている行 ②なければ（ ）なしの通常の行 ③それもなければ安い方（高く買いすぎたときに警告が出る側）
+  function vTag(n) { var m = String(n || '').normalize('NFKC').match(/[（(]([^）)]*)[）)]\s*$/); return m ? m[1] : ''; }
+  function vParts(tag) { return String(tag || '').replace(/※/g, '').split(/[\/／・,、]/).map(function (s) { return N(s).replace(/仕様$/, ''); }).filter(function (s) { return s.length >= 2; }); }
+  function pickVariant(cands, text) {
+    var ys = {}; cands.forEach(function (r) { ys[r.y] = 1; });
+    if (cands.length < 2 || Object.keys(ys).length < 2) return { use: cands, others: [] };
+    var t = N(text), sc = cands.map(function (r) { var ps = vParts(vTag(r.n)), hit = ps.filter(function (p) { return t.indexOf(p) >= 0; }); return { r: r, ps: ps, hl: hit.join('').length, miss: ps.length - hit.length }; });
+    var best = sc.filter(function (s) { return s.hl > 0; });
+    if (best.length) { var mx = Math.max.apply(null, best.map(function (s) { return s.hl; })); best = best.filter(function (s) { return s.hl === mx; }); var mn = Math.min.apply(null, best.map(function (s) { return s.miss; })); best = best.filter(function (s) { return s.miss === mn; }); }
+    else best = sc.filter(function (s) { return !s.ps.length; });
+    if (!best.length) best = sc;
+    best.sort(function (a, b) { return (a.r.y || 0) - (b.r.y || 0); });
+    var use = best[0].r;
+    return { use: [use], others: cands.filter(function (r) { return r !== use && r.y !== use.y; }) };
+  }
+
   // マイカの明細1行 → 買取表の行（refs）、比べる価格（ref）、近い別カード（sibs）
   function match(c) {
     var dn = c.product__displayNameWithMeta || c.product_name || '', nm = c.product_name || dn;
@@ -232,7 +250,9 @@
       o.note = mp === 0 ? 'マイカの買取価格が0円のため照合なし' : mp == null ? '旧裏：マイカの買取価格を確認中…' : '旧裏・旧弾は照合していません'; return o;
     }
     if (!cands.length && !model) cands = (S.idx.name[bn] || []).filter(function (r) { return isPsa ? r.k === 'psa' : r.k !== 'psa'; });
-    o.refs = cands.filter(function (r) { return r.y; }).map(function (r) { return { r: r, y: r.y }; });
+    var cy = cands.filter(function (r) { return r.y; }), pv = pickVariant(cy.filter(function (r) { return r.k !== 'kyouka'; }), dn + ' ' + nm);
+    o.vars = pv.others; // 選ばなかった特別版の行（画面に「ほかに」として出す）
+    o.refs = pv.use.concat(cy.filter(function (r) { return r.k === 'kyouka'; })).map(function (r) { return { r: r, y: r.y }; });
     // 近い別カード：同じ名前の別レアリティ・別の弾、同じ型番の別カード
     var seen = {}; o.refs.forEach(function (x) { seen[x.r.t + x.r.n + x.r.m + x.r.r] = 1; });
     var pool = (S.idx.name[bn] || []).concat(model ? (S.idx.model[model] || []) : []);
@@ -444,7 +464,7 @@
     var rows = S.lines.map(function (m, li) {
       var lv = m.flags.some(function (f) { return f.lv === 'red'; }) ? 'red' : m.flags.length ? 'yel' : '';
       var fbi = fbm.byLine[li];
-      var ref = m.ref ? yen(m.ref) + '<div class="sub">' + esc((m.refs[0] || {}).r ? m.refs[0].r.t : '') + '</div>' : '<span class="sub">' + esc(m.note || (m.hanyo ? '汎用' : '買取表になし')) + '</span>';
+      var ref = m.ref ? yen(m.ref) + '<div class="sub">' + esc((m.refs[0] || {}).r ? m.refs[0].r.t : '') + '</div>' + (m.vars && m.vars.length ? '<div class="sub" style="color:#b45309">ほかに ' + m.vars.slice(0, 3).map(function (r) { return esc(vTag(r.n) || r.n) + ' ' + yen(r.y); }).join('／') + '</div>' : '') : '<span class="sub">' + esc(m.note || (m.hanyo ? '汎用' : '買取表になし')) + '</span>';
       return '<tr class="' + lv + (fbi ? ' fbrow' : '') + '"><td class="th">' + thumb(m) + '</td><td class="l nm"><b>' + esc(m.dn) + '</b>' + condBadge(m) +
         (fbi ? '<span class="f fbx">' + (fbi.ok ? '✅' : '↩️') + ' 本部の指示' + (fbi.no ? '（' + fbi.no + '）' : '') + '：' + esc(fbi.text) + '</span>' : '') +
         m.flags.map(function (f) { return '<span class="f ' + f.lv + '">' + (f.lv === 'red' ? '🚨 ' : '⚠️ ') + esc(f.t) + '</span>'; }).join('') +
