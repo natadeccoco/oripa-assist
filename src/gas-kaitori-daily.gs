@@ -42,6 +42,23 @@ function kdIndex() {
   });
   return I;
 }
+
+// 同じ型番・同じ名前で、最後の（ ）だけ違う行（※表面加工エラー・ミラー・マスターボールミラー・15周年・未開封など）から1行を選ぶ（ツールの pickVariant と同じ）。
+// ①（ ）の言葉がマイカの商品名に入っている行 ②なければ（ ）なしの通常の行 ③それもなければ安い方（高く買いすぎたときに警告が出る側）
+function kdVTag(n) { var m = String(n || '').normalize('NFKC').match(/[（(]([^）)]*)[）)]\s*$/); return m ? m[1] : ''; }
+function kdVParts(tag) { return String(tag || '').replace(/※/g, '').split(/[\/／・,、]/).map(function (s) { return kdN(s).replace(/仕様$/, ''); }).filter(function (s) { return s.length >= 2; }); }
+function kdPickVariant(cands, text) {
+  var ys = {}; cands.forEach(function (r) { ys[r.y] = 1; });
+  if (cands.length < 2 || Object.keys(ys).length < 2) return { use: cands, others: [] };
+  var t = kdN(text), sc = cands.map(function (r) { var ps = kdVParts(kdVTag(r.n)), hit = ps.filter(function (p) { return t.indexOf(p) >= 0; }); return { r: r, ps: ps, hl: hit.join('').length, miss: ps.length - hit.length }; });
+  var best = sc.filter(function (s) { return s.hl > 0; });
+  if (best.length) { var mx = Math.max.apply(null, best.map(function (s) { return s.hl; })); best = best.filter(function (s) { return s.hl === mx; }); var mn = Math.min.apply(null, best.map(function (s) { return s.miss; })); best = best.filter(function (s) { return s.miss === mn; }); }
+  else best = sc.filter(function (s) { return !s.ps.length; });
+  if (!best.length) best = sc;
+  best.sort(function (a, b) { return (a.r.y || 0) - (b.r.y || 0); });
+  var use = best[0].r;
+  return { use: [use], others: cands.filter(function (r) { return r !== use && r.y !== use.y; }) };
+}
 // l: {name, pname, no, exp, rar, cat, unit, cnt}
 function kdJudge(I, l) {
   var dn = l.name || l.pname || '', nm = l.pname || dn, unit = Number(l.unit) || 0;
@@ -68,7 +85,12 @@ function kdJudge(I, l) {
     if (cands.length && !cands.some(function (r) { return kdHit(r.bn, bn); })) cands = [];
     var oldLike = !model && (/^[★◆●☆]$/.test(String(l.rar || '').trim()) || /拡張カード|旧裏/.test(dn)); // 旧裏・旧弾は名前だけで別の弾を拾わないよう照合しない
     if (!cands.length && !model && !(oldLike && !isPsa)) cands = (I.name[bn] || []).filter(function (r) { return isPsa ? r.k === 'psa' : r.k !== 'psa'; });
-    o.refs = cands.filter(function (r) { return r.y; }).map(function (r) { return { r: r, y: r.y }; });
+    var cy = cands.filter(function (r) { return r.y; });
+    if (cy.some(function (r) { return r.k !== 'kyouka' && r.bn === bn; })) cy = cy.filter(function (r) { return r.k === 'kyouka' || r.bn === bn; }); // 名前がまったく同じ行を優先
+    var ny = cy.filter(function (r) { return r.k !== 'kyouka'; }).map(function (r) { return r.y; });
+    if (!model && ny.length > 1 && Math.min.apply(null, ny) !== Math.max.apply(null, ny)) cy = []; // 型番がなく名前だけで価格の違う行が複数 → どの弾か分からないので比べない
+    var pv = kdPickVariant(cy.filter(function (r) { return r.k !== 'kyouka'; }), dn + ' ' + nm);
+    o.refs = pv.use.concat(cy.filter(function (r) { return r.k === 'kyouka'; })).map(function (r) { return { r: r, y: r.y }; });
   }
   if (!o.refs.length) return o;
   var normal = o.refs.filter(function (x) { return x.r.k !== 'kyouka'; }), main = normal[0] || o.refs[0];
