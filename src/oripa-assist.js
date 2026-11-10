@@ -142,7 +142,7 @@
   document.body.appendChild(host);
   var root = host.attachShadow({ mode: 'open' });
   root.innerHTML = '<style>' + CSS() + '</style><div class="wrap"><div class="win">' +
-    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-11-09 版CI</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
+    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-11-10 版CJ</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
     (ALL ? '' : '<div class="tabs"><button data-tab="make" class="on">新しく作る</button><button data-tab="refill">補充する</button></div>') +
     '<button class="x" id="close" title="閉じる">×</button></div>' +
     '<div class="bd" id="body"><div class="msg">読み込み中…</div></div></div></div>';
@@ -1136,8 +1136,8 @@
     m.querySelector('[data-x]').onclick = function () { m.remove(); };
     draw();
   }
-  function askCount(title, def, max, onOk) {
-    var m = modal('<div class="mh">' + esc(title) + '</div><div class="frm"><label>何口分入れますか（最大 ' + max + '）<input id="cn" type="number" min="1" max="' + max + '" value="' + Math.min(def, max) + '"></label></div>' +
+  function askCount(title, def, max, onOk, label) {
+    var m = modal('<div class="mh">' + esc(title) + '</div><div class="frm"><label>' + (label || '何口分入れますか') + '（最大 ' + max + '）<input id="cn" type="number" min="1" max="' + max + '" value="' + Math.min(def, max) + '"></label></div>' +
       '<div class="acts"><button class="ghost" data-x>やめる</button><button class="primary" data-ok>決める</button></div>');
     m.querySelector('[data-x]').onclick = function () { m.remove(); };
     m.querySelector('[data-ok]').onclick = function () { var n = Math.max(1, Math.min(max, Math.round(Number(m.querySelector('#cn').value) || 0))); m.remove(); onOk(n); };
@@ -1810,22 +1810,41 @@
     hits.forEach(function (h, k) { h.role = k === 0 ? 'TOP' : Math.max(h.sell, h.cost) < item.sell_price ? '下枠' : roleOf(RL, item.sell_price, { sell: h.sell || h.cost }); });
     if (!hits.length) { box.innerHTML = '<div class="msg sub">このオリパには、口単価より原価が高い当たりが登録されていません（パックオリパなど）</div>'; return; }
     var nAll = hits.reduce(function (s, h) { return s + h.n; }, 0);
-    box.innerHTML = '<div class="mh2">「' + esc(item.display_name) + '」の当たり（' + hits.length + '種類・' + nAll + '枚）— 出た当たりを選んでください（いくつでも選べます）</div>' +
+    box.innerHTML = '<div class="addrow"><button class="ghost" id="rnone">当たりは出ていない（足すだけ）</button></div>' +
+      '<div class="mh2">「' + esc(item.display_name) + '」の当たり（' + hits.length + '種類・' + nAll + '枚）— 出た当たりを選んでください（いくつでも選べます。2枚以上入っているものは、出た枚数を聞きます）</div>' +
       '<div class="cards sel">' + hits.map(function (h, k) {
         return '<button class="cd pickable" data-k="' + k + '"><div class="im">' + (h.img ? '<img src="' + esc(h.img) + '">' : '<div class="noimg">' + esc(h.name.slice(0, 14)) + '</div>') + (h.n > 1 ? '<span class="cnt">×' + h.n + '</span>' : '') + '<span class="role r-' + esc(h.role) + '">' + esc(h.role) + '</span></div><div class="nm">' + esc(h.name) + '</div>' + (h.sell ? '<div class="pr">マスタ ' + yen(h.sell) + '</div>' : '') + '<div class="cs">原価 ' + yen(h.cost) + '</div></button>';
       }).join('') + '</div><div class="sm">封入時の中身です（すでに出た当たりも含みます）。</div><div id="rsug"></div>';
-    root.querySelectorAll('.pickable').forEach(function (b) { b.onclick = function () { // 出た当たりは何枚でも選べる（押すたびに選ぶ・外すが切り替わる）
-      b.classList.toggle('on');
-      var sel = [].slice.call(root.querySelectorAll('.pickable.on')).map(function (x) { return hits[Number(x.dataset.k)]; });
+    var refresh = function () { // 選んだ当たり（出た枚数ぶん）で提案し直す
+      root.querySelectorAll('#rnone').forEach(function (x) { x.classList.remove('on'); });
+      var sel = []; [].slice.call(root.querySelectorAll('.pickable.on')).forEach(function (x) { var h = hits[Number(x.dataset.k)]; for (var j = 0; j < (h.out || 1); j++) sel.push(h); });
       if (sel.length) suggestRefill(item, sel); else $('#rsug').innerHTML = '';
+    };
+    var outTag = function (b, h) { var t = b.querySelector('.outn'); if (t) t.remove(); if (b.classList.contains('on') && h.n > 1) b.querySelector('.im').insertAdjacentHTML('beforeend', '<span class="cnt outn" style="left:4px;right:auto;background:#c0392b">出た ' + h.out + '/' + h.n + '</span>'); };
+    root.querySelectorAll('.pickable').forEach(function (b) { b.onclick = function () { // 出た当たりは何枚でも選べる（押すたびに選ぶ・外すが切り替わる）。×2以上は出た枚数を聞く
+      var h = hits[Number(b.dataset.k)];
+      if (b.classList.contains('on')) { b.classList.remove('on'); h.out = 0; outTag(b, h); refresh(); return; }
+      if (h.n > 1) { askCount('「' + h.name + '」は何枚出ましたか？（' + h.n + '枚入っています）', 1, h.n, function (c) { h.out = c; b.classList.add('on'); outTag(b, h); refresh(); }, '出た枚数'); return; }
+      h.out = 1; b.classList.add('on'); refresh();
     }; });
+    $('#rnone').onclick = function () { // 当たりは出ていないが、回転が弱いので足したい：このオリパの小〜中当たりくらいを目安に候補を出す（自動では選ばない）
+      root.querySelectorAll('.pickable.on').forEach(function (x) { x.classList.remove('on'); var h = hits[Number(x.dataset.k)]; h.out = 0; outTag(x, h); });
+      this.classList.add('on');
+      var cs = hits.slice(1).map(function (h) { return h.cost > 0 ? h.cost : Math.round((h.sell || 0) * 0.7); }).filter(function (c) { return c > 0; }).sort(function (a, b) { return a - b; });
+      var mid = cs.length ? cs[Math.floor(cs.length / 2)] : Math.round(item.sell_price * 3);
+      var kc = {}; hits.forEach(function (h) { kc[h.kind] = (kc[h.kind] || 0) + h.n; }); var kind = Object.keys(kc).sort(function (a, b) { return kc[b] - kc[a]; })[0] || 'card';
+      suggestRefill(item, [{ id: -1, name: '（当たりは出ていない）', cost: mid, sell: 0, kind: kind, none: true }]);
+    };
   }
 
   function suggestRefill(item, drawn) {
     if (!Array.isArray(drawn)) drawn = [drawn];
     var ref = function (h) { return h.cost > 0 ? h.cost : Math.round((h.sell || 0) * 0.7); }; // 原価が0のときはマスタの70%を目安にする
     var tmpRef = drawn.some(function (h) { return !(h.cost > 0); });
-    var hit = { name: drawn.map(function (h) { return h.name; }).join('・'), cost: drawn.reduce(function (a, h) { return a + ref(h); }, 0) };
+    var none = drawn.length === 1 && drawn[0].none; // 「当たりは出ていない（足すだけ）」
+    var nm = [], nc = {}; drawn.forEach(function (h) { if (!nc[h.name]) nm.push(h.name); nc[h.name] = (nc[h.name] || 0) + 1; });
+    var hit = { name: nm.map(function (n) { return n + (nc[n] > 1 ? '×' + nc[n] : ''); }).join('・'), cost: drawn.reduce(function (a, h) { return a + ref(h); }, 0), none: none };
+    if (none) tmpRef = false;
     var target = hit.cost, RL = learnFor(item.sell_price), price = item.sell_price;
     var dIds = drawn.map(function (h) { return h.id; }), seen = {}, same = [], cheaper = [], firstPick = [];
     drawn.forEach(function (h) { // 出た当たりごとに、同じくらい・少し下の候補を集める（重なりは1つに）
@@ -1865,7 +1884,7 @@
       return fl;
     }
     function autoFill() { if (R.autoF) R.fl = evenFill(); }
-    firstPick.forEach(function (p) { R.pick[p.id] = (R.pick[p.id] || 0) + 1; }); // 最初は、出た当たり1枚ごとに「同じくらい」のいちばん上を1枚
+    if (!none) firstPick.forEach(function (p) { R.pick[p.id] = (R.pick[p.id] || 0) + 1; }); // 最初は、出た当たり1枚ごとに「同じくらい」のいちばん上を1枚
     function refillMakeSet(a) { // 補充でセット当たり（2枚で1つの当たり・1口）を作る：同じポケモン・進化の仲間を先に出す
       var usedN = function (id) { var n = 0; R.cands.forEach(function (x) { if (R.pick[x.id]) members(x).forEach(function (m) { if (m.id === id) n += R.pick[x.id]; }); }); return n; };
       var sameKind = function (q) { return a.kind === 'box' || a.kind === 'pack' ? (q.kind === 'box' || q.kind === 'pack') : (q.kind === 'card' || q.kind === 'psa'); }; // BOXはBOX・パックと、シングルはシングル・PSAとセットに
@@ -1889,7 +1908,7 @@
       var cost = hitsSel.reduce(function (a, p) { return a + p.cost * R.pick[p.id]; }, 0) + R.fl.reduce(function (a, x) { return a + x.p.cost * x.n; }, 0), add = nHit + fN;
       var cardSel = function (p, tag) { var n = R.pick[p.id] || 0; return '<div class="rfc' + (n ? ' on' : '') + '">' + card({ p: p, n: Math.max(n, 1), role: p.set ? 'セット' : tag }, false, 'data-rp="' + p.id + '"') + '<div class="rfn"><button class="ghost" data-rm1="' + p.id + '">−</button><b>' + n + '</b><button class="ghost" data-ad1="' + p.id + '">＋</button></div>' +
         (!p.set && p.kind !== 'filler' ? '<button class="ghost mkset" data-mkset="' + p.id + '">セットにする</button>' : p.set ? '<button class="ghost mkset" data-unset="' + esc(p.id) + '">セットを外す</button>' : '') + '</div>'; };
-      var html = '<div class="mh2">出た当たり：' + esc(hit.name) + '（' + drawn.length + '枚・原価計 ' + yen(target) + (tmpRef ? '（原価0のものはマスタの70%で計算）' : '') + '）の補充 — 足すものを選んでください</div>' +
+      var html = (none ? '<div class="mh2">当たりは出ていない — 足すものを選んでください（候補は、このオリパの当たりのまん中くらい・原価 ' + yen(target) + ' 前後から並べています。検索・「PSAだけ」でも選べます）</div>' : '<div class="mh2">出た当たり：' + esc(hit.name) + '（' + drawn.length + '枚・原価計 ' + yen(target) + (tmpRef ? '（原価0のものはマスタの70%で計算）' : '') + '）の補充 — 足すものを選んでください</div>') +
         '<div class="rfq"><span>まとめて提案：</span>当たり <input id="qh" type="number" min="0" value="' + Math.max(nHit, 1) + '"> 枚 ＋ 下枠 <input id="qf" type="number" min="0" value="' + fN + '"> 枚 <button class="ghost" id="qgo">この枚数で選び直す</button></div>' +
         '<div class="mh2 s">同じくらいの当たり' + (firstPick.length ? '' : '（ちょうどいいものが無いので、原価が近い順）') + '</div>' + (same.length ? '<div class="cards">' + same.map(function (p) { return cardSel(p, '近いもの'); }).join('') + '</div>' : '<div class="msg sub">候補がありません。下で探してください</div>') +
         (R.extra.length ? '<div class="mh2 s">探して足したもの</div><div class="cards">' + R.extra.map(function (p) { return cardSel(p, '探した'); }).join('') + '</div>' : '') +
@@ -1898,7 +1917,7 @@
         '<div class="mh2 s">下枠（' + esc(RL.fill.at ? '【@' + RL.fill.at + '】' : RL.fill.packOnly ? 'パック' : 'マスタ' + yen(RL.fill.single) + '以上の' + fillKindName(RL)) + 'が基本。ほかのものも足せます）</div><div class="cards">' +
           R.fl.map(function (x, k) { return '<div class="rfc on">' + card({ p: x.p, n: x.n, role: '下枠' }, false) + '<div class="rfn"><button class="ghost" data-frm="' + k + '">−</button><b>' + x.n + '</b><button class="ghost" data-fad="' + k + '">＋</button></div></div>'; }).join('') +
           '<button class="addc" id="rfadd">＋<br>下枠を<br>足す</button></div>' +
-        '<div class="rfsum">足すもの：当たり ' + nHit + '枚・下枠 ' + fN + '枚（口数 +' + add + '口）／足す原価 ' + yen(cost) + '（出た当たりの原価計 ' + yen(target) + '）／足した口の売上 ' + yen(add * price) +
+        '<div class="rfsum">足すもの：当たり ' + nHit + '枚・下枠 ' + fN + '枚（口数 +' + add + '口）／足す原価 ' + yen(cost) + '' + (none ? '' : '（出た当たりの原価計 ' + yen(target) + '）') + '／足した口の売上 ' + yen(add * price) +
           '<div class="rfkpi"><span>足した分の原価率 <b class="' + (add && cost > add * price ? 'neg' : '') + '">' + (add ? Math.round(cost / (add * price) * 1000) / 10 + '%' : '—') + '</b></span><span>足した分の粗利 <b class="' + (add * price - cost < 0 ? 'neg' : '') + '">' + yen(add * price - cost) + '</b></span>' +
           '<span class="sm">' + (R.autoF ? '下枠は「足した口の売上＝足す原価」になる枚数で自動（損が出るときは下枠の数で調整してください）' : '下枠は手で調整中') + '</span>' + (R.autoF ? '' : '<button class="ghost" id="rfeven">下枠を売上＝原価の枚数に戻す</button>') + '</div></div>' +
         (R.appr ? '<div class="appr ' + (R.appr.status === '承認' ? 'ok' : R.appr.status === '差し戻し' ? 'ng' : 'wait') + '">本部の承認：' + esc(R.appr.status) + (R.appr.by ? '（' + esc(R.appr.by) + '）' : '') + '</div>' : '') +
@@ -1944,7 +1963,7 @@
       var hs = R.cands.filter(function (p) { return R.pick[p.id] > 0; }).map(function (p) { return { p: p, n: R.pick[p.id], role: roleOf(RL, price, p) }; });
       var fl = R.fl.filter(function (x) { return x.n > 0; });
       var add = hs.reduce(function (a, h) { return a + h.n; }, 0) + fl.reduce(function (a, x) { return a + x.n; }, 0), cost = hs.concat(fl).reduce(function (a, h) { return a + h.p.cost * h.n; }, 0);
-      return { name: '【補充】' + item.display_name, note: '【補充】「' + item.display_name + '」で「' + hit.name + '」が出たので補充', price: price, init: add, hits: hs, filler: fl, cost: cost, rev: add * price, costr: add ? cost / (add * price) : 0, L: RL, warn: [] };
+      return { name: '【補充】' + item.display_name, note: '【補充】「' + item.display_name + (none ? '」に当たりを足す（当たりは出ていない）' : '」で「' + hit.name + '」が出たので補充'), price: price, init: add, hits: hs, filler: fl, cost: cost, rev: add * price, costr: add ? cost / (add * price) : 0, L: RL, warn: [] };
     }
     function confirmRefill() {
       var pt = refillPt();
