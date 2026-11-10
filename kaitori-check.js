@@ -250,7 +250,13 @@
       o.note = mp === 0 ? 'マイカの買取価格が0円のため照合なし' : mp == null ? '旧裏：マイカの買取価格を確認中…' : '旧裏・旧弾は照合していません'; return o;
     }
     if (!cands.length && !model) cands = (S.idx.name[bn] || []).filter(function (r) { return isPsa ? r.k === 'psa' : r.k !== 'psa'; });
-    var cy = cands.filter(function (r) { return r.y; }), pv = pickVariant(cy.filter(function (r) { return r.k !== 'kyouka'; }), dn + ' ' + nm);
+    var cy = cands.filter(function (r) { return r.y; });
+    if (cy.some(function (r) { return r.k !== 'kyouka' && r.bn === bn; })) cy = cy.filter(function (r) { return r.k === 'kyouka' || r.bn === bn; }); // 名前がまったく同じ行を優先（ピカチュウVで「ピカチュウ」を拾わない）
+    if (!model && cy.length > 1) { // 型番がなく名前だけで探したときに、価格の違う行が複数あれば、どの弾か分からないので比べない
+      var ny = cy.filter(function (r) { return r.k !== 'kyouka'; }).map(function (r) { return r.y; }), lo = Math.min.apply(null, ny), hi = Math.max.apply(null, ny);
+      if (ny.length > 1 && lo !== hi) { o.note = '型番がないため照合できません（買取表に同じ名前が' + ny.length + '件：' + yen(lo) + '〜' + yen(hi) + '）'; return o; }
+    }
+    var pv = pickVariant(cy.filter(function (r) { return r.k !== 'kyouka'; }), dn + ' ' + nm);
     o.vars = pv.others; // 選ばなかった特別版の行（画面に「ほかに」として出す）
     o.refs = pv.use.concat(cy.filter(function (r) { return r.k === 'kyouka'; })).map(function (r) { return { r: r, y: r.y }; });
     // 近い別カード：同じ名前の別レアリティ・別の弾、同じ型番の別カード

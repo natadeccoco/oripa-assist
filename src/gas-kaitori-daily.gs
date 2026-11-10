@@ -85,7 +85,11 @@ function kdJudge(I, l) {
     if (cands.length && !cands.some(function (r) { return kdHit(r.bn, bn); })) cands = [];
     var oldLike = !model && (/^[★◆●☆]$/.test(String(l.rar || '').trim()) || /拡張カード|旧裏/.test(dn)); // 旧裏・旧弾は名前だけで別の弾を拾わないよう照合しない
     if (!cands.length && !model && !(oldLike && !isPsa)) cands = (I.name[bn] || []).filter(function (r) { return isPsa ? r.k === 'psa' : r.k !== 'psa'; });
-    var cy = cands.filter(function (r) { return r.y; }), pv = kdPickVariant(cy.filter(function (r) { return r.k !== 'kyouka'; }), dn + ' ' + nm);
+    var cy = cands.filter(function (r) { return r.y; });
+    if (cy.some(function (r) { return r.k !== 'kyouka' && r.bn === bn; })) cy = cy.filter(function (r) { return r.k === 'kyouka' || r.bn === bn; }); // 名前がまったく同じ行を優先
+    var ny = cy.filter(function (r) { return r.k !== 'kyouka'; }).map(function (r) { return r.y; });
+    if (!model && ny.length > 1 && Math.min.apply(null, ny) !== Math.max.apply(null, ny)) cy = []; // 型番がなく名前だけで価格の違う行が複数 → どの弾か分からないので比べない
+    var pv = kdPickVariant(cy.filter(function (r) { return r.k !== 'kyouka'; }), dn + ' ' + nm);
     o.refs = pv.use.concat(cy.filter(function (r) { return r.k === 'kyouka'; })).map(function (r) { return { r: r, y: r.y }; });
   }
   if (!o.refs.length) return o;
