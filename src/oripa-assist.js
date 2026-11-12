@@ -142,7 +142,7 @@
   document.body.appendChild(host);
   var root = host.attachShadow({ mode: 'open' });
   root.innerHTML = '<style>' + CSS() + '</style><div class="wrap"><div class="win">' +
-    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-11-10 版CJ</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
+    '<div class="hd"><div class="ttl">' + (ALL ? '全店オリパ作成（TikTok・通販）' : 'オリパ作成アシスト') + ' <span style="font-size:11px;color:#e8c23a;font-weight:700">2026-11-12 版CK</span></div>' + (ALL ? '<div class="store" id="allst">全店の在庫</div>' : '<div class="store"><label>店舗 <select id="store"></select></label></div>') +
     (ALL ? '' : '<div class="tabs"><button data-tab="make" class="on">新しく作る</button><button data-tab="refill">補充する</button></div>') +
     '<button class="x" id="close" title="閉じる">×</button></div>' +
     '<div class="bd" id="body"><div class="msg">読み込み中…</div></div></div></div>';
@@ -1090,7 +1090,9 @@
     mk.onclick = function () {
       var box = m.querySelector('#relr'), base = h.p;
       box.innerHTML = '<div class="sm">「' + esc(base.name) + '」と一緒にするもう1枚を選んでください（関連しそうなものを先に出しています）</div>' +
+        (base.set ? '' : base.stock - usedIn(pt, base.id) >= 1 ? '<div class="addrow"><button class="primary" data-self>同じカードをもう1枚でセットにする（在庫 ' + base.stock + '個）</button></div>' : '<div class="sm">同じカード2枚のセットは、在庫が足りないので作れません（在庫 ' + base.stock + '個）</div>') +
         '<div class="srch"><input id="sq" placeholder="カード名・BOX名で探す"><button class="ghost" id="sqs">探す</button><button class="ghost" data-psa>PSAだけ</button></div><div id="sqr"></div>';
+      var selfB = box.querySelector('[data-self]'); if (selfB) selfB.onclick = function () { put(mkSet(base, base)); };
       var draw = function (list) {
         var arr = list.slice(0, 36), el = box.querySelector('#sqr');
         el.innerHTML = arr.length ? '<div class="cards">' + arr.map(function (q, k) { return '<div class="cwrap">' + card({ p: q, n: 1, role: q.kind === 'box' ? 'BOX' : q.kind === 'psa' ? 'PSA' : (q.cond || '').replace('状態', '') || 'カード' }, false, 'data-sp="' + k + '"') + '<div class="stocktag">セットにすると マスタ ' + yen(base.sell + q.sell) + '・原価 ' + yen(base.cost + q.cost) + '</div></div>'; }).join('') + '</div>' : '<div class="msg sub">見つかりません</div>';
@@ -1890,7 +1892,9 @@
       var sameKind = function (q) { return a.kind === 'box' || a.kind === 'pack' ? (q.kind === 'box' || q.kind === 'pack') : (q.kind === 'card' || q.kind === 'psa'); }; // BOXはBOX・パックと、シングルはシングル・PSAとセットに
       var list = S.inv.filter(function (q) { return sameKind(q) && q.id !== a.id && q.stock - usedN(q.id) > 0; })
         .sort(function (x, y) { return (related(a, y) ? 1 : 0) - (related(a, x) ? 1 : 0) || Math.abs(Math.log(Math.max(x.cost, 1) / Math.max(a.cost, 1))) - Math.abs(Math.log(Math.max(y.cost, 1) / Math.max(a.cost, 1))); }).slice(0, 40);
+      var selfLeft = a.stock - usedN(a.id) + ((R.pick[a.id] || 0) > 0 ? 1 : 0); // 同じ商品を2枚でセットにできるか（このカードを含めて2枚空いている）
       var m = modal('<div class="mh">「' + esc(a.name) + '」とセットにするカードを選ぶ</div><div class="sm">2枚で1つの当たり（1口）になります。同じポケモン・進化の仲間を先に出しています。</div>' +
+        (selfLeft >= 2 ? '<div class="addrow"><button class="primary" data-self>同じカードをもう1枚でセットにする（在庫 ' + a.stock + '個）</button></div>' : '<div class="sm">同じカード2枚のセットは、在庫が足りないので作れません（在庫 ' + a.stock + '個）</div>') +
         '<div class="srch"><input id="sq" placeholder="カード名で探す"><button class="ghost" id="sqs">探す</button><button class="ghost" data-psa>PSAだけ</button></div><div id="sqr">' + candHTML(list, -1) + '</div><div class="acts"><button class="ghost" data-x>やめる</button></div>');
       m.querySelector('[data-x]').onclick = function () { m.remove(); };
       var bindPick = function () { m.querySelectorAll('[data-pick]').forEach(function (b) { b.onclick = function () {
@@ -1899,6 +1903,7 @@
         if ((R.pick[a.id] || 0) > 0) R.pick[a.id]--; R.cands.push(st); R.extra.push(st); R.pick[st.id] = 1; m.remove(); draw();
       }; }); };
       bindPick();
+      var selfB = m.querySelector('[data-self]'); if (selfB) selfB.onclick = function () { var st = mkSet(a, a); st.stock = 1; if ((R.pick[a.id] || 0) > 0) R.pick[a.id]--; R.cands.push(st); R.extra.push(st); R.pick[st.id] = 1; m.remove(); draw(); };
       m.querySelector('#sqs').onclick = function () { var qv = m.querySelector('#sq').value.trim(); var r = (qv ? searchPool() : S.inv).filter(function (q) { return (qv || sameKind(q)) && q.kind !== 'filler' && q.id !== a.id && q.stock - usedN(q.id) > 0 && (!qv || qHit(q, qv)); }).slice(0, 40); m.querySelector('#sqr').innerHTML = candHTML(r, -1); bindPick(); };
     }
     function draw() {
