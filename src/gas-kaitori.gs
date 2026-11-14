@@ -492,16 +492,18 @@ function kSnkrText(lines) { // 承認依頼の文章に付ける：PSA10のカ�
   return out.length ? '\n\n［スニダン PSA10 売買履歴］\n' + out.join('\n') : '';
 }
 
-var K_RUSH_ON = false;
+var K_RUSH_ON = true;
 /* ---------- カードラッシュ（シングルの状態B・C・D）：同じ状態の販売価格 ---------- */
 function kRushWant(cond) { var m = String(cond || '').normalize('NFKC').match(/^状態\s*([BCD])$/); return m ? m[1] : ''; }
-function kRushFetch(q) {
+var K_RUSH_PROXY = 'https://natadecoco-rush.natadecoco-05d.workers.dev/?key=3cea41f2ef3ea5d87917a267&q='; // Cloudflare Worker「natadecoco-rush」（ラッシュがGoogleのサーバーを拒否するため中継）。中身は cloudflare/rush-worker.js
+function kRushFetch(q) { // 中継から、ラッシュの一覧を商品ごとの配列で受け取る
   for (var a = 0; a < 2; a++) {
-    var r = UrlFetchApp.fetch('https://www.cardrush-pokemon.jp/product-list?keyword=' + encodeURIComponent(q), { muteHttpExceptions: true, headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)', 'Accept-Language': 'ja' } });
-    var code = r.getResponseCode();
-    if (code < 300) return r.getContentText();
-    if (a === 0 && (code === 429 || code >= 500)) { Utilities.sleep(1200); continue; }
-    throw new Error('ラッシュ ' + code);
+    var r = UrlFetchApp.fetch(K_RUSH_PROXY + encodeURIComponent(q), { muteHttpExceptions: true });
+    var code = r.getResponseCode(), j = null;
+    if (code < 300) { try { j = JSON.parse(r.getContentText()); } catch (e) { } }
+    if (j && j.ok) return j.items || [];
+    if (a === 0) { Utilities.sleep(1200); continue; }
+    throw new Error('ラッシュ ' + (j ? (j.status || j.error) : code));
   }
 }
 function kRushParse(h) { // 一覧の1商品＝<li class="list_item_cell">：名前・弾・価格・在庫・画像
@@ -521,7 +523,7 @@ function kRushPrice(n, cond) {
   if (!cname) return { price: 0, why: '名前がわかりません' };
   var key = 'rush1_' + Utilities.base64EncodeWebSafe(Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, kdN(s) + '|' + want)), c = CacheService.getScriptCache(), hit = c.get(key);
   if (hit) return JSON.parse(hit);
-  var items = kRushParse(kRushFetch(md ? cname + ' ' + md.no : cname)).filter(function (x) {
+  var items = kRushFetch(md ? cname + ' ' + md.no : cname).filter(function (x) {
     if (/鑑定|PSA|ARS|BGS|CGC/i.test(x.nm)) return false;
     var body = x.nm.replace(/^〔[^〕]*〕/, ''), nm = body.replace(/[【{].*$/, '');
     if (kdN(nm).indexOf(kdN(cname)) !== 0) return false; // ラッシュは「リザードン LV.76(30th/復刻版)」のように名前が長いことがある → 先頭が同じならOK
