@@ -6,7 +6,7 @@
   if (location.hostname !== 'pos.mycalinks.com') { alert('マイカ（pos.mycalinks.com）を開いてから押してください'); return; }
   var old = document.getElementById('ndk-kaitori-host'); if (old) old.remove();
 
-  var VERSION = '2026-11-06 版AK';
+  var VERSION = '2026-11-06 版AL';
   var GAS = 'https://script.google.com/macros/s/AKfycbwXHuu-X3L0qzJhvaszEIm-1xdeNIqJACQ0uM7mz5Q0hvwfdF9IuQiTKr3qmscNVmnhcQ/exec';
   var FB_URL = 'https://script.google.com/macros/s/AKfycbwl-ZCZ1LyefvSzEGkBEpTFTuFyvW0p-AYye6jBWaLP9t7-bC9_Owfeh4jKScNkFys6Fw/exec';
   var SHORT = { 322: '柏', 323: '津田沼', 324: '松戸', 325: '横浜', 326: '中野', 327: '町田', 328: '千葉中央', 390: '通販', 409: 'お台場' };
@@ -400,9 +400,11 @@
         S.old[c.product_id] = /旧裏|[eｅ]カード|カード[eｅ]|^[eｅ]$|PCG|ADV|^DP/i.test(String(it.option3 || '')) || /旧裏/.test(String(it.search_keyword || '')) || (y > 0 && y < 2011); }).catch(function () { });
     })); }
     if (S.tx !== t) return;
-    if (noModel.length) S.lines = multiFlag((t.transaction_carts || []).map(judge));
+    if (noModel.length) { var prev = S.lines; S.lines = multiFlag((t.transaction_carts || []).map(judge)); // 取り直しても、スニダン・ラッシュの結果は引き継ぐ
+      S.lines.forEach(function (m, i) { var o = prev[i]; if (o) ['snk', 'snkErr', 'rush', 'rushErr'].forEach(function (k) { if (o[k] != null) m[k] = o[k]; }); }); }
     S.lines.forEach(function (m, i) { var x = map[(t.transaction_carts[i] || {}).product_id] || {}; m.img = x.img || ''; if (!m.cond && x.cond) m.cond = x.cond; gradeFlag(m); }); multiFlag(S.lines); S.condTx = t.id;
     renderDetail();
+    S.rushP = rushFetch(t); // シングルの状態は商品情報が届いてから決まるので、ラッシュはここで取りに行く
   }
   // 差し戻し：本部の指示（カードごと）を今のマイカの明細と照らし合わせる
   function fbMatch(ri) {
