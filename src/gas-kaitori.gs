@@ -92,7 +92,7 @@ function kaitoriGet(p) {
     }
     if (p.action === 'krush') { // シングルの状態B・C・D：カードラッシュの同じ状態の販売価格（画面・査定表の画像用）
       var rs = JSON.parse(p.n || '[]').slice(0, 12);
-      return json({ ok: true, r: rs.map(function (q) { try { return kRushWant(q.c) ? kRushPrice(q.n, q.c) : null; } catch (e) { console.error('ラッシュ: ' + e); return { price: 0, err: 1, why: '取得失敗（ラッシュが混んでいる等）', e: String(e.message || e).slice(0, 200) }; } }) });
+      return json({ ok: true, r: rs.map(function (q) { try { return kRushWant(q.c) ? kRushPrice(q.n, q.c) : null; } catch (e) { console.error('ラッシュ: ' + e); return { price: 0, err: 1, why: '取得失敗（他社のサイトが混んでいる等）', e: String(e.message || e).slice(0, 200) }; } }) });
     }
     if (p.action === 'kstatus' && p.tx) { // マイカの取引IDで、その買取の最新の承認依頼・警告の確認を返す（どのPCからでも同じ状態が見える）
       var vals = kSheet().getDataRange().getValues(), ap = null, cf = null;
@@ -521,7 +521,7 @@ function kRushPrice(n, cond) {
   var want = kRushWant(cond); if (!want) return null;
   var s = String(n || '').normalize('NFKC'), md = kSnkrModel(s), cname = kSnkrCardName(s);
   if (!cname) return { price: 0, why: '名前がわかりません' };
-  var key = 'rush2_' + Utilities.base64EncodeWebSafe(Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, kdN(s) + '|' + want)), c = CacheService.getScriptCache(), hit = c.get(key);
+  var key = 'rush3_' + Utilities.base64EncodeWebSafe(Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, kdN(s) + '|' + want)), c = CacheService.getScriptCache(), hit = c.get(key);
   if (hit) return JSON.parse(hit);
   var items = kRushFetch(md ? cname + ' ' + md.no : cname + ' 旧裏').filter( // 型番がない＝旧裏：「旧裏」を付けて探すと、LV違い（LV.35／LV.37）も漏れなく出る
     function (x) {
@@ -540,14 +540,14 @@ function kRushPrice(n, cond) {
     items.forEach(function (x) { names[base(x)] = 1; });
     var exact = items.filter(function (x) { return base(x) === kdN(cname); });
     if (exact.length) items = exact;
-    else if (Object.keys(names).length > 1) { var amb = { want: want, price: 0, why: '型番がないためラッシュで1枚に決められません（' + Object.keys(names).length + '種類）' }; c.put(key, JSON.stringify(amb), 3 * 3600); return amb; }
+    else if (Object.keys(names).length > 1) { var amb = { want: want, price: 0, why: '型番がないため他社で1枚に決められません（' + Object.keys(names).length + '種類）' }; c.put(key, JSON.stringify(amb), 3 * 3600); return amb; }
   }
   var by = {}; items.forEach(function (x) { var m = x.nm.match(/^〔状態([^〕]+)〕/), k = m ? m[1] : '美品'; if (!by[k]) by[k] = x; });
   var order = ['美品', 'A-', 'B', 'C', 'D'], others = order.filter(function (k) { return k !== want && by[k]; }).map(function (k) { return { k: k, p: by[k].price, so: by[k].so }; });
   var h = by[want], out;
   if (h) out = { want: want, price: h.price, so: h.so, st: h.st, url: 'https://www.cardrush-pokemon.jp/product/' + h.id, img: h.img, rnm: h.nm, others: others };
-  else if (others.length) { var any = by[others[0].k]; out = { want: want, price: 0, why: 'ラッシュに状態' + want + 'なし', url: 'https://www.cardrush-pokemon.jp/product/' + any.id, img: any.img, rnm: any.nm, others: others }; }
-  else out = { want: want, price: 0, why: 'ラッシュに見つかりません' };
+  else if (others.length) { var any = by[others[0].k]; out = { want: want, price: 0, why: '他社に状態' + want + 'なし', url: 'https://www.cardrush-pokemon.jp/product/' + any.id, img: any.img, rnm: any.nm, others: others }; }
+  else out = { want: want, price: 0, why: '他社に見つかりません' };
   c.put(key, JSON.stringify(out), 3 * 3600);
   return out;
 }
@@ -558,10 +558,10 @@ function kRushText(lines) { // 承認依頼の文章に付ける：シングル�
     var r; try { r = kRushPrice(q.n, q.cond); } catch (e) { try { Utilities.sleep(1500); r = kRushPrice(q.n, q.cond); } catch (e2) { r = { price: 0, why: '取得失敗' }; } }
     var nm = String(q.n).replace(/《[^》]*》/g, '').slice(0, 34), o = (r.others || []).map(function (x) { return x.k + ' ' + yen(x.p); }).join('／');
     out.push('・' + nm + ' 状態' + r.want + '　買取 ' + yen(q.unit) +
-      '\n　→ ' + (r.price ? 'ラッシュ販売' + r.want + ' ' + yen(r.price) + (r.so ? '（在庫なし）' : '') + (q.unit ? '／買取は' + Math.round(q.unit / r.price * 100) + '%' : '') : (r.why || '見つかりません') + (o ? '（' + o + '）' : '')) +
+      '\n　→ ' + (r.price ? '他社販売' + r.want + ' ' + yen(r.price) + (r.so ? '（在庫なし）' : '') + (q.unit ? '／買取は' + Math.round(q.unit / r.price * 100) + '%' : '') : (r.why || '見つかりません') + (o ? '（' + o + '）' : '')) +
       (r.url ? '\n　' + r.url : ''));
   });
-  return out.length ? '🟢 カードラッシュ販売価格（同じ状態）\n' + out.join('\n') : '';
+  return out.length ? '🟢 他社販売価格（同じ状態）\n' + out.join('\n') : '';
 }
 
 /* ---------- 査定ログ（承認ライン以上の買取の明細を、査定者つきで1行ずつためる） ---------- */

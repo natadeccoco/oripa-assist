@@ -6,7 +6,7 @@
   if (location.hostname !== 'pos.mycalinks.com') { alert('マイカ（pos.mycalinks.com）を開いてから押してください'); return; }
   var old = document.getElementById('ndk-kaitori-host'); if (old) old.remove();
 
-  var VERSION = '2026-11-06 版AL';
+  var VERSION = '2026-11-06 版AM';
   var GAS = 'https://script.google.com/macros/s/AKfycbwXHuu-X3L0qzJhvaszEIm-1xdeNIqJACQ0uM7mz5Q0hvwfdF9IuQiTKr3qmscNVmnhcQ/exec';
   var FB_URL = 'https://script.google.com/macros/s/AKfycbwl-ZCZ1LyefvSzEGkBEpTFTuFyvW0p-AYye6jBWaLP9t7-bC9_Owfeh4jKScNkFys6Fw/exec';
   var SHORT = { 322: '柏', 323: '津田沼', 324: '松戸', 325: '横浜', 326: '中野', 327: '町田', 328: '千葉中央', 390: '通販', 409: 'お台場' };
@@ -600,11 +600,11 @@
   function rushWant(m) { if (!RUSH_ON || !m || m.isPsa || m.isBox || m.hanyo) return ''; var g = String(m.cond || '').normalize('NFKC').match(/^状態\s*([BCD])$/); return g ? g[1] : ''; }
   function rushHtml(m) {
     var r = m.rush, alt = r && r.others && r.others.length ? '<small class="alt">ほかの状態：' + r.others.map(function (x) { return x.k + ' ' + yen(x.p); }).join('／') + '</small>' : '';
-    if (!r) return '<span class="sub">' + (m.rushErr ? '⚠ ラッシュ：取得失敗' : '⏳ カードラッシュを確認中…') + '</span>';
-    if (!r.url) return '<span class="sub">ラッシュ：' + esc(r.why || '見つかりません') + '</span>';
+    if (!r) return '<span class="sub">' + (m.rushErr ? '⚠ 他社：取得失敗' : '⏳ 他社の価格を確認中…') + '</span>';
+    if (!r.url) return '<span class="sub">他社：' + esc(r.why || '見つかりません') + '</span>';
     return '<a class="rush" href="' + esc(r.url) + '" target="_blank" rel="noopener">' + (r.img ? '<img src="' + esc(r.img) + '" loading="lazy">' : '') +
-      '<span><b>' + (r.price ? 'ラッシュ販売 ' + r.want + ' ' + yen(r.price) + (m.unit ? '（買取は' + Math.round(m.unit / r.price * 100) + '%）' : '') : esc(r.why || '')) + '</b>' +
-      (r.price ? '<small>' + (r.so ? '在庫なし' : '在庫' + (r.st || '')) + '</small>' : '') + (r.rnm ? '<small>ラッシュの登録名：' + esc(r.rnm) + '</small>' : '') + alt +
+      '<span><b>' + (r.price ? '他社販売 ' + r.want + ' ' + yen(r.price) + (m.unit ? '（買取は' + Math.round(m.unit / r.price * 100) + '%）' : '') : esc(r.why || '')) + '</b>' +
+      (r.price ? '<small>' + (r.so ? '在庫なし' : '在庫' + (r.st || '')) + '</small>' : '') + (r.rnm ? '<small>他社の登録名：' + esc(r.rnm) + '</small>' : '') + alt +
       '<small class="chk">左のマイカの画像と同じカードか見比べてください</small></span></a>';
   }
   function rushPaint() { R.querySelectorAll('.rushb[data-li]').forEach(function (el) { var m = S.lines[+el.getAttribute('data-li')]; if (m) el.innerHTML = rushHtml(m); }); }
@@ -769,8 +769,8 @@
         if (sk.price && sk.date) { c.font = '13px ' + F; c.fillStyle = '#888'; c.fillText(fit('直近の取引 ' + sk.date, CW - 16), x + 8, ty + 160); } }
       else if (/PSA\s*10/i.test(m.dn)) { c.font = 'bold 15px ' + F; c.fillStyle = '#999'; c.fillText(fit('スニダン：' + (m.snkErr ? '取得失敗' : '取得中') + '→URLは文章に', CW - 16), x + 8, ty + 140); }
       else if (rushWant(m)) { var rr = m.rush, w = rushWant(m); c.font = 'bold 15px ' + F; c.fillStyle = rr && rr.price ? '#15803d' : '#999'; // シングルの状態B・C・D：スニダンと同じ位置にラッシュの販売価格
-        c.fillText(fit(rr && rr.price ? 'ラッシュ' + w + ' ' + yen(rr.price) + '（' + Math.round(m.unit / rr.price * 100) + '%）' : rr ? (/なし$/.test(rr.why || '') ? 'ラッシュに' + w + 'なし' : 'ラッシュ：見つからない') : 'ラッシュ：' + (m.rushErr ? '取得失敗' : '取得中') + '→文章に', CW - 16), x + 8, ty + 140);
-        var sub2 = rr && rr.price ? (rr.so ? 'ラッシュは在庫なし' : 'ラッシュ在庫' + (rr.st || '')) : rr && rr.others && rr.others.length ? rr.others.slice(0, 3).map(function (o) { return o.k + ' ' + yen(o.p); }).join('／') : '';
+        c.fillText(fit(rr && rr.price ? '他社' + w + ' ' + yen(rr.price) + '（' + Math.round(m.unit / rr.price * 100) + '%）' : rr ? (/なし$/.test(rr.why || '') ? '他社に' + w + 'なし' : '他社：見つからない') : '他社：' + (m.rushErr ? '取得失敗' : '取得中') + '→文章に', CW - 16), x + 8, ty + 140);
+        var sub2 = rr && rr.price ? (rr.so ? '他社は在庫なし' : '他社在庫' + (rr.st || '')) : rr && rr.others && rr.others.length ? rr.others.slice(0, 3).map(function (o) { return o.k + ' ' + yen(o.p); }).join('／') : '';
         if (sub2) { c.font = '13px ' + F; c.fillStyle = '#888'; c.fillText(fit(sub2, CW - 16), x + 8, ty + 160); } }
     });
     return cv.toDataURL('image/jpeg', 0.86).split(',')[1];
