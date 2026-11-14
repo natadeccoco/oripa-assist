@@ -521,7 +521,7 @@ function kRushPrice(n, cond) {
   var want = kRushWant(cond); if (!want) return null;
   var s = String(n || '').normalize('NFKC'), md = kSnkrModel(s), cname = kSnkrCardName(s);
   if (!cname) return { price: 0, why: '名前がわかりません' };
-  var key = 'rush5_' + Utilities.base64EncodeWebSafe(Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, kdN(s) + '|' + want)), c = CacheService.getScriptCache(), hit = c.get(key);
+  var key = 'rush6_' + Utilities.base64EncodeWebSafe(Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, kdN(s) + '|' + want)), c = CacheService.getScriptCache(), hit = c.get(key);
   if (hit) return JSON.parse(hit);
   var items = kRushFetch(md ? cname + ' ' + md.no : cname + ' 旧裏').filter( // 型番がない＝旧裏：「旧裏」を付けて探すと、LV違い（LV.35／LV.37）も漏れなく出る
     function (x) {
@@ -530,8 +530,8 @@ function kRushPrice(n, cond) {
     if (kdN(nm).indexOf(kdN(cname)) !== 0) return false; // ラッシュは「リザードン LV.76(30th/復刻版)」のように名前が長いことがある → 先頭が同じならOK
     if (md) { // 型番がある：番号と弾で同じカードか確かめる
       var num = kdN((body.match(/\{([^}]*)\}/) || [])[1] || '');
-      // 番号は「002/060」のように分母まで合わせる（同じ002でも 002/087・002/072 は別カード）。分母がない登録（{002}）だけ番号のみで見る
-      if (num !== kdN(md.no + '/' + md.tot) && num !== kdN(md.no)) return false;
+      // 必ず「カード名＋番号（002/060 のように分母まで）」が一致するものだけ使う（同じ002でも 002/087・002/072 は別カード）。分母のない登録は使わない
+      if (num !== kdN(md.no + '/' + md.tot)) return false;
       var xs = kdN(x.set), ms = kdN(md.set); // ラッシュの弾は「XY」「CP6」のような大まかな表記（XY1・XY-P も「XY」）→ 先頭が同じならOK。番号は分母まで合わせているので、ここはゆるめ
       if (xs && !/その他|PROMO/i.test(x.set) && xs.indexOf(ms) !== 0 && ms.indexOf(xs) !== 0) return false;
     } else if (/\{/.test(body) && !/旧裏|\{-\}/.test(body)) return false; // 型番のないカード（旧裏）は、ラッシュでも型番のないものだけ
