@@ -90,6 +90,10 @@ function kaitoriGet(p) {
       var ns = JSON.parse(p.n || '[]').slice(0, 12);
       return json({ ok: true, r: ns.map(function (n) { try { return kIsPsa10(n) ? kSnkrPsa10(n) : null; } catch (e) { return { price: 0, err: 1, why: '取得失敗（スニダンが混んでいる等）' }; } }) });
     }
+    if (p.action === 'krush') { // シングルの状態B・C・D：カードラッシュの同じ状態の販売価格（画面・査定表の画像用）
+      var rs = JSON.parse(p.n || '[]').slice(0, 12);
+      return json({ ok: true, r: rs.map(function (q) { try { return kRushWant(q.c) ? kRushPrice(q.n, q.c) : null; } catch (e) { return { price: 0, err: 1, why: '取得失敗（ラッシュが混んでいる等）' }; } }) });
+    }
     if (p.action === 'kstatus' && p.tx) { // マイカの取引IDで、その買取の最新の承認依頼・警告の確認を返す（どのPCからでも同じ状態が見える）
       var vals = kSheet().getDataRange().getValues(), ap = null, cf = null;
       for (var i = vals.length - 1; i >= 1 && (!ap || !cf); i--) {
@@ -146,6 +150,8 @@ function kaitoriPost(d) {
   var imgErr = '';
   var snk = ''; try { snk = kSnkrText(d.lines); } catch (e) { console.error('スニダン: ' + e); }
   send(ch, { type: 'text', text: (head + (d.comment ? '\nコメント：' + d.comment : '') + snk).slice(0, 1990) });
+  var rush = ''; try { rush = kRushText(d.lines); } catch (e) { console.error('ラッシュ: ' + e); }
+  if (rush) kSplit(rush).forEach(function (x) { try { send(ch, { type: 'text', text: x }); } catch (e) { console.error('ラッシュ送信: ' + e); } });
   var sentSheet = false;
   if (d.image) for (var tr = 0; tr < 3 && !sentSheet; tr++) { // 査定表の画像は必ず送る：失敗したら少し待って最大3回
     try { send(ch, { type: 'image', fileId: uploadImage(d.image, 'kaitori_' + id + '.jpg') }); sentSheet = true; imgErr = ''; } catch (e) { imgErr = String(e.message || e); console.error(imgErr); Utilities.sleep(1500); }
@@ -484,6 +490,73 @@ function kSnkrText(lines) { // 承認依頼の文章に付ける：PSA10のカ�
     out.push('・' + nm + '\n　' + (s.url ? s.url : 'スニダン：' + (s.why || '見つかりません'))); // 金額は査定表の画像に載せるので、文章は売買履歴のURLだけ
   });
   return out.length ? '\n\n［スニダン PSA10 売買履歴］\n' + out.join('\n') : '';
+}
+
+/* ---------- カードラッシュ（シングルの状態B・C・D）：同じ状態の販売価格 ---------- */
+function kRushWant(cond) { var m = String(cond || '').normalize('NFKC').match(/^状態\s*([BCD])$/); return m ? m[1] : ''; }
+function kRushFetch(q) {
+  for (var a = 0; a < 2; a++) {
+    var r = UrlFetchApp.fetch('https://www.cardrush-pokemon.jp/product-list?keyword=' + encodeURIComponent(q), { muteHttpExceptions: true, headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)', 'Accept-Language': 'ja' } });
+    var code = r.getResponseCode();
+    if (code < 300) return r.getContentText();
+    if (a === 0 && (code === 429 || code >= 500)) { Utilities.sleep(1200); continue; }
+    throw new Error('ラッシュ ' + code);
+  }
+}
+function kRushParse(h) { // 一覧の1商品＝<li class="list_item_cell">：名前・弾・価格・在庫・画像
+  var seen = {};
+  return String(h).split('<li class="list_item_cell').slice(1).map(function (p) {
+    var id = (p.match(/data-product-id="(\d+)"/) || [])[1];
+    var nm = ((p.match(/<span class="goods_name">([\s\S]*?)<\/span>\s*<wbr/) || [])[1] || '').replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
+    var set = ((p.match(/model_number_value">([^<]*)/) || [])[1] || '').trim();
+    var price = Number(((p.match(/class="figure">([\d,]+)円/) || [])[1] || '0').replace(/,/g, ''));
+    var st = (p.match(/在庫数\s*(\d+)/) || [])[1];
+    return { id: id, nm: nm, set: set, price: price, so: /stock soldout/.test(p), st: st ? Number(st) : 0, img: (p.match(/<img src="([^"]+)"/) || [])[1] || '' };
+  }).filter(function (x) { if (!x.id || seen[x.id]) return false; seen[x.id] = 1; return true; });
+}
+function kRushPrice(n, cond) {
+  var want = kRushWant(cond); if (!want) return null;
+  var s = String(n || '').normalize('NFKC'), md = kSnkrModel(s), cname = kSnkrCardName(s);
+  if (!cname) return { price: 0, why: '名前がわかりません' };
+  var key = 'rush1_' + Utilities.base64EncodeWebSafe(Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, kdN(s) + '|' + want)), c = CacheService.getScriptCache(), hit = c.get(key);
+  if (hit) return JSON.parse(hit);
+  var items = kRushParse(kRushFetch(md ? cname + ' ' + md.no : cname)).filter(function (x) {
+    if (/鑑定|PSA|ARS|BGS|CGC/i.test(x.nm)) return false;
+    var body = x.nm.replace(/^〔[^〕]*〕/, ''), nm = body.replace(/[【{].*$/, '');
+    if (kdN(nm).indexOf(kdN(cname)) !== 0) return false; // ラッシュは「リザードン LV.76(30th/復刻版)」のように名前が長いことがある → 先頭が同じならOK
+    if (md) { // 型番がある：番号と弾で同じカードか確かめる
+      var num = kdN((body.match(/\{([^}]*)\}/) || [])[1] || '');
+      if (num.indexOf(kdN(md.no + '/')) !== 0 && num !== kdN(md.no)) return false;
+      if (x.set && !/その他|PROMO/i.test(x.set) && kdN(x.set) !== kdN(md.set)) return false;
+    } else if (/\{/.test(body) && !/旧裏|\{-\}/.test(body)) return false; // 型番のないカード（旧裏）は、ラッシュでも型番のないものだけ
+    return true;
+  });
+  if (!md) { // 型番がないとき：「ファイヤー」で LV.35 と LV.37(キラ) が混ざらないように、名前が1種類に決まるときだけ使う
+    var base = function (x) { return kdN(x.nm.replace(/^〔[^〕]*〕/, '').replace(/[【{].*$/, '')); }, names = {};
+    items.forEach(function (x) { names[base(x)] = 1; });
+    var exact = items.filter(function (x) { return base(x) === kdN(cname); });
+    if (exact.length) items = exact;
+    else if (Object.keys(names).length > 1) { var amb = { want: want, price: 0, why: '型番がないためラッシュで1枚に決められません（' + Object.keys(names).length + '種類）' }; c.put(key, JSON.stringify(amb), 3 * 3600); return amb; }
+  }
+  var by = {}; items.forEach(function (x) { var m = x.nm.match(/^〔状態([^〕]+)〕/), k = m ? m[1] : '美品'; if (!by[k]) by[k] = x; });
+  var order = ['美品', 'A-', 'B', 'C', 'D'], others = order.filter(function (k) { return k !== want && by[k]; }).map(function (k) { return { k: k, p: by[k].price, so: by[k].so }; });
+  var h = by[want], out;
+  if (h) out = { want: want, price: h.price, so: h.so, st: h.st, url: 'https://www.cardrush-pokemon.jp/product/' + h.id, img: h.img, rnm: h.nm, others: others };
+  else if (others.length) { var any = by[others[0].k]; out = { want: want, price: 0, why: 'ラッシュに状態' + want + 'なし', url: 'https://www.cardrush-pokemon.jp/product/' + any.id, img: any.img, rnm: any.nm, others: others }; }
+  else out = { want: want, price: 0, why: 'ラッシュに見つかりません' };
+  c.put(key, JSON.stringify(out), 3 * 3600);
+  return out;
+}
+function kRushText(lines) { // 承認依頼の文章に付ける：シングルの状態B・C・D（全部）
+  var yen = function (n) { return Number(n || 0).toLocaleString() + '円'; }, out = [];
+  (lines || []).filter(function (q) { return kRushWant(q.cond) && !kIsPsa10(q.n) && !/BOX|ボックス|【@|ポケモン\/トレーナーズ/i.test(q.n); }).slice(0, 200).forEach(function (q) {
+    var r; try { r = kRushPrice(q.n, q.cond); } catch (e) { try { Utilities.sleep(1500); r = kRushPrice(q.n, q.cond); } catch (e2) { r = { price: 0, why: '取得失敗' }; } }
+    var nm = String(q.n).replace(/《[^》]*》/g, '').slice(0, 34), o = (r.others || []).map(function (x) { return x.k + ' ' + yen(x.p); }).join('／');
+    out.push('・' + nm + ' 状態' + r.want + '　買取 ' + yen(q.unit) +
+      '\n　→ ' + (r.price ? 'ラッシュ販売' + r.want + ' ' + yen(r.price) + (r.so ? '（在庫なし）' : '') + (q.unit ? '／買取は' + Math.round(q.unit / r.price * 100) + '%' : '') : (r.why || '見つかりません') + (o ? '（' + o + '）' : '')) +
+      (r.url ? '\n　' + r.url : ''));
+  });
+  return out.length ? '🟢 カードラッシュ販売価格（同じ状態）\n' + out.join('\n') : '';
 }
 
 /* ---------- 査定ログ（承認ライン以上の買取の明細を、査定者つきで1行ずつためる） ---------- */

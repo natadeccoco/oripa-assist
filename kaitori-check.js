@@ -6,7 +6,7 @@
   if (location.hostname !== 'pos.mycalinks.com') { alert('マイカ（pos.mycalinks.com）を開いてから押してください'); return; }
   var old = document.getElementById('ndk-kaitori-host'); if (old) old.remove();
 
-  var VERSION = '2026-11-06 版AH';
+  var VERSION = '2026-11-06 版AI';
   var GAS = 'https://script.google.com/macros/s/AKfycbwXHuu-X3L0qzJhvaszEIm-1xdeNIqJACQ0uM7mz5Q0hvwfdF9IuQiTKr3qmscNVmnhcQ/exec';
   var FB_URL = 'https://script.google.com/macros/s/AKfycbwl-ZCZ1LyefvSzEGkBEpTFTuFyvW0p-AYye6jBWaLP9t7-bC9_Owfeh4jKScNkFys6Fw/exec';
   var SHORT = { 322: '柏', 323: '津田沼', 324: '松戸', 325: '横浜', 326: '中野', 327: '町田', 328: '千葉中央', 390: '通販', 409: 'お台場' };
@@ -91,6 +91,7 @@
     '.fin{background:#fff;border:2px solid #1f1d1a;border-radius:12px;padding:12px 14px;margin:10px 0;display:flex;flex-wrap:wrap;gap:10px;align-items:center}.fin .t{flex:1 1 320px}.fin .who{order:2}.fin #fin{order:3}.fin input{padding:8px 10px;border:1.5px solid #d6d2c8;border-radius:8px;font:inherit;width:150px}.fin .b{font-size:15px}' +
     '.fbbox{background:#fff;border:2px solid #c8102e;border-radius:12px;padding:8px 12px;margin:-4px 0 10px}.fbi{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;padding:5px 0;border-bottom:1px dashed #eee}.fbi .mk{font-size:16px}.fbc{padding-top:6px;font-weight:700}.f.fb{background:#c8102e;color:#fff}tr.fbrow td{background:#fff0f2}td .f.fbx{display:inline-block;background:#c8102e;color:#fff;padding:2px 8px;border-radius:6px}' +
     '.snkb{margin-top:6px}.snk{display:flex;gap:8px;align-items:center;text-decoration:none;color:#1f1d1a;background:#fdf2f6;border:1px solid #f1c6d6;border-radius:8px;padding:5px 8px;max-width:440px}.snk img{width:46px;height:64px;object-fit:contain;background:#fff;border-radius:4px;flex:none}.snk b{color:#b4235a;font-size:13px;display:block}.snk small{display:block;color:#666;font-size:11px;line-height:1.35;font-weight:400}.snk small.chk{color:#b4235a}' +
+    '.rushb{margin-top:6px}.rush{display:flex;gap:8px;align-items:center;text-decoration:none;color:#1f1d1a;background:#eefaf2;border:1px solid #bfe6cc;border-radius:8px;padding:5px 8px;max-width:440px}.rush img{width:46px;height:64px;object-fit:contain;background:#fff;border-radius:4px;flex:none}.rush b{color:#15803d;font-size:13px;display:block}.rush small{display:block;color:#666;font-size:11px;line-height:1.35;font-weight:400}.rush small.alt{color:#b45309}.rush small.chk{color:#15803d}' +
     '.st{padding:10px 14px;border-radius:10px;font-weight:800;margin:10px 0}.st.wait{background:#fff4c2}.st.ok{background:#e3f4e6;color:#15803d}.st.ng{background:#fff0f2;color:#c8102e}' +
     '.fb{position:absolute;right:18px;bottom:18px}' +
     '.photo{margin:10px 0;padding:10px 12px;border-radius:8px;background:#e3f4e6;color:#14532d;font-weight:700;font-size:13px}' +
@@ -360,6 +361,7 @@
     renderDetail();
     loadImages(t);
     S.snkP = snkFetch(t);
+    S.rushP = rushFetch(t);
     if (t.customer_id) {
       try { var cs = await api('/api/store/' + S.sid + '/customer?id=' + t.customer_id); S.cust = ((cs || [])[0] || {}).full_name_ruby || ''; } catch (e) { }
       if (S.tx === t) renderDetail();
@@ -474,7 +476,8 @@
       return '<tr class="' + lv + (fbi ? ' fbrow' : '') + '"><td class="th">' + thumb(m) + '</td><td class="l nm"><b>' + esc(m.dn) + '</b>' + condBadge(m) +
         (fbi ? '<span class="f fbx">' + (fbi.ok ? '✅' : '↩️') + ' 本部の指示' + (fbi.no ? '（' + fbi.no + '）' : '') + '：' + esc(fbi.text) + '</span>' : '') +
         m.flags.map(function (f) { return '<span class="f ' + f.lv + '">' + (f.lv === 'red' ? '🚨 ' : '⚠️ ') + esc(f.t) + '</span>'; }).join('') +
-        (/PSA\s*10/i.test(m.dn) ? '<div class="snkb" data-li="' + li + '">' + snkHtml(m) + '</div>' : '') + '</td>' +
+        (/PSA\s*10/i.test(m.dn) ? '<div class="snkb" data-li="' + li + '">' + snkHtml(m) + '</div>' : '') +
+        (rushWant(m) ? '<div class="rushb" data-li="' + li + '">' + rushHtml(m) + '</div>' : '') + '</td>' +
         '<td class="cnt' + (m.cnt >= 2 ? ' many' : '') + '">×' + m.cnt + '</td><td><b>' + yen(m.unit) + '</b></td><td>' + ref + '</td>' +
         '<td><span class="ratio' + (m.ratio && m.ratio >= RULE.high ? ' red' : '') + '">' + (m.ratio ? Math.round(m.ratio * 100) + '%' : '-') + '</span></td><td><b>' + yen(m.unit * m.cnt) + '</b></td></tr>';
     }).join('');
@@ -590,6 +593,38 @@
       (sk.date ? '<small>' + esc(sk.date) + '</small>' : '') + (sk.snm ? '<small>スニダンの登録名：' + esc(sk.snm) + '</small>' : '') +
       '<small class="chk">左のマイカの画像と同じカードか見比べてください</small></span></a>';
   }
+  // シングルの状態B・C・D：カードラッシュの同じ状態の販売価格（スニダンと同じ考え方。買取価格ではなく販売価格）
+  function rushWant(m) { if (!m || m.isPsa || m.isBox || m.hanyo) return ''; var g = String(m.cond || '').normalize('NFKC').match(/^状態\s*([BCD])$/); return g ? g[1] : ''; }
+  function rushHtml(m) {
+    var r = m.rush, alt = r && r.others && r.others.length ? '<small class="alt">ほかの状態：' + r.others.map(function (x) { return x.k + ' ' + yen(x.p); }).join('／') + '</small>' : '';
+    if (!r) return '<span class="sub">' + (m.rushErr ? '⚠ ラッシュ：取得失敗' : '⏳ カードラッシュを確認中…') + '</span>';
+    if (!r.url) return '<span class="sub">ラッシュ：' + esc(r.why || '見つかりません') + '</span>';
+    return '<a class="rush" href="' + esc(r.url) + '" target="_blank" rel="noopener">' + (r.img ? '<img src="' + esc(r.img) + '" loading="lazy">' : '') +
+      '<span><b>' + (r.price ? 'ラッシュ販売 ' + r.want + ' ' + yen(r.price) + (m.unit ? '（買取は' + Math.round(m.unit / r.price * 100) + '%）' : '') : esc(r.why || '')) + '</b>' +
+      (r.price ? '<small>' + (r.so ? '在庫なし' : '在庫' + (r.st || '')) + '</small>' : '') + (r.rnm ? '<small>ラッシュの登録名：' + esc(r.rnm) + '</small>' : '') + alt +
+      '<small class="chk">左のマイカの画像と同じカードか見比べてください</small></span></a>';
+  }
+  function rushPaint() { R.querySelectorAll('.rushb[data-li]').forEach(function (el) { var m = S.lines[+el.getAttribute('data-li')]; if (m) el.innerHTML = rushHtml(m); }); }
+  async function rushFetch(t) {
+    for (var pass = 0; pass < 2; pass++) {
+      var ls = S.lines.filter(function (m) { return rushWant(m) && !m.rush; }), chunks = [];
+      if (!ls.length || S.tx !== t) break;
+      if (pass) await new Promise(function (r) { setTimeout(r, 2500); });
+      for (var i = 0; i < ls.length; i += 3) chunks.push(ls.slice(i, i + 3));
+      var next = 0;
+      var worker = async function () {
+        while (next < chunks.length) {
+          if (S.tx !== t) return;
+          var ch = chunks[next++];
+          try { var j = await fetch(GAS + '?action=krush&n=' + encodeURIComponent(JSON.stringify(ch.map(function (m) { return { n: m.dn, c: m.cond }; })))).then(function (r) { return r.json(); });
+            (j.r || []).forEach(function (x, k) { if (!ch[k] || !x) return; if (x.err) ch[k].rushErr = 1; else { ch[k].rush = x; ch[k].rushErr = 0; } }); }
+          catch (e) { ch.forEach(function (m) { m.rushErr = 1; }); }
+          if (S.tx === t) rushPaint();
+        }
+      };
+      await Promise.all([worker(), worker()]);
+    }
+  }
   function snkPaint() { R.querySelectorAll('.snkb[data-li]').forEach(function (el) { var m = S.lines[+el.getAttribute('data-li')]; if (m) el.innerHTML = snkHtml(m); }); }
   function thumb(m) {
     if (m.img) return '<img src="' + esc(m.img) + '" loading="lazy">';
@@ -687,13 +722,13 @@
       }).catch(function () { });
     }));
     // スニダン：開いたときから取っている分を待つ（最大30秒）。取れていない分は待たずに描く
-    if (S.snkP) await Promise.race([S.snkP, new Promise(function (r) { setTimeout(r, 30000); })]);
+    if (S.snkP || S.rushP) await Promise.race([Promise.all([S.snkP, S.rushP]), new Promise(function (r) { setTimeout(r, 30000); })]);
     var PER = 30, pages = [], np = Math.max(1, Math.ceil(list.length / PER));
     for (var pg = 0; pg < np; pg++) pages.push(drawSheet(t, list.slice(pg * PER, pg * PER + PER), imgs, pg + 1, np));
     return pages;
   }
   function drawSheet(t, list, imgs, pg, np) {
-    var anySnk = list.some(function (m) { return m.snk || /PSA\s*10/i.test(m.dn); });
+    var anySnk = list.some(function (m) { return m.snk || /PSA\s*10/i.test(m.dn) || rushWant(m); });
     var COLS = Math.min(6, Math.max(3, list.length)), CW = 210, CH = anySnk ? 406 : 380, GAP = 12, PAD = 24, W = PAD * 2 + COLS * CW + (COLS - 1) * GAP;
     var rows = Math.ceil(list.length / COLS), HEAD = 120, H = HEAD + PAD + rows * (CH + GAP) + 20;
     var cv = document.createElement('canvas'); cv.width = W; cv.height = H; var c = cv.getContext('2d');
@@ -730,6 +765,10 @@
         c.fillText(fit(sk.price ? 'スニダン ' + yen(sk.price) + '（' + Math.round(m.unit / sk.price * 100) + '%）' : 'スニダン：' + (/まだありません/.test(sk.why || '') ? '取引なし' : '見つからない'), CW - 16), x + 8, ty + 140);
         if (sk.price && sk.date) { c.font = '13px ' + F; c.fillStyle = '#888'; c.fillText(fit('直近の取引 ' + sk.date, CW - 16), x + 8, ty + 160); } }
       else if (/PSA\s*10/i.test(m.dn)) { c.font = 'bold 15px ' + F; c.fillStyle = '#999'; c.fillText(fit('スニダン：' + (m.snkErr ? '取得失敗' : '取得中') + '→URLは文章に', CW - 16), x + 8, ty + 140); }
+      else if (rushWant(m)) { var rr = m.rush, w = rushWant(m); c.font = 'bold 15px ' + F; c.fillStyle = rr && rr.price ? '#15803d' : '#999'; // シングルの状態B・C・D：スニダンと同じ位置にラッシュの販売価格
+        c.fillText(fit(rr && rr.price ? 'ラッシュ' + w + ' ' + yen(rr.price) + '（' + Math.round(m.unit / rr.price * 100) + '%）' : rr ? (/なし$/.test(rr.why || '') ? 'ラッシュに' + w + 'なし' : 'ラッシュ：見つからない') : 'ラッシュ：' + (m.rushErr ? '取得失敗' : '取得中') + '→文章に', CW - 16), x + 8, ty + 140);
+        var sub2 = rr && rr.price ? (rr.so ? 'ラッシュは在庫なし' : 'ラッシュ在庫' + (rr.st || '')) : rr && rr.others && rr.others.length ? rr.others.slice(0, 3).map(function (o) { return o.k + ' ' + yen(o.p); }).join('／') : '';
+        if (sub2) { c.font = '13px ' + F; c.fillStyle = '#888'; c.fillText(fit(sub2, CW - 16), x + 8, ty + 160); } }
     });
     return cv.toDataURL('image/jpeg', 0.86).split(',')[1];
   }
