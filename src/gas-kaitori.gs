@@ -92,7 +92,7 @@ function kaitoriGet(p) {
     }
     if (p.action === 'krush') { // シングルの状態B・C・D：カードラッシュの同じ状態の販売価格（画面・査定表の画像用）
       var rs = JSON.parse(p.n || '[]').slice(0, 12);
-      return json({ ok: true, r: rs.map(function (q) { try { return kRushWant(q.c) ? kRushPrice(q.n, q.c) : null; } catch (e) { return { price: 0, err: 1, why: '取得失敗（ラッシュが混んでいる等）' }; } }) });
+      return json({ ok: true, r: rs.map(function (q) { try { return kRushWant(q.c) ? kRushPrice(q.n, q.c) : null; } catch (e) { console.error('ラッシュ: ' + e); return { price: 0, err: 1, why: '取得失敗（ラッシュが混んでいる等）', e: String(e.message || e).slice(0, 200) }; } }) });
     }
     if (p.action === 'kstatus' && p.tx) { // マイカの取引IDで、その買取の最新の承認依頼・警告の確認を返す（どのPCからでも同じ状態が見える）
       var vals = kSheet().getDataRange().getValues(), ap = null, cf = null;
