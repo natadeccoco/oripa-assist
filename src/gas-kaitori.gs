@@ -521,9 +521,10 @@ function kRushPrice(n, cond) {
   var want = kRushWant(cond); if (!want) return null;
   var s = String(n || '').normalize('NFKC'), md = kSnkrModel(s), cname = kSnkrCardName(s);
   if (!cname) return { price: 0, why: '名前がわかりません' };
-  var key = 'rush1_' + Utilities.base64EncodeWebSafe(Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, kdN(s) + '|' + want)), c = CacheService.getScriptCache(), hit = c.get(key);
+  var key = 'rush2_' + Utilities.base64EncodeWebSafe(Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, kdN(s) + '|' + want)), c = CacheService.getScriptCache(), hit = c.get(key);
   if (hit) return JSON.parse(hit);
-  var items = kRushFetch(md ? cname + ' ' + md.no : cname).filter(function (x) {
+  var items = kRushFetch(md ? cname + ' ' + md.no : cname + ' 旧裏').filter( // 型番がない＝旧裏：「旧裏」を付けて探すと、LV違い（LV.35／LV.37）も漏れなく出る
+    function (x) {
     if (/鑑定|PSA|ARS|BGS|CGC/i.test(x.nm)) return false;
     var body = x.nm.replace(/^〔[^〕]*〕/, ''), nm = body.replace(/[【{].*$/, '');
     if (kdN(nm).indexOf(kdN(cname)) !== 0) return false; // ラッシュは「リザードン LV.76(30th/復刻版)」のように名前が長いことがある → 先頭が同じならOK

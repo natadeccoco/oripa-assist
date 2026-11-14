@@ -6,7 +6,7 @@
   if (location.hostname !== 'pos.mycalinks.com') { alert('マイカ（pos.mycalinks.com）を開いてから押してください'); return; }
   var old = document.getElementById('ndk-kaitori-host'); if (old) old.remove();
 
-  var VERSION = '2026-11-06 版AJ';
+  var VERSION = '2026-11-06 版AK';
   var GAS = 'https://script.google.com/macros/s/AKfycbwXHuu-X3L0qzJhvaszEIm-1xdeNIqJACQ0uM7mz5Q0hvwfdF9IuQiTKr3qmscNVmnhcQ/exec';
   var FB_URL = 'https://script.google.com/macros/s/AKfycbwl-ZCZ1LyefvSzEGkBEpTFTuFyvW0p-AYye6jBWaLP9t7-bC9_Owfeh4jKScNkFys6Fw/exec';
   var SHORT = { 322: '柏', 323: '津田沼', 324: '松戸', 325: '横浜', 326: '中野', 327: '町田', 328: '千葉中央', 390: '通販', 409: 'お台場' };
@@ -594,7 +594,7 @@
       '<small class="chk">左のマイカの画像と同じカードか見比べてください</small></span></a>';
   }
   // シングルの状態B・C・D：カードラッシュの同じ状態の販売価格（スニダンと同じ考え方。買取価格ではなく販売価格）
-  var RUSH_ON = false; // カードラッシュはGASからもブラウザからも読めなかった（403・CORS）ため止めている
+  var RUSH_ON = true; // カードラッシュはGASから直接読めない（403）ため、Cloudflare Worker経由でGASが読む
   function rushWant(m) { if (!RUSH_ON || !m || m.isPsa || m.isBox || m.hanyo) return ''; var g = String(m.cond || '').normalize('NFKC').match(/^状態\s*([BCD])$/); return g ? g[1] : ''; }
   function rushHtml(m) {
     var r = m.rush, alt = r && r.others && r.others.length ? '<small class="alt">ほかの状態：' + r.others.map(function (x) { return x.k + ' ' + yen(x.p); }).join('／') + '</small>' : '';
