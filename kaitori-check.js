@@ -308,7 +308,7 @@
     m.flags.push({ k: 'grade', lv: 'yel', t: '状態' + key + 'なのに買取表の' + Math.round(m.unitIn / m.ref * 100) + '%です。状態' + key + 'は' + Math.round(cap * 100) + '%までが目安です。状態と金額をご確認ください', d: label + '　買取表 ' + yen(m.ref) + ' → 入力 ' + yen(m.unitIn) + '（状態' + key + 'の目安 ' + yen(Math.round(m.ref * cap)) + 'まで）' });
   }
 
-  window.__ndkKaitoriDebug = { S: S, judge: judge, match: match, open: function (id) { return openTx(id); } };
+  window.__ndkKaitoriDebug = { S: S, judge: judge, match: match, open: function (id) { return openTx(id); }, sheet: function () { return sheetImages(); } };
 
   /* ---------- 一覧 ---------- */
   async function loadList() {
