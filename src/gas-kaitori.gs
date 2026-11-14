@@ -521,7 +521,7 @@ function kRushPrice(n, cond) {
   var want = kRushWant(cond); if (!want) return null;
   var s = String(n || '').normalize('NFKC'), md = kSnkrModel(s), cname = kSnkrCardName(s);
   if (!cname) return { price: 0, why: '名前がわかりません' };
-  var key = 'rush6_' + Utilities.base64EncodeWebSafe(Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, kdN(s) + '|' + want)), c = CacheService.getScriptCache(), hit = c.get(key);
+  var key = 'rush7_' + Utilities.base64EncodeWebSafe(Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, kdN(s) + '|' + want)), c = CacheService.getScriptCache(), hit = c.get(key);
   if (hit) return JSON.parse(hit);
   var items = kRushFetch(md ? cname + ' ' + md.no : cname + ' 旧裏').filter( // 型番がない＝旧裏：「旧裏」を付けて探すと、LV違い（LV.35／LV.37）も漏れなく出る
     function (x) {
@@ -546,11 +546,14 @@ function kRushPrice(n, cond) {
   }
   var plain = function (x) { return kdN(x.nm.replace(/^〔[^〕]*〕/, '').replace(/[【{].*$/, '')) === kdN(cname); }; // 「フーパ(未開封)」より「フーパ」を優先
   var by = {}; items.forEach(function (x) { var m = x.nm.match(/^〔状態([^〕]+)〕/), k = m ? m[1] : '美品'; if (!by[k] || (!plain(by[k]) && plain(x))) by[k] = x; });
-  var order = ['美品', 'A-', 'B', 'C', 'D'], others = order.filter(function (k) { return k !== want && by[k]; }).map(function (k) { return { k: k, p: by[k].price, so: by[k].so }; });
-  var h = by[want], out;
-  if (h) out = { want: want, price: h.price, so: h.so, st: h.st, url: 'https://www.cardrush-pokemon.jp/product/' + h.id, img: h.img, rnm: h.nm, others: others };
-  else if (others.length) { var any = by[others[0].k]; out = { want: want, price: 0, why: '他社に状態' + want + 'なし', url: 'https://www.cardrush-pokemon.jp/product/' + any.id, img: any.img, rnm: any.nm, others: others }; }
-  else out = { want: want, price: 0, why: '他社に見つかりません' };
+  // 同じ状態を出す。D・Cで他社の在庫がない（出品なし・売り切れ）ときだけ、1ランク上（D→C、C→B）を「○の在庫なし」と書いて出す。Bは上を見ない
+  var up = { D: 'C', C: 'B' }[want], h = by[want], u = up ? by[up] : null, out, mk = function (x, use, note) {
+    return { want: want, use: use, note: note || '', price: x.price, so: x.so, st: x.st, url: 'https://www.cardrush-pokemon.jp/product/' + x.id, img: x.img, rnm: x.nm };
+  };
+  if (h && !h.so) out = mk(h, want);
+  else if (u) out = mk(u, up, '他社に' + want + 'の在庫なし');
+  else if (h) out = mk(h, want);
+  else out = { want: want, price: 0, why: '他社に状態' + want + 'なし' };
   c.put(key, JSON.stringify(out), 3 * 3600);
   return out;
 }
@@ -559,9 +562,9 @@ function kRushText(lines) { // 承認依頼の文章に付ける：シングル�
   var yen = function (n) { return Number(n || 0).toLocaleString() + '円'; }, out = [];
   (lines || []).filter(function (q) { return kRushWant(q.cond) && !kIsPsa10(q.n) && !/BOX|ボックス|【@|ポケモン\/トレーナーズ/i.test(q.n); }).slice(0, 200).forEach(function (q) {
     var r; try { r = kRushPrice(q.n, q.cond); } catch (e) { try { Utilities.sleep(1500); r = kRushPrice(q.n, q.cond); } catch (e2) { r = { price: 0, why: '取得失敗' }; } }
-    var nm = String(q.n).replace(/《[^》]*》/g, '').slice(0, 34), o = (r.others || []).map(function (x) { return x.k + ' ' + yen(x.p); }).join('／');
-    out.push('・' + nm + ' 状態' + r.want + '　買取 ' + yen(q.unit) +
-      '\n　→ ' + (r.price ? '他社販売' + r.want + ' ' + yen(r.price) + (r.so ? '（在庫なし）' : '') + (q.unit ? '／買取は' + Math.round(q.unit / r.price * 100) + '%' : '') : (r.why || '見つかりません') + (o ? '（' + o + '）' : '')) +
+    var nm = String(q.n).replace(/《[^》]*》/g, '').slice(0, 34);
+    out.push('・' + nm + ' ' + q.cond + '　買取 ' + yen(q.unit) +
+      '\n　→ ' + (r.price ? (r.note ? r.note + '→ ' : '') + '他社販売' + r.use + ' ' + yen(r.price) + (r.so ? '（在庫なし）' : '') + (q.unit ? '／買取は' + Math.round(q.unit / r.price * 100) + '%' : '') : (r.why || '見つかりません')) +
       (r.url ? '\n　' + r.url : ''));
   });
   return out.length ? '🟢 他社販売価格（同じ状態）\n' + out.join('\n') : '';
