@@ -521,7 +521,7 @@ function kRushPrice(n, cond) {
   var want = kRushWant(cond); if (!want) return null;
   var s = String(n || '').normalize('NFKC'), md = kSnkrModel(s), cname = kSnkrCardName(s);
   if (!cname) return { price: 0, why: '名前がわかりません' };
-  var key = 'rush3_' + Utilities.base64EncodeWebSafe(Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, kdN(s) + '|' + want)), c = CacheService.getScriptCache(), hit = c.get(key);
+  var key = 'rush5_' + Utilities.base64EncodeWebSafe(Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, kdN(s) + '|' + want)), c = CacheService.getScriptCache(), hit = c.get(key);
   if (hit) return JSON.parse(hit);
   var items = kRushFetch(md ? cname + ' ' + md.no : cname + ' 旧裏').filter( // 型番がない＝旧裏：「旧裏」を付けて探すと、LV違い（LV.35／LV.37）も漏れなく出る
     function (x) {
@@ -530,8 +530,10 @@ function kRushPrice(n, cond) {
     if (kdN(nm).indexOf(kdN(cname)) !== 0) return false; // ラッシュは「リザードン LV.76(30th/復刻版)」のように名前が長いことがある → 先頭が同じならOK
     if (md) { // 型番がある：番号と弾で同じカードか確かめる
       var num = kdN((body.match(/\{([^}]*)\}/) || [])[1] || '');
-      if (num.indexOf(kdN(md.no + '/')) !== 0 && num !== kdN(md.no)) return false;
-      if (x.set && !/その他|PROMO/i.test(x.set) && kdN(x.set) !== kdN(md.set)) return false;
+      // 番号は「002/060」のように分母まで合わせる（同じ002でも 002/087・002/072 は別カード）。分母がない登録（{002}）だけ番号のみで見る
+      if (num !== kdN(md.no + '/' + md.tot) && num !== kdN(md.no)) return false;
+      var xs = kdN(x.set), ms = kdN(md.set); // ラッシュの弾は「XY」「CP6」のような大まかな表記（XY1・XY-P も「XY」）→ 先頭が同じならOK。番号は分母まで合わせているので、ここはゆるめ
+      if (xs && !/その他|PROMO/i.test(x.set) && xs.indexOf(ms) !== 0 && ms.indexOf(xs) !== 0) return false;
     } else if (/\{/.test(body) && !/旧裏|\{-\}/.test(body)) return false; // 型番のないカード（旧裏）は、ラッシュでも型番のないものだけ
     return true;
   });
@@ -542,7 +544,8 @@ function kRushPrice(n, cond) {
     if (exact.length) items = exact;
     else if (Object.keys(names).length > 1) { var amb = { want: want, price: 0, why: '型番がないため他社で1枚に決められません（' + Object.keys(names).length + '種類）' }; c.put(key, JSON.stringify(amb), 3 * 3600); return amb; }
   }
-  var by = {}; items.forEach(function (x) { var m = x.nm.match(/^〔状態([^〕]+)〕/), k = m ? m[1] : '美品'; if (!by[k]) by[k] = x; });
+  var plain = function (x) { return kdN(x.nm.replace(/^〔[^〕]*〕/, '').replace(/[【{].*$/, '')) === kdN(cname); }; // 「フーパ(未開封)」より「フーパ」を優先
+  var by = {}; items.forEach(function (x) { var m = x.nm.match(/^〔状態([^〕]+)〕/), k = m ? m[1] : '美品'; if (!by[k] || (!plain(by[k]) && plain(x))) by[k] = x; });
   var order = ['美品', 'A-', 'B', 'C', 'D'], others = order.filter(function (k) { return k !== want && by[k]; }).map(function (k) { return { k: k, p: by[k].price, so: by[k].so }; });
   var h = by[want], out;
   if (h) out = { want: want, price: h.price, so: h.so, st: h.st, url: 'https://www.cardrush-pokemon.jp/product/' + h.id, img: h.img, rnm: h.nm, others: others };
