@@ -492,6 +492,7 @@ function kSnkrText(lines) { // 承認依頼の文章に付ける：PSA10のカ�
   return out.length ? '\n\n［スニダン PSA10 売買履歴］\n' + out.join('\n') : '';
 }
 
+var K_RUSH_ON = false;
 /* ---------- カードラッシュ（シングルの状態B・C・D）：同じ状態の販売価格 ---------- */
 function kRushWant(cond) { var m = String(cond || '').normalize('NFKC').match(/^状態\s*([BCD])$/); return m ? m[1] : ''; }
 function kRushFetch(q) {
@@ -548,6 +549,7 @@ function kRushPrice(n, cond) {
   return out;
 }
 function kRushText(lines) { // 承認依頼の文章に付ける：シングルの状態B・C・D（全部）
+  if (!K_RUSH_ON) return ''; // カードラッシュがGoogleのサーバーからの読み込みを拒否（403）するため止めている
   var yen = function (n) { return Number(n || 0).toLocaleString() + '円'; }, out = [];
   (lines || []).filter(function (q) { return kRushWant(q.cond) && !kIsPsa10(q.n) && !/BOX|ボックス|【@|ポケモン\/トレーナーズ/i.test(q.n); }).slice(0, 200).forEach(function (q) {
     var r; try { r = kRushPrice(q.n, q.cond); } catch (e) { try { Utilities.sleep(1500); r = kRushPrice(q.n, q.cond); } catch (e2) { r = { price: 0, why: '取得失敗' }; } }
