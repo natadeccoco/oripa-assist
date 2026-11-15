@@ -5,7 +5,7 @@
  * 見積書には一切書き込まない。RECOREへの入力は「入力する」を押したときだけ。 */
 (function () {
   'use strict';
-  var VERSION = '2026-11-15 版A';
+  var VERSION = '2026-11-15 版B';
   var GAS = 'https://script.google.com/macros/s/AKfycbzF8w_dSwEnHnzhNUna2Q3FV9G7-U2X4z4ijguvs3kFLLK61PHc-HUXOGFm3_ZbJraeuQ/exec';
   var FB_URL = 'https://script.google.com/macros/s/AKfycbwl-ZCZ1LyefvSzEGkBEpTFTuFyvW0p-AYye6jBWaLP9t7-bC9_Owfeh4jKScNkFys6Fw/exec';
   var SITE_ITEMS = ['https://natadeccoco.github.io/kaitori-site/data/items.json'];
@@ -330,9 +330,11 @@
     S.rows = S.tab.rows.map(function (r) {
       var skip = '';
       if (/おまかせ査定/.test(r.name)) skip = 'おまかせ査定の行';
+      else if ((r.price == null || r.price === '') && S.tab.layout === 'satei') skip = '査定金額が空欄';
       else if (r.price == null || r.price === '') skip = '金額が空欄';
       else if (!r.qty) skip = '数量が空欄';
-      return { no: r.no, name: r.name, price: r.price, qty: r.qty, state: r.state, note: r.note, grade: gradeOf(r.state), skip: skip, cno: cardNo(r.name), psa: psaOf(r.name) };
+      else if (Number(r.price) === 0) skip = '査定金額 0円（買い取らない）';
+      return { no: r.no, name: r.name, price: r.price, applied: r.applied, qty: r.qty, state: r.state, note: r.note, grade: gradeOf(r.state), skip: skip, cno: cardNo(r.name), psa: psaOf(r.name) };
     });
     var todo = S.rows.filter(function (r) { return !r.skip; });
     var done = 0;
@@ -374,7 +376,7 @@
       }
       var gsel = r.skip ? '' : '<select class="gr" data-i="' + i + '">' + GRADES.map(function (g) { return '<option value="' + g[0] + '"' + (r.grade === g[0] ? ' selected' : '') + '>' + g[1] + '</option>'; }).join('') + '</select>';
       return '<tr><td class="mut">' + esc(r.no) + '</td><td>' + esc(r.name) + (r.note ? '<div class="mut">備考：' + esc(r.note) + '</div>' : '') + '</td>' +
-        '<td class="n">' + yen(r.price) + '</td><td class="n">' + esc(r.qty == null ? '—' : r.qty) + '</td><td>' + esc(r.state || '') + ' ' + gsel + '</td>' +
+        '<td class="n">' + (r.applied != null && Number(r.applied) !== Number(r.price) ? '<div class="mut" style="text-decoration:line-through">' + yen(r.applied) + '</div>' : '') + yen(r.price) + '</td><td class="n">' + esc(r.qty == null ? '—' : r.qty) + '</td><td>' + esc(r.state || '') + ' ' + gsel + '</td>' +
         '<td>' + status(r) + '</td><td>' + pick + '</td><td data-img="' + i + '">' + (r.pick === 'new' ? (r.imgUrl ? '<img class="th" src="' + esc(r.imgUrl) + '">' : '<span class="mut">…</span>') : '') + '</td></tr>';
     }).join('');
     var nc = nameCheck(S.tab.title);
@@ -385,8 +387,10 @@
     var diff = S.tab.total != null && Math.round(total) !== Math.round(S.tab.total);
     body('<div class="row"><b>ケース：</b>' + esc(S.cs.code) + '　<b>お客様：</b>' + esc(custName()) + '　<b>見積書：</b>' + esc(S.tab.title) + '　<button id="back">タブを選び直す</button></div>' +
       ncHtml + '<div class="mut">✅＝自動で一致　⚠️＝候補から正しい商品を選んでください　🆕＝RECOREに無いので新規登録します（画像は買取サイトから。PSAは鑑定品とわかる画像を作ります）。備考はRECOREの「コンディション詳細」に入ります。</div>' +
-      '<table><thead><tr><th>#</th><th>見積書のカード名</th><th>単価</th><th>数量</th><th>状態</th><th></th><th>RECOREの商品</th><th>画像</th></tr></thead><tbody>' + trs + '</tbody></table>' +
+      '<table><thead><tr><th>#</th><th>見積書のカード名</th><th>' + (S.tab.layout === 'satei' ? '査定金額' : '単価') + '</th><th>数量</th><th>状態</th><th></th><th>RECOREの商品</th><th>画像</th></tr></thead><tbody>' + trs + '</tbody></table>' +
+      (S.rows.some(function (r) { return r.skip === '査定金額が空欄'; }) ? '<div class="msg e"><b>査定金額が空欄の行があります。</b>見積書の「査定金額」を入れてから、「タブを選び直す」→「読み込む」でもう一度読み込んでください。（買い取らないカードは査定金額に 0 を入れてください）</div>' : '') +
       (diff ? '<div class="msg e">見積書の合計 ' + yen(S.tab.total) + ' と、入力する合計 ' + yen(total) + ' が違います。「入力しない」行や空欄の行を確認してください。</div>' : ''));
+    var nBlank = S.rows.filter(function (r) { return r.skip === '査定金額が空欄'; }).length;
     var nNew = S.rows.filter(function (r) { return !r.skip && r.pick === 'new'; }).length;
     var nChk = S.rows.filter(function (r) { return !r.skip && r.how === 'choose' && !r.checked; }).length;
     foot('<span class="tot">入力する合計 ' + yen(total) + '（' + n + '点）</span>' + (S.tab.total != null ? '<span class="mut">見積書の合計 ' + yen(S.tab.total) + '</span>' : '') +
@@ -396,6 +400,7 @@
     $('#back').onclick = chooseTab;
     if ($('#ncok')) $('#ncok').onchange = function () { S.ncOk = this.checked ? S.tab.title : null; render(); };
     if (nc.level !== 'ok' && S.ncOk !== S.tab.title) { $('#apply').disabled = true; $('#apply').title = 'お客様の確認にチェックを入れてください'; }
+    if (nBlank) { $('#apply').disabled = true; $('#apply').title = '査定金額が空欄の行があります'; }
     root.querySelectorAll('select.pick').forEach(function (s) {
       s.onchange = function () { var r = S.rows[this.dataset.i]; r.pick = this.value; r.checked = true; if (r.pick === 'new' && r.imgUrl == null) { findImage(r).then(function (u) { r.imgUrl = u; render(); }); } render(); };
       s.onfocus = function () { S.rows[this.dataset.i].checked = true; };
@@ -403,6 +408,7 @@
     root.querySelectorAll('select.gr').forEach(function (s) { s.onchange = function () { S.rows[this.dataset.i].grade = Number(this.value); }; });
     $('#apply').onclick = function () {
       if (nameCheck(S.tab.title).level !== 'ok' && S.ncOk !== S.tab.title) return;
+      if (S.rows.some(function (r) { return r.skip === '査定金額が空欄'; })) return;
       var left = S.rows.filter(function (r) { return !r.skip && r.how === 'choose' && !r.checked; });
       if (left.length) { left.forEach(function (r) { r.checked = true; }); render(); $('#ft').insertAdjacentHTML('afterbegin', '<span class="chip ch">⚠️の行の商品が正しいか見てから、もう一度押してください</span>'); return; }
       apply();

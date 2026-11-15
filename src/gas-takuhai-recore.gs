@@ -5,7 +5,7 @@
  * KEY＝合言葉（ツール側で初回に1回だけ入力。公開リポジトリには入れない）
  *
  * ?key=..&action=list            → お客様タブの一覧
- * ?key=..&action=get&sheet=タブ名 → そのタブの明細（カード名・金額・数量・状態・備考）
+ * ?key=..&action=get&sheet=タブ名 → そのタブの明細（カード名・金額・数量・状態・備考）。査定金額の列があるタブは price＝査定金額、applied＝お申込時の金額
  */
 var SS_ID = '1BBESQZWxdsij1q8hIk_klPgw6RbYL4MonIV6CyKXWz8';
 var KEY = '__KEY__';
@@ -36,24 +36,29 @@ function getTab_(title) {
   var ss = SpreadsheetApp.openById(SS_ID);
   var sh = ss.getSheetByName(String(title || ''));
   if (!sh) throw new Error('タブが見つかりません：' + title);
-  var vals = sh.getRange(1, 1, Math.min(sh.getMaxRows(), 80), 7).getDisplayValues();
-  var raw = sh.getRange(1, 1, Math.min(sh.getMaxRows(), 80), 7).getValues();
+  var n = Math.min(sh.getMaxRows(), 400);
+  var vals = sh.getRange(1, 1, n, 8).getDisplayValues();
+  var raw = sh.getRange(1, 1, n, 8).getValues();
+  // 新レイアウト（2026/11/15〜）：C お申込時の金額 / D 査定金額 / E 数量 / F 小計 / G 状態 / H 備考
+  var nw = String(vals[0][3]).trim() === '査定金額';
+  var C = nw ? { price: 3, applied: 2, qty: 4, sub: 5, state: 6, note: 7, totalLabel: 4 } : { price: 2, applied: -1, qty: 3, sub: 4, state: 5, note: 6, totalLabel: 3 };
   var rows = [], total = null;
   for (var r = 1; r < vals.length; r++) {
     var v = vals[r], w = raw[r];
-    if (String(v[3]).trim() === '計') { total = toNum_(w[4], v[4]); break; }
+    if (String(v[C.totalLabel]).trim() === '計') { total = toNum_(w[C.sub], v[C.sub]); break; }
     var name = String(v[1] || '').trim();
     if (!name) continue;
     rows.push({
       no: String(v[0] || '').trim(),
       name: name,
-      price: toNum_(w[2], v[2]),
-      qty: toNum_(w[3], v[3]),
-      state: String(v[5] || '').trim(),
-      note: String(v[6] || '').trim()
+      price: toNum_(w[C.price], v[C.price]),
+      applied: C.applied >= 0 ? toNum_(w[C.applied], v[C.applied]) : null,
+      qty: toNum_(w[C.qty], v[C.qty]),
+      state: String(v[C.state] || '').trim(),
+      note: String(v[C.note] || '').trim()
     });
   }
-  return { title: sh.getName(), gid: sh.getSheetId(), rows: rows, total: total };
+  return { title: sh.getName(), gid: sh.getSheetId(), layout: nw ? 'satei' : 'old', rows: rows, total: total };
 }
 
 function toNum_(raw, disp) {
