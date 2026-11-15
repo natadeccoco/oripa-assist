@@ -159,13 +159,13 @@
     if (strong.length === 1 || (strong.length > 1 && strong[0]._score === 3 && strong[1]._score < 3)) { row.pick = String(strong[0].id); row.how = 'auto'; }
     else if (cands.length) { row.pick = String((strong[0] || cands[0]).id); row.how = 'choose'; }
     else { row.pick = 'new'; row.how = 'new'; }
-    row.psa = psa; row.no = no;
+    row.psa = psa; row.cno = no;
   }
 
   /* 買取サイトのデータから画像を探す */
   async function findImage(row) {
     var items = await siteItems();
-    var no = row.no, base = baseName(row.name);
+    var no = row.cno, base = baseName(row.name);
     var hits = items.filter(function (it) { return it.img && (!no || it.no === no); });
     var best = null, score = -1;
     hits.forEach(function (it) {
@@ -225,7 +225,7 @@
     var n = nfkc(row.name).replace(/\s+/g, ' ').trim();
     if (!row.psa) return n;
     var b = n.replace(/PSA\s*\d+/ig, '').replace(/鑑定(品|済)?/g, '').replace(/(\d{1,3})\s*\/\s*(\d{1,3})/g, '').replace(/\s+/g, ' ').trim();
-    return '〔PSA' + row.psa + '鑑定済〕' + b + (row.no ? '{' + row.no + '}' : '');
+    return '〔PSA' + row.psa + '鑑定済〕' + b + (row.cno ? '{' + row.cno + '}' : '');
   }
   async function createProduct(row) {
     var imgs = [];
@@ -331,7 +331,7 @@
       if (/おまかせ査定/.test(r.name)) skip = 'おまかせ査定の行';
       else if (r.price == null || r.price === '') skip = '金額が空欄';
       else if (!r.qty) skip = '数量が空欄';
-      return { no: r.no, name: r.name, price: r.price, qty: r.qty, state: r.state, note: r.note, grade: gradeOf(r.state), skip: skip };
+      return { no: r.no, name: r.name, price: r.price, qty: r.qty, state: r.state, note: r.note, grade: gradeOf(r.state), skip: skip, cno: cardNo(r.name), psa: psaOf(r.name) };
     });
     var todo = S.rows.filter(function (r) { return !r.skip; });
     var done = 0;
@@ -466,5 +466,6 @@
     $('#rl').onclick = function () { location.reload(); };
   }
 
+  window.__ndkTakuhai = { makeImage: makeImage, newTitle: newTitle, matchRow: matchRow };   // 確認用
   start();
 })();
