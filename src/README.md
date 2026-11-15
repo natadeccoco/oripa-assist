@@ -8,3 +8,5 @@
 - `pc/loss_check.ps1` … 雄司のPC（Documents\myca_import）で毎晩22:00・23:30に動く、マイカのロス取得→GASへ送信（タスク MycaLossCheck）
 - `../hanbai-shonin.js` … 販売価格の承認ツール（`npx terser hanbai-shonin.js -c -m -o hanbai-shonin.min.js`）。設置ページ `setup-hanbai-shonin.html`
 - `gas-hanbai.gs` … GAS「オリパ本部承認（LINE WORKS）」の「販売価格.gs」。依頼→店舗グループに承認ボタン。履歴は「オリパ承認履歴」の「販売価格」タブ
+- `../takuhai-recore.js` … 宅配買取の見積書→RECORE入力ツール（RECOREの宅配買取ケース画面で動くブックマークレット。`npx terser takuhai-recore.js -c -m -o takuhai-recore.min.js`）。照合→新規登録（買取サイトの画像／PSAは鑑定品画像を生成）→「商品をインポート」と同じCSVで取り込み。設置ページ `setup-takuhai-recore.html`（公開版は合言葉入り。リポジトリ版は __KEY__）
+- `gas-takuhai-recore.gs` … GAS「宅配見積書 読み取り（RECORE入力用）」（ichikawa1121@gmail.com）。見積書を読むだけ。KEYは公開版のみに記入

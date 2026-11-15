@@ -58,6 +58,7 @@
     if (d - now > 60 * 864e5) d.setFullYear(d.getFullYear() - 1);
     return d;
   }
+  function kanaTxt() { var k = (S.cs.lastKana || '') + (S.cs.firstKana || ''); return k ? '（' + k + '）' : ''; }
   function caseDate() { var t = S.cs.offeredAt || S.cs.createdAt; return t ? new Date(t * 1000) : null; }
   /* 戻り値 {level:'ok'|'warn', why:[...]} */
   function nameCheck(title) {
@@ -73,8 +74,8 @@
       .map(hira).filter(function (k) { return k.length >= 1; });
     if (person) {
       var hit = keys.some(function (k) { return person.indexOf(k) >= 0 || (person.length >= 2 && k.indexOf(person) >= 0); });
-      if (hit) { ok = true; why.push('名前が一致：見積書「' + tabPerson(title) + '」／RECORE「' + custName() + '（' + (cs.lastKana || '') + (cs.firstKana || '') + '）」'); }
-      else { ok = false; why.push('名前が違います：見積書「' + tabPerson(title) + '」／RECORE「' + custName() + '（' + (cs.lastKana || '') + (cs.firstKana || '') + '）」'); }
+      if (hit) { ok = true; why.push('名前が一致：見積書「' + tabPerson(title) + '」／RECORE「' + custName() + kanaTxt() + '」'); }
+      else { ok = false; why.push('名前が違います：見積書「' + tabPerson(title) + '」／RECORE「' + custName() + kanaTxt() + '」'); }
     } else if (!code) why.push('タブ名にお客様の名前がありません');
     var td = tabDate(title), cd = caseDate();
     if (td && cd) {
@@ -466,6 +467,5 @@
     $('#rl').onclick = function () { location.reload(); };
   }
 
-  window.__ndkTakuhai = { makeImage: makeImage, newTitle: newTitle, matchRow: matchRow };   // 確認用
   start();
 })();

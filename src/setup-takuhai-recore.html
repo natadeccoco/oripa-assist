@@ -1,0 +1,72 @@
+<!DOCTYPE html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>見積書からRECORE入力 設置ページ</title>
+<style>
+/* Layout: 1カラムの手順書。番号は実際の手順順なので意味のある番号 */
+:root{
+  --ink:#1d1d22; --bg:#f6f5f2; --card:#ffffff; --line:#e5e2da; --muted:#6b6862;
+  --red:#c8102e; --red-shadow:#8e0b20; --gold:#e8c23a; --note-bg:#fdf6dc; --note-fg:#7a5b00;
+  --kbd-bg:#eeece6; --ok:#15803d; --ok-bg:#e3f4e6;
+  --font:"Hiragino Sans","Noto Sans JP","Yu Gothic UI",Meiryo,sans-serif;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --ink:#f1efe9; --bg:#17171a; --card:#212126; --line:#34343b; --muted:#a6a39b;
+  --red:#e0344f; --red-shadow:#7d1023; --gold:#e8c23a; --note-bg:#33290c; --note-fg:#f0d97a;
+  --kbd-bg:#2c2c32; --ok:#5fd08a; --ok-bg:#163522; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --ink:#f1efe9; --bg:#17171a; --card:#212126; --line:#34343b; --muted:#a6a39b;
+  --red:#e0344f; --red-shadow:#7d1023; --gold:#e8c23a; --note-bg:#33290c; --note-fg:#f0d97a;
+  --kbd-bg:#2c2c32; --ok:#5fd08a; --ok-bg:#163522; color-scheme:dark}
+body{background:var(--bg);color:var(--ink);font-family:var(--font);line-height:1.75}
+.w{max-width:760px;margin:0 auto;padding-block:28px 60px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+h1{font-size:26px;margin:0 0 4px;text-wrap:balance} h1 b{color:var(--red)}
+.sub{color:var(--muted);margin:0 0 20px}
+.steps{display:flex;flex-direction:column;gap:12px}
+.step{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px 20px;display:flex;gap:16px}
+.step>div{min-width:0}
+.n{flex:none;width:34px;height:34px;border-radius:9px;background:var(--ink);color:var(--gold);font-weight:900;display:flex;align-items:center;justify-content:center;font-size:18px}
+.step h2{font-size:17px;margin:2px 0 6px;text-wrap:balance} .step p{margin:4px 0}
+kbd{background:var(--kbd-bg);border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;padding:1px 6px;font-size:13px}
+.bm{display:inline-block;margin:10px 0 4px;background:var(--red);color:#fff;text-decoration:none;font-weight:800;font-size:18px;padding:12px 22px;border-radius:12px;box-shadow:0 4px 0 var(--red-shadow);cursor:grab}
+.bm:focus-visible{outline:3px solid var(--gold);outline-offset:3px}
+.warn{color:var(--red);font-weight:700}
+ul{margin:6px 0;padding-left:20px} li{margin:3px 0}
+.code{font-family:ui-monospace,Consolas,monospace;background:var(--ink);color:var(--gold);padding:1px 8px;border-radius:6px;font-weight:700;white-space:nowrap}
+.flow{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:8px 0;font-size:13px;font-weight:700}
+.flow span{background:var(--ok-bg);color:var(--ok);padding:3px 10px;border-radius:999px}
+.flow i{font-style:normal;color:var(--muted)}
+.note{font-size:13px;color:var(--note-fg);background:var(--note-bg);border-radius:10px;padding:10px 14px;margin-top:18px}
+</style>
+</head><body>
+<div class="w">
+<h1>見積書から<b>RECORE</b>入力</h1>
+<p class="sub">宅配買取の見積書（スプレッドシート）の内容を、RECOREの買取商品にまとめて入れるツールです。宅配買取を入力するパソコンのChromeに1回だけ設置してください。直したときは自動で最新版になるので、入れ直しは不要です。</p>
+<div class="steps">
+<div class="step"><div class="n">1</div><div><h2>ブックマークバーを表示する</h2><p>Chromeで <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>B</kbd> を押すと、画面の上にブックマークバーが出ます。</p></div></div>
+<div class="step"><div class="n">2</div><div><h2>下の赤いボタンをブックマークバーへドラッグする</h2>
+<a class="bm" href="javascript:(function(){var r='natadeccoco/oripa-assist';try{localStorage.setItem('ndk_takuhai_key','__KEY__')}catch(e){}function go(v){var s=document.createElement('script');s.src='https://cdn.jsdelivr.net/gh/'+r+'@'+v+'/takuhai-recore.min.js';s.onerror=function(){alert('ツールを読み込めませんでした。ネット接続を確認してください')};document.body.appendChild(s)}if(location.hostname!=='app.recore-pos.com'){alert('RECORE（app.recore-pos.com）の宅配買取のケース画面を開いてから押してください');return}fetch('https://api.github.com/repos/'+r+'/commits/main').then(function(x){return x.json()}).then(function(j){go(j.sha||'main')}).catch(function(){go('main')})})();" id="bm">見積書→RECORE</a>
+<p id="hint" class="warn" hidden>クリックではなく、ブックマークバーへドラッグ（引っぱって離す）してください</p>
+<p>ボタンをつかんだまま、画面上のブックマークバーまで引っぱって離します。バーに「見積書→RECORE」が出れば設置完了です。</p></div></div>
+<div class="step"><div class="n">3</div><div><h2>使い方</h2>
+<div class="flow"><span>見積書を作る（今まで通り）</span><i>→</i><span>RECOREでケースを開く</span><i>→</i><span>ブックマークを押す</span><i>→</i><span>確認して「RECOREに入力する」</span></div>
+<ul>
+<li>カードが届いたら、今まで通り見積書スプレッドシートにカード名・金額・数量・状態・備考を入れます（見積書の形は変わりません）</li>
+<li>RECOREで宅配買取のケースを開き、ブックマークの「見積書→RECORE」を押します</li>
+<li>お客様の名前と日付が合う見積書のタブが自動で選ばれます。「読み込む」を押します</li>
+<li>名前が合わないときは<b>赤い警告</b>が出ます。RECOREのお客様と見積書をよく見比べ、同じお客様ならチェックを入れてください</li>
+<li>カードごとにRECOREの商品が表示されます。<b>✅ 一致</b>はそのままでOK。<b>⚠️ 確認</b>は候補から正しい商品を選びます。<b>🆕 新規登録</b>はRECOREに無いカードで、買取サイトの画像付きで自動登録されます（PSAは鑑定品とわかる画像になります）</li>
+<li>「入力する合計」と「見積書の合計」が同じか確認して、<b>「RECOREに入力する」</b>を押します</li>
+<li>入力が終わったら、今まで通りRECOREの画面で内容を確認し、お客様に見積書を送ります</li>
+</ul></div></div>
+<div class="step"><div class="n">4</div><div><h2>気をつけること</h2>
+<ul>
+<li>買取商品がすでに入っているケースでは使えません（二重入力防止）</li>
+<li>金額や数量が空欄の行、「おまかせ査定」の行は入りません</li>
+<li>見積書の「備考」は、RECOREの「コンディション詳細」に入ります</li>
+<li>使いにくいところは、ツール右上の「意見を送る」から具体的に送ってください</li>
+</ul></div></div>
+</div>
+</div>
+<script>
+document.getElementById('bm').addEventListener('click',function(e){e.preventDefault();document.getElementById('hint').hidden=false;});
+</script>
+</body></html>
