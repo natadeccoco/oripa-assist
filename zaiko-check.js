@@ -7,6 +7,8 @@
   var ORDER = [328, 322, 327, 324, 326, 409, 323, 325, 390];
   var SHORT = { 322: '柏', 323: '津田沼', 324: '松戸', 325: '横浜', 326: '中野', 327: '町田', 328: '千葉中央', 390: '通販', 409: 'お台場' };
   var KIND = { box: 'BOX', card: 'シングル', psa: 'PSA', pack: 'パック', storage: 'ストレージ' };
+  /* 2026-11-17 「ラッシュ買取」列: 買取表GASからカードラッシュの買取価格一覧をもらう（読めなければ「-」） */
+  var REF_URL = 'https://script.google.com/macros/s/AKfycbw-wkodhT2Gmt7pTDZJJDorXAjAT5lHzndPN-FoaGFDaOt8U_YycX9CCB-hk3bzjagh/exec?action=zaikoref';
   var FB_URL = 'https://script.google.com/macros/s/AKfycbwl-ZCZ1LyefvSzEGkBEpTFTuFyvW0p-AYye6jBWaLP9t7-bC9_Owfeh4jKScNkFys6Fw/exec';
 
   var S = {
@@ -155,7 +157,7 @@
             row = map[key] = {
               key: key, myca: p.item_myca_item_id || null, name: p.item_name || p.display_name, disp: p.displayNameWithMeta || p.display_name,
               num: p.item_cardnumber || '', rarity: p.item_rarity || '', exp: p.item_expansion || '', img: p.image_url || '',
-              kind: k, st: {}, total: 0, cost: 0, market: 0, sell: 0, lastSell: null, lastBuy: null
+              kind: k, st: {}, total: 0, cost: 0, market: 0, rush: null, sell: 0, lastSell: null, lastBuy: null
             };
           }
           if (k === 'psa') row.kind = 'psa';
@@ -177,9 +179,52 @@
       S.sel = {};
       $('#upd').textContent = new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' }) + ' 時点';
       bar(); render();
+      loadRush();
     } catch (e) {
       $('#body').innerHTML = '<div class="msg err">マイカの読み込みに失敗しました：' + esc(e.message) + '<br>マイカにログインした状態で、もう一度押してください。</div>';
     }
+  }
+
+
+  /* ---------- ラッシュ買取（2026-11-17） ----------
+     カード: 型番が同じで名前が合うものを探す（同じ型番・同じ名前で候補が複数なら安い方＝1ED/アンリミ等は安い方）。PSAは出さない
+     BOX: 「BOX」「ハイクラスパック」等を除いた名前で、完全一致 → いちばん長く含まれる名前 の順で探す */
+  function rzName(s, keepParen) {
+    s = String(s || '').normalize('NFKC');
+    if (!keepParen) s = s.replace(/[（(][^）)]*[）)]/g, '');
+    return s.replace(/【[^】]*】/g, '').replace(/[\s・「」『』"'!！?？.,、。:：\-ー〜~＆&]/g, '').toLowerCase();
+  }
+  function rzBox(s) { return rzName(String(s || '').normalize('NFKC').replace(/【[^】]*】/g, '').replace(/シュリンク[有無付なし]*|BOX|ボックス|ハイクラスパック|強化拡張パック|拡張パック|スペシャルパック/gi, ''), true); }
+  async function loadRush() {
+    var j;
+    try { var r = await fetch(REF_URL, { credentials: 'omit' }); j = JSON.parse(await r.text()); } catch (e) { return; }
+    if (!j || !j.card) return;
+    var byNo = {};
+    j.card.forEach(function (x) { var no = String(x[1] || '').trim(); if (!no) return; (byNo[no] = byNo[no] || []).push({ p: rzName(x[0], true), s: rzName(x[0]), a: Number(x[2]) || 0 }); });
+    /* ラッシュの「【未開封パック】」はパック1つの価格なので、BOXとは別の表にする（BOXにパックの価格を出さない） */
+    var bxB = {}, bxP = {};
+    (j.box || []).forEach(function (x) { var k = rzBox(x[0]); if (k.length < 3 || !(Number(x[1]) > 0)) return; if (/未開封パック/.test(String(x[0]))) bxP[k] = Number(x[1]); else bxB[k] = Number(x[1]); });   /* 後から来る BOX設定 の値が優先 */
+    S.rows.forEach(function (row) {
+      row.rush = null;
+      if (row.kind === 'card') {
+        var c = byNo[String(row.num || '').trim()]; if (!c || !c.length) return;
+        var p = rzName(row.name, true), s = rzName(row.name);
+        var hit = c.filter(function (x) { return x.p === p; });
+        if (!hit.length) hit = c.filter(function (x) { return x.s === s; });
+        if (!hit.length && s.length >= 2) hit = c.filter(function (x) { return x.s && (x.s.indexOf(s) >= 0 || s.indexOf(x.s) >= 0); });
+        if (hit.length) row.rush = Math.min.apply(null, hit.map(function (x) { return x.a; }));
+      } else if (row.kind === 'box' || row.kind === 'pack') {
+        var bx = row.kind === 'pack' ? bxP : bxB, bkeys = Object.keys(bx);
+        var k = rzBox(row.name); if (k.length < 3) return;
+        if (bx[k]) { row.rush = bx[k]; return; }
+        var best = '', bestR = '';
+        bkeys.forEach(function (b) { if (b.length >= 5 && k.indexOf(b) >= 0 && b.length > best.length) best = b; });
+        if (best) { row.rush = bx[best]; return; }
+        bkeys.forEach(function (b) { if (k.length >= 5 && b.indexOf(k) >= 0 && (!bestR || b.length < bestR.length)) bestR = b; });
+        if (bestR) row.rush = bx[bestR];
+      }
+    });
+    render();
   }
 
   /* ---------- 絞り込み ---------- */
@@ -251,7 +296,7 @@
     var shown = list.slice(0, f.limit);
     var h = '<table><thead><tr><th class="l"><input type="checkbox" id="all"></th><th class="l" colspan="2">商品</th><th>全店</th>' +
       sts.map(function (s) { return '<th class="st">' + esc(s.name) + '</th>'; }).join('') +
-      '<th>在庫金額</th><th>販売価格</th><th>相場</th><th>買取価格</th><th>最終販売</th><th>最終買取</th><th></th></tr></thead><tbody>';
+      '<th>在庫金額</th><th>販売価格</th><th title="カードラッシュの買取価格（毎晩の取得分）">ラッシュ買取</th><th>買取価格</th><th>最終販売</th><th>最終買取</th><th></th></tr></thead><tbody>';
     shown.forEach(function (r) {
       var c = r.c, ds = days(r.lastSell), db = days(r.lastBuy);
       h += '<tr data-key="' + esc(r.key) + '"><td class="l"><input type="checkbox" data-sel="' + esc(r.key) + '"' + (S.sel[r.key] ? ' checked' : '') + '></td>' +
@@ -267,7 +312,7 @@
           var tip = Object.keys(x.conds).filter(function (k) { return k && k !== '-'; }).map(function (k) { return k + ' ' + x.conds[k]; }).join(' / ');
           return '<td class="st"><span title="' + esc(tip) + '" style="background:rgba(200,16,46,' + (0.08 + a * 0.55).toFixed(2) + ');' + (a > 0.6 ? 'color:#fff;font-weight:700' : '') + '">' + n + '</span></td>';
         }).join('') +
-        '<td>' + yen(c.cost) + '</td><td>' + (r.sell ? yen(r.sell) : '-') + '</td><td>' + (r.market ? yen(r.market) : '-') + '</td>' +
+        '<td>' + yen(c.cost) + '</td><td>' + (r.sell ? yen(r.sell) : '-') + '</td><td title="' + (r.market ? 'マイカ相場 ' + yen(r.market) : '') + '">' + (r.rush ? yen(r.rush) : '-') + '</td>' +
         '<td class="bp' + (c.buyMin !== c.buyMax ? ' diff' : '') + '" title="' + (c.buyMin !== c.buyMax ? '店舗で買取価格が違います' : '') + '">' +
         (c.buyMax ? (c.buyMin !== c.buyMax ? yen(c.buyMin) + '〜' + yen(c.buyMax) : yen(c.buyMax)) : '-') + '</td>' +
         '<td class="' + (ds == null || ds >= 30 ? 'old' : '') + '">' + (ds == null ? '記録なし' : ds + '日前') + '</td>' +
@@ -331,7 +376,7 @@
   function editOne(row) {
     var c = calc(row, activeStores());
     var d = modal('<div class="mh">買取価格を変更：' + esc(row.name) + '</div>' +
-      '<div class="sm">' + esc([row.num, row.rarity, row.exp].filter(Boolean).join(' / ')) + '　全店在庫 ' + num(c.t) + '　販売 ' + (row.sell ? yen(row.sell) : '-') + '　相場 ' + (row.market ? yen(row.market) : '-') + '</div>' +
+      '<div class="sm">' + esc([row.num, row.rarity, row.exp].filter(Boolean).join(' / ')) + '　全店在庫 ' + num(c.t) + '　販売 ' + (row.sell ? yen(row.sell) : '-') + '　ラッシュ買取 ' + (row.rush ? yen(row.rush) : '-') + '</div>' +
       '<div class="frm">新しい買取価格 <input type="number" id="nv" min="0" step="10" value="' + (c.buyMax || '') + '"> 円　' +
       '<button class="b g" data-p="-10">−10%</button><button class="b g" data-p="-20">−20%</button><button class="b g" data-p="-30">−30%</button></div>' +
       '<div id="pv"><div class="sm">店舗ごとの今の買取価格を確認中…</div></div>' +
@@ -405,11 +450,11 @@
   function csv() {
     var sts = activeStores(), list = filtered();
     var head = ['商品名', '型番', 'レアリティ', '弾', '種類', '全店在庫'].concat(sts.map(function (s) { return s.name; }))
-      .concat(['在庫金額', '販売価格', '相場', '買取価格(最小)', '買取価格(最大)', '偏り', '最終販売(日前)', '最終買取(日前)']);
+      .concat(['在庫金額', '販売価格', 'ラッシュ買取', 'マイカ相場', '買取価格(最小)', '買取価格(最大)', '偏り', '最終販売(日前)', '最終買取(日前)']);
     var lines = [head].concat(list.map(function (r) {
       var c = r.c;
       return [r.name, r.num, r.rarity, r.exp, KIND[r.kind], c.t].concat(sts.map(function (s) { return r.st[s.id] ? r.st[s.id].stock : 0; }))
-        .concat([Math.round(c.cost), r.sell, r.market, c.buyMin, c.buyMax, c.skew ? c.mxs.name + 'に' + Math.round(c.share * 100) + '%' : '', days(r.lastSell) == null ? '' : days(r.lastSell), days(r.lastBuy) == null ? '' : days(r.lastBuy)]);
+        .concat([Math.round(c.cost), r.sell, r.rush || '', r.market, c.buyMin, c.buyMax, c.skew ? c.mxs.name + 'に' + Math.round(c.share * 100) + '%' : '', days(r.lastSell) == null ? '' : days(r.lastSell), days(r.lastBuy) == null ? '' : days(r.lastBuy)]);
     }));
     var t = lines.map(function (l) { return l.map(function (v) { v = String(v == null ? '' : v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }).join(','); }).join('\r\n');
     var a = document.createElement('a');
