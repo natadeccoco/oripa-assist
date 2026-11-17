@@ -199,6 +199,8 @@
     var j;
     try { var r = await fetch(REF_URL, { credentials: 'omit' }); j = JSON.parse(await r.text()); } catch (e) { return; }
     if (!j || !j.card) return;
+    /* いつ時点のラッシュ価格か（毎晩の取得時刻）を見出しに出す。日中にラッシュが価格を変えても、翌晩まではこの時点の価格のまま */
+    try { var d = new Date(j.updated); S.rushAt = isNaN(d) ? '' : (d.getMonth() + 1) + '/' + d.getDate() + ' ' + d.getHours() + ':' + ('0' + d.getMinutes()).slice(-2) + '時点'; } catch (e) { S.rushAt = ''; }
     var byNo = {};
     j.card.forEach(function (x) { var no = String(x[1] || '').trim(); if (!no) return; (byNo[no] = byNo[no] || []).push({ p: rzName(x[0], true), s: rzName(x[0]), a: Number(x[2]) || 0 }); });
     /* ラッシュの「【未開封パック】」はパック1つの価格なので、BOXとは別の表にする（BOXにパックの価格を出さない） */
@@ -296,7 +298,7 @@
     var shown = list.slice(0, f.limit);
     var h = '<table><thead><tr><th class="l"><input type="checkbox" id="all"></th><th class="l" colspan="2">商品</th><th>全店</th>' +
       sts.map(function (s) { return '<th class="st">' + esc(s.name) + '</th>'; }).join('') +
-      '<th>在庫金額</th><th>販売価格</th><th title="カードラッシュの買取価格（毎晩の取得分）">ラッシュ買取</th><th>買取価格</th><th>最終販売</th><th>最終買取</th><th></th></tr></thead><tbody>';
+      '<th>在庫金額</th><th>販売価格</th><th title="カードラッシュの買取価格（毎晩の取得分。日中の値動きは翌晩に反映）">ラッシュ買取' + (S.rushAt ? '<div style="font-size:10px;font-weight:400;color:#c8102e">' + esc(S.rushAt) + '</div>' : '') + '</th><th>買取価格</th><th>最終販売</th><th>最終買取</th><th></th></tr></thead><tbody>';
     shown.forEach(function (r) {
       var c = r.c, ds = days(r.lastSell), db = days(r.lastBuy);
       h += '<tr data-key="' + esc(r.key) + '"><td class="l"><input type="checkbox" data-sel="' + esc(r.key) + '"' + (S.sel[r.key] ? ' checked' : '') + '></td>' +
