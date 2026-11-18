@@ -8,6 +8,7 @@
   var TOKEN = document.documentElement.getAttribute('data-ndk-zaiko-token') || '';
   var SHORT = { 322: '柏', 323: '津田沼', 324: '松戸', 325: '横浜', 326: '中野', 327: '町田', 328: '千葉中央', 390: '通販', 409: 'お台場' };
   var ORDER = [328, 322, 327, 324, 326, 409, 323, 325, 390];
+  var EXCLUDE = [390];   /* 全店合計に入れない店（通販） */
 
   var box = document.createElement('div');
   box.setAttribute('style', 'position:fixed;right:12px;bottom:12px;z-index:2147483000;background:#1d1d22;color:#fff;font:13px sans-serif;padding:10px 14px;border-radius:10px;box-shadow:0 4px 16px rgba(0,0,0,.3)');
@@ -72,7 +73,9 @@
         var row = map[key];
         if (!row) row = map[key] = { kind: k, myca: p.item_myca_item_id || null, name: p.item_name || p.display_name, num: p.item_cardnumber || '', rarity: p.item_rarity || '', exp: p.item_expansion || '', st: {}, total: 0, cost: 0, market: 0, sell: 0, lastSell: '', lastBuy: '' };
         var c = Number(p.stock_number) || 0;
-        row.st[s.id] = (row.st[s.id] || 0) + c; row.total += c;
+        row.st[s.id] = (row.st[s.id] || 0) + c;
+        if (EXCLUDE.indexOf(s.id) >= 0) return;   /* 通販店は合計に数えない（2026-11-18） */
+        row.total += c;
         row.cost += (Number(p.average_wholesale_price) || 0) * c;
         row.market = Math.max(row.market, Number(p.item_market_price) || 0);
         row.sell = Math.max(row.sell, Number(p.actual_sell_price) || Number(p.item_sell_price) || 0);
@@ -80,7 +83,7 @@
         if (p.last_transaction_buy_at && p.last_transaction_buy_at > row.lastBuy) row.lastBuy = p.last_transaction_buy_at;
       });
     });
-    var rows = Object.keys(map).map(function (k) {
+    var rows = Object.keys(map).filter(function (k) { return map[k].total > 0; }).map(function (k) {
       var r = map[k]; r.avgCost = r.total > 0 ? Math.round(r.cost / r.total) : 0; delete r.cost;
       r.lastSell = String(r.lastSell).slice(0, 10); r.lastBuy = String(r.lastBuy).slice(0, 10);
       return r;
