@@ -68,10 +68,9 @@
       if (!list) { failed.push(s.name); return; }
       list.forEach(function (p) {
         var k = kindOf(p); if (!k) return;
-        var key = p.item_myca_item_id ? 'm' + p.item_myca_item_id + '|' + (k === 'psa' ? 'card' : k) : 'n' + p.display_name + '|' + (p.item_cardnumber || '') + '|' + k;
+        var key = p.item_myca_item_id ? 'm' + p.item_myca_item_id + '|' + k : 'n' + p.display_name + '|' + (p.item_cardnumber || '') + '|' + k;   /* PSAと素体は別の行で数える（2026-11-18） */
         var row = map[key];
         if (!row) row = map[key] = { kind: k, myca: p.item_myca_item_id || null, name: p.item_name || p.display_name, num: p.item_cardnumber || '', rarity: p.item_rarity || '', exp: p.item_expansion || '', st: {}, total: 0, cost: 0, market: 0, sell: 0, lastSell: '', lastBuy: '' };
-        if (k === 'psa') row.kind = 'psa';
         var c = Number(p.stock_number) || 0;
         row.st[s.id] = (row.st[s.id] || 0) + c; row.total += c;
         row.cost += (Number(p.average_wholesale_price) || 0) * c;
