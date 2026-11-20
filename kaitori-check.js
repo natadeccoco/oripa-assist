@@ -6,7 +6,7 @@
   if (location.hostname !== 'pos.mycalinks.com') { alert('マイカ（pos.mycalinks.com）を開いてから押してください'); return; }
   var old = document.getElementById('ndk-kaitori-host'); if (old) old.remove();
 
-  var VERSION = '2026-11-06 版AN';
+  var VERSION = '2026-11-20 版AO';
   var GAS = 'https://script.google.com/macros/s/AKfycbwXHuu-X3L0qzJhvaszEIm-1xdeNIqJACQ0uM7mz5Q0hvwfdF9IuQiTKr3qmscNVmnhcQ/exec';
   var FB_URL = 'https://script.google.com/macros/s/AKfycbwl-ZCZ1LyefvSzEGkBEpTFTuFyvW0p-AYye6jBWaLP9t7-bC9_Owfeh4jKScNkFys6Fw/exec';
   var SHORT = { 322: '柏', 323: '津田沼', 324: '松戸', 325: '横浜', 326: '中野', 327: '町田', 328: '千葉中央', 390: '通販', 409: 'お台場' };
@@ -716,8 +716,7 @@
   // 承認依頼用：買取の中身を画像（JPEG・base64）に描く。全部のカードを30枚ずつに分けて、何枚かの画像にする。マイカの画像はGAS経由で受け取る
   async function sheetImages() {
     var t = S.tx, sub = function (m) { return m.unit * m.cnt; };
-    var list = S.lines.filter(function (m) { return !m.hanyo; }).sort(function (a, b) { return sub(b) - sub(a); })
-      .concat(S.lines.filter(function (m) { return m.hanyo; }).sort(function (a, b) { return (b.at || 0) - (a.at || 0); }));
+    var list = S.lines.slice(); // マイカに入力した順（ツールの画面・文章と同じ並び）
     var imgs = {}, urls = []; list.forEach(function (m) { if (m.img && urls.indexOf(m.img) < 0) urls.push(m.img); });
     for (var ui = 0; ui < urls.length; ui += 10) await Promise.all(urls.slice(ui, ui + 10).map(function (u) {
       return fetch(GAS + '?action=img&u=' + encodeURIComponent(u)).then(function (r) { return r.json(); }).then(function (j) {
