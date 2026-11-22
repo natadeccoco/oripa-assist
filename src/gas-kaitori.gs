@@ -526,7 +526,7 @@ function kRushPrice(n, cond) {
   var full = cname, lv = (full.match(/LV\.?\s*(\d+)/i) || [])[1] || '', base0 = full.replace(/\s*LV\.?\s*\d+.*$/i, '').trim() || full;
   var tags = (s.match(/[（(]([^）)]*)[）)]/g) || []).map(function (t) { return t.slice(1, -1).trim(); });
   var rar = tags.filter(function (t) { return /^[★●◆☆]$/.test(t); })[0] || '', promo = tags.some(function (t) { return /PROMO/i.test(t); }), gloss = tags.filter(function (t) { return /光沢/.test(t); })[0] || '';
-  var key = 'rush9_' + Utilities.base64EncodeWebSafe(Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, kdN(s) + '|' + want, Utilities.Charset.UTF_8)) // UTF-8を指定しないと日本語が全部同じ扱いになり、同じ文字数の別カード（ヤンヤンマ・エアームド等）の結果を取り違える, c = CacheService.getScriptCache(), hit = c.get(key);
+  var key = 'rush9_' + Utilities.base64EncodeWebSafe(Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, kdN(s) + '|' + want, Utilities.Charset.UTF_8)) /* UTF-8を指定しないと日本語が全部同じ扱いになり、同じ文字数の別カード（ヤンヤンマ・エアームド等）の結果を取り違える */, c = CacheService.getScriptCache(), hit = c.get(key);
   if (hit) return JSON.parse(hit);
   var items = kRushFetch(md ? cname + ' ' + md.no : base0 + ' 旧裏').filter( // 型番がない＝旧裏：「旧裏」を付けて探すと、LV違い（LV.35／LV.37）も漏れなく出る
     function (x) {
