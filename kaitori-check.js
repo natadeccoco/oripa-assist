@@ -6,7 +6,7 @@
   if (location.hostname !== 'pos.mycalinks.com') { alert('マイカ（pos.mycalinks.com）を開いてから押してください'); return; }
   var old = document.getElementById('ndk-kaitori-host'); if (old) old.remove();
 
-  var VERSION = '2026-11-20 版AO';
+  var VERSION = '2026-11-22 版AP';
   var GAS = 'https://script.google.com/macros/s/AKfycbwXHuu-X3L0qzJhvaszEIm-1xdeNIqJACQ0uM7mz5Q0hvwfdF9IuQiTKr3qmscNVmnhcQ/exec';
   var FB_URL = 'https://script.google.com/macros/s/AKfycbwl-ZCZ1LyefvSzEGkBEpTFTuFyvW0p-AYye6jBWaLP9t7-bC9_Owfeh4jKScNkFys6Fw/exec';
   var SHORT = { 322: '柏', 323: '津田沼', 324: '松戸', 325: '横浜', 326: '中野', 327: '町田', 328: '千葉中央', 390: '通販', 409: 'お台場' };
@@ -356,10 +356,10 @@
     clearInterval(S.pollT);
     var t = S.list.find(function (x) { return x.id === id; });
     if (!t) { await loadList(); t = S.list.find(function (x) { return x.id === id; }); if (!t) return; }
-    S.tx = t; S.cust = ''; S.syncing = true; S.pick = ''; S.staff = '';
+    S.tx = t; S.imgTx = ''; S.cust = ''; S.syncing = true; S.pick = ''; S.staff = '';
     S.lines = multiFlag((t.transaction_carts || []).map(judge));
     renderDetail();
-    loadImages(t);
+    S.imgP = loadImages(t).catch(function () { });
     S.snkP = snkFetch(t);
     S.rushP = rushFetch(t);
     if (t.customer_id) {
@@ -402,8 +402,9 @@
     if (S.tx !== t) return;
     if (noModel.length) { var prev = S.lines; S.lines = multiFlag((t.transaction_carts || []).map(judge)); // 取り直しても、スニダン・ラッシュの結果は引き継ぐ
       S.lines.forEach(function (m, i) { var o = prev[i]; if (o) ['snk', 'snkErr', 'rush', 'rushErr'].forEach(function (k) { if (o[k] != null) m[k] = o[k]; }); }); }
-    S.lines.forEach(function (m, i) { var x = map[(t.transaction_carts[i] || {}).product_id] || {}; m.img = x.img || ''; if (!m.cond && x.cond) m.cond = x.cond; gradeFlag(m); }); multiFlag(S.lines); S.condTx = t.id;
+    S.lines.forEach(function (m, i) { var x = map[(t.transaction_carts[i] || {}).product_id] || {}; m.img = x.img || ''; if (!m.cond && x.cond) m.cond = x.cond; gradeFlag(m); }); multiFlag(S.lines); S.condTx = t.id; S.imgTx = t.id;
     renderDetail();
+    prefetchImgs(S.lines);
     S.rushP = rushFetch(t); // シングルの状態は商品情報が届いてから決まるので、ラッシュはここで取りに行く
   }
   // 差し戻し：本部の指示（カードごと）を今のマイカの明細と照らし合わせる
@@ -666,7 +667,8 @@
     R.querySelector('.win').appendChild(m);
     bindPicker(m.querySelector('#rq'), true);
     var files = [];
-    var imgP = approval ? sheetImages().catch(function () { return sheetImages(); }).then(function (ps) { var bx = m.querySelector('.aprev'); if (bx) bx.innerHTML = (ps.length > 1 ? '<div class="sub">画像は' + ps.length + '枚に分けて送ります</div>' : '') + ps.map(function (b64) { return '<img src="data:image/jpeg;base64,' + b64 + '" style="width:100%;border-radius:8px;border:1px solid #e5e2da;margin-bottom:6px">'; }).join(''); return ps; }, function () { var bx = m.querySelector('.aprev'); if (bx) bx.innerHTML = '<div class="sub">画像を作れなかったので、文章で送ります</div>'; return []; }) : Promise.resolve([]);
+    var wait = function (msg) { var bx = m.querySelector('.aprev'); if (bx) bx.innerHTML = '<div class="sub">' + esc(msg) + '</div>'; };
+    var imgP = approval ? sheetImages(wait).catch(function () { return sheetImages(wait); }).then(function (ps) { var bx = m.querySelector('.aprev'); if (bx) bx.innerHTML = (ps.length > 1 ? '<div class="sub">画像は' + ps.length + '枚に分けて送ります</div>' : '') + ps.map(function (b64) { return '<img src="data:image/jpeg;base64,' + b64 + '" style="width:100%;border-radius:8px;border:1px solid #e5e2da;margin-bottom:6px">'; }).join(''); return ps; }, function () { var bx = m.querySelector('.aprev'); if (bx) bx.innerHTML = '<div class="sub">画像を作れなかったので、文章で送ります</div>'; return []; }) : Promise.resolve([]);
     if (approval && m.querySelector('#ph')) m.querySelector('#ph').onchange = function () { files = Array.from(this.files || []).slice(0, 10); m.querySelector('#th').innerHTML = files.map(function (f) { return '<img src="' + URL.createObjectURL(f) + '">'; }).join(''); };
     m.querySelector('#x').onclick = function () { m.remove(); };
     m.querySelector('#ok').onclick = async function () {
@@ -714,16 +716,31 @@
     }
   }
   // 承認依頼用：買取の中身を画像（JPEG・base64）に描く。全部のカードを30枚ずつに分けて、何枚かの画像にする。マイカの画像はGAS経由で受け取る
-  async function sheetImages() {
-    var t = S.tx, sub = function (m) { return m.unit * m.cnt; };
-    var list = S.lines.slice(); // マイカに入力した順（ツールの画面・文章と同じ並び）
-    var imgs = {}, urls = []; list.forEach(function (m) { if (m.img && urls.indexOf(m.img) < 0) urls.push(m.img); });
-    for (var ui = 0; ui < urls.length; ui += 10) await Promise.all(urls.slice(ui, ui + 10).map(function (u) {
+  // 承認依頼の画像に使うカード画像を、取引を開いたときから裏で読み込んでおく（送るときに待たない）
+  function prefetchImgs(lines) {
+    S.imgCache = S.imgCache || {};
+    var urls = []; (lines || []).forEach(function (m) { if (m.img && !S.imgCache[m.img] && urls.indexOf(m.img) < 0) urls.push(m.img); });
+    var one = function (u) {
       return fetch(GAS + '?action=img&u=' + encodeURIComponent(u)).then(function (r) { return r.json(); }).then(function (j) {
-        if (!j.ok) return;
-        return new Promise(function (res) { var im = new Image(); im.onload = function () { imgs[u] = im; res(); }; im.onerror = function () { res(); }; im.src = 'data:' + j.mime + ';base64,' + j.b64; });
-      }).catch(function () { });
-    }));
+        if (!j.ok) return null;
+        return new Promise(function (res) { var im = new Image(); im.onload = function () { res(im); }; im.onerror = function () { res(null); }; im.src = 'data:' + j.mime + ';base64,' + j.b64; });
+      }).catch(function () { return null; });
+    };
+    // 同時に20件まで。先に「待ち札」を置いておき、読み込めたらそこに入れる
+    var q = urls.map(function (u) { var d = {}; S.imgCache[u] = new Promise(function (r) { d.r = r; }); return { u: u, d: d }; });
+    var next = function () { var it = q.shift(); if (!it) return; one(it.u).then(function (im) { if (!im) delete S.imgCache[it.u]; it.d.r(im); next(); }); };
+    for (var i = 0; i < 20; i++) next();
+  }
+  async function sheetImages(onWait) {
+    var t = S.tx, sub = function (m) { return m.unit * m.cnt; };
+    // カードの画像・状態（マイカから後で届く）を待ってから作る。行が多い・旧裏が多いと届くまで時間がかかる（最大60秒）
+    if (S.imgTx !== t.id && S.imgP) { if (onWait) onWait('カードの画像と状態を読み込んでいます…（行が多いと少し時間がかかります）'); await Promise.race([S.imgP, new Promise(function (r) { setTimeout(r, 60000); })]); }
+    if (S.tx !== t) throw new Error('取引が変わりました');
+    S.sheetLate = S.imgTx !== t.id;
+    if (S.rushP && onWait) onWait('他社・スニダンの価格を待っています…');
+    var list = S.lines.slice(); // マイカに入力した順（ツールの画面・文章と同じ並び）
+    var imgs = {}; prefetchImgs(list); // 取引を開いたときから裏で読み込んでいる分を使う（ここでは足りない分だけ取る）
+    await Promise.all(list.map(function (m) { return m.img && S.imgCache[m.img] ? S.imgCache[m.img].then(function (im) { if (im) imgs[m.img] = im; }) : null; }));
     // スニダン：開いたときから取っている分を待つ（最大30秒）。取れていない分は待たずに描く
     if (S.snkP || S.rushP) await Promise.race([Promise.all([S.snkP, S.rushP]), new Promise(function (r) { setTimeout(r, 30000); })]);
     var PER = 30, pages = [], np = Math.max(1, Math.ceil(list.length / PER));
@@ -742,6 +759,7 @@
     c.fillStyle = '#e8c23a'; c.font = 'bold 32px ' + F; c.fillText(fit(SHORT[S.sid] + '店　買取 ' + yen(t.total_price) + (np > 1 ? '　（' + pg + '/' + np + '枚目）' : ''), W - PAD * 2), PAD, 16);
     c.fillStyle = '#fff'; c.font = 'bold 20px ' + F;
     var pts = S.lines.reduce(function (s, m) { return s + m.cnt; }, 0);
+    if (S.sheetLate) { c.fillStyle = '#ffb4b4'; c.font = 'bold 16px ' + F; c.fillText('※画像・状態の読み込みが間に合わなかった行があります', PAD, 90); c.fillStyle = '#fff'; c.font = 'bold 20px ' + F; }
     c.fillText(fit((S.cust ? S.cust + ' 様　' : '') + '受付' + (t.reception_number || '') + '　' + hm(t.updated_at || t.created_at) + '　' + S.lines.length + '行・' + pts + '点', W - PAD * 2), PAD, 64);
     var y0 = HEAD + PAD - 8;
     list.forEach(function (m, i) {
@@ -769,11 +787,11 @@
         if (sk.price && sk.date) { c.font = '13px ' + F; c.fillStyle = '#888'; c.fillText(fit('直近の取引 ' + sk.date, CW - 16), x + 8, ty + 160); } }
       else if (/PSA\s*10/i.test(m.dn)) { c.font = 'bold 15px ' + F; c.fillStyle = '#999'; c.fillText(fit('スニダン：' + (m.snkErr ? '取得失敗' : '取得中') + '→URLは文章に', CW - 16), x + 8, ty + 140); }
       else if (rushWant(m)) { var rr = m.rush, w = rushWant(m); c.font = 'bold 15px ' + F; c.fillStyle = rr && rr.price ? '#15803d' : '#999'; // シングルの状態B・C・D：スニダンと同じ位置にラッシュの販売価格
-        c.fillText(fit(rr && rr.price ? '他社' + rr.use + ' ' + yen(rr.price) + '（' + Math.round(m.unit / rr.price * 100) + '%）' : rr ? (/なし$/.test(rr.why || '') ? '他社に' + w + 'なし' : '他社：見つからない') : '他社：' + (m.rushErr ? '取得失敗' : '取得中') + '→文章に', CW - 16), x + 8, ty + 140);
+        c.fillText(fit(rr && rr.price ? '他社' + rr.use + ' ' + yen(rr.price) + '（' + Math.round(m.unit / rr.price * 100) + '%）' : rr ? (/決められ/.test(rr.why || '') ? '他社：同名が複数で特定できず' : /扱いなし/.test(rr.why || '') ? '他社：扱いなし' : /なし$/.test(rr.why || '') ? '他社に' + w + 'なし' : '他社：見つからない') : '他社：' + (m.rushErr ? '取得失敗' : '取得中') + '→文章に', CW - 16), x + 8, ty + 140);
         var sub2 = rr && rr.price ? (rr.note ? rr.note + '→' + rr.use : rr.so ? '他社は在庫なし' : '他社在庫' + (rr.st || '')) : '';
         if (sub2) { c.font = '13px ' + F; c.fillStyle = '#888'; c.fillText(fit(sub2, CW - 16), x + 8, ty + 160); } }
     });
-    return cv.toDataURL('image/jpeg', 0.86).split(',')[1];
+    return cv.toDataURL('image/jpeg', 0.7).split(',')[1]; // 画質を少し下げて軽くする（送信を速く）
   }
 
   function pollStatus() {

@@ -521,9 +521,13 @@ function kRushPrice(n, cond) {
   var want = kRushWant(cond); if (!want) return null;
   var s = String(n || '').normalize('NFKC'), md = kSnkrModel(s), cname = kSnkrCardName(s);
   if (!cname) return { price: 0, why: '名前がわかりません' };
-  var key = 'rush7_' + Utilities.base64EncodeWebSafe(Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, kdN(s) + '|' + want)), c = CacheService.getScriptCache(), hit = c.get(key);
+  // 型番がない（旧裏）とき：マイカの名前の「LV」「★●◆☆」「PROMO」「光沢あり」も使って1枚に絞る
+  var full = cname, lv = (full.match(/LV\.?\s*(\d+)/i) || [])[1] || '', base0 = full.replace(/\s*LV\.?\s*\d+.*$/i, '').trim() || full;
+  var tags = (s.match(/[（(]([^）)]*)[）)]/g) || []).map(function (t) { return t.slice(1, -1).trim(); });
+  var rar = tags.filter(function (t) { return /^[★●◆☆]$/.test(t); })[0] || '', promo = tags.some(function (t) { return /PROMO/i.test(t); }), gloss = tags.filter(function (t) { return /光沢/.test(t); })[0] || '';
+  var key = 'rush8_' + Utilities.base64EncodeWebSafe(Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, kdN(s) + '|' + want)), c = CacheService.getScriptCache(), hit = c.get(key);
   if (hit) return JSON.parse(hit);
-  var items = kRushFetch(md ? cname + ' ' + md.no : cname + ' 旧裏').filter( // 型番がない＝旧裏：「旧裏」を付けて探すと、LV違い（LV.35／LV.37）も漏れなく出る
+  var items = kRushFetch(md ? cname + ' ' + md.no : base0 + ' 旧裏').filter( // 型番がない＝旧裏：「旧裏」を付けて探すと、LV違い（LV.35／LV.37）も漏れなく出る
     function (x) {
     if (/鑑定|PSA|ARS|BGS|CGC/i.test(x.nm)) return false;
     var body = x.nm.replace(/^〔[^〕]*〕/, ''), nm = body.replace(/[【{].*$/, '');
@@ -534,15 +538,30 @@ function kRushPrice(n, cond) {
       if (num !== kdN(md.no + '/' + md.tot)) return false;
       var xs = kdN(x.set), ms = kdN(md.set); // ラッシュの弾は「XY」「CP6」のような大まかな表記（XY1・XY-P も「XY」）→ 先頭が同じならOK。番号は分母まで合わせているので、ここはゆるめ
       if (xs && !/その他|PROMO/i.test(x.set) && xs.indexOf(ms) !== 0 && ms.indexOf(xs) !== 0) return false;
-    } else if (/\{/.test(body) && !/旧裏|\{-\}/.test(body)) return false; // 型番のないカード（旧裏）は、ラッシュでも型番のないものだけ
+    } else { // 型番のないカード（旧裏）
+      if (/\{/.test(body) && !/旧裏|\{-\}/.test(body)) return false; // ラッシュでも型番のないものだけ
+      if (/未開封|セット|プレイマット/.test(body)) return false;
+      var k = kdN(nm), b = kdN(base0), rest = k.slice(b.length);
+      if (k.indexOf(b) !== 0 || (rest && !/^(LV|\()/.test(rest))) return false; // 「ミュウ」で「ミュウツー」を拾わない
+      if (lv && (k.match(/LV\.?(\d+)/) || [])[1] !== lv) return false; // マイカにLVがあれば同じLVだけ
+      if (rar && (body.match(/【([^】]*)】/) || [])[1] !== rar) return false; // ★●◆☆はレア記号が同じものだけ（●のミュウツーに★の価格を出さない）
+      if (gloss && /光沢/.test(nm) && nm.indexOf(gloss) < 0) return false;
+    }
     return true;
   });
   if (!md) { // 型番がないとき：「ファイヤー」で LV.35 と LV.37(キラ) が混ざらないように、名前が1種類に決まるときだけ使う
     var base = function (x) { return kdN(x.nm.replace(/^〔[^〕]*〕/, '').replace(/[【{].*$/, '')); }, names = {};
     items.forEach(function (x) { names[base(x)] = 1; });
+    var extra = kdN(s.replace(/《[^》]*》/g, '').replace(/^[^（(]*/, '').replace(/[（(][^）)]*[）)]/g, '')); // 「ピチュー（★）エラー版」の「エラー版」
+    if (extra && Object.keys(names).length > 1) { var ex = items.filter(function (x) { return base(x).indexOf(extra) >= 0; }); if (ex.length) { items = ex; names = {}; items.forEach(function (x) { names[base(x)] = 1; }); } }
+    if (promo && Object.keys(names).length > 1) { // PROMOは、キャンペーン・プロモ品を優先（初版マークありの通常カードは外す）
+      var pr = items.filter(function (x) { var bd = x.nm.replace(/^〔[^〕]*〕/, ''); return /【P】|キャンペーン|プロモ|\((?!マーク)[^)]+\)/.test(bd); });
+      if (pr.length) { items = pr; names = {}; items.forEach(function (x) { names[base(x)] = 1; }); }
+    }
     var exact = items.filter(function (x) { return base(x) === kdN(cname); });
     if (exact.length) items = exact;
-    else if (Object.keys(names).length > 1) { var amb = { want: want, price: 0, why: '型番がないため他社で1枚に決められません（' + Object.keys(names).length + '種類）' }; c.put(key, JSON.stringify(amb), 3 * 3600); return amb; }
+    else if (Object.keys(names).length > 1) { var amb = { want: want, price: 0, why: '他社に同じ名前のカードが' + Object.keys(names).length + '種類あり、1枚に決められません' }; c.put(key, JSON.stringify(amb), 3 * 3600); return amb; }
+    else if (!items.length) { var nf = { want: want, price: 0, why: '他社に扱いなし' }; c.put(key, JSON.stringify(nf), 3 * 3600); return nf; }
   }
   var plain = function (x) { return kdN(x.nm.replace(/^〔[^〕]*〕/, '').replace(/[【{].*$/, '')) === kdN(cname); }; // 「フーパ(未開封)」より「フーパ」を優先
   var by = {}; items.forEach(function (x) { var m = x.nm.match(/^〔状態([^〕]+)〕/), k = m ? m[1] : '美品'; if (!by[k] || (!plain(by[k]) && plain(x))) by[k] = x; });
