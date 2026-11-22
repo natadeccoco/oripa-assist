@@ -90,6 +90,7 @@ function kaitoriGet(p) {
       var ns = JSON.parse(p.n || '[]').slice(0, 12);
       return json({ ok: true, r: ns.map(function (n) { try { return kIsPsa10(n) ? kSnkrPsa10(n) : null; } catch (e) { return { price: 0, err: 1, why: '取得失敗（スニダンが混んでいる等）' }; } }) });
     }
+    if (p.action === 'krushq') { try { return json({ ok: true, items: kRushFetch(String(p.q || '').slice(0, 100)).map(function (x) { return x.nm + '|' + x.set + '|' + x.price; }) }); } catch (e) { return json({ ok: false, e: String(e) }); } } // 確認用：中継が返す一覧そのもの
     if (p.action === 'krush') { // シングルの状態B・C・D：カードラッシュの同じ状態の販売価格（画面・査定表の画像用）
       var rs = JSON.parse(p.n || '[]').slice(0, 12);
       return json({ ok: true, r: rs.map(function (q) { try { return kRushWant(q.c) ? kRushPrice(q.n, q.c) : null; } catch (e) { console.error('ラッシュ: ' + e); return { price: 0, err: 1, why: '取得失敗（他社のサイトが混んでいる等）', e: String(e.message || e).slice(0, 200) }; } }) });
