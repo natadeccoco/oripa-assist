@@ -208,7 +208,10 @@
     if (pt.unopened) s += (/未開封/.test(nm) ? 15 : -10); else if (/未開封/.test(nm)) s -= 20;
     if (/海外版/.test(nm)) s -= 30;
     if (/在庫移動/.test(nm)) s -= 40;
-    if (/《BOX状態/.test(nm)) s -= 5;
+    // BOXは状態違いが別商品（《BOX状態A-》など）になっている。RECOREのグレードに合わせる
+    var bm = nm.match(/《BOX状態([^》]+)》/), gl = (nfkc(g.gr).match(/(A-|B|C|D)$/) || [])[1] || '';
+    if (bm) s += (gl && bm[1] === gl) ? 30 : -25;
+    else if (pt.box && gl) s -= 10;
     var a = norm(pt.name), b = norm(p.item_name || p.display_name || nm);
     if (a && b) {
       if (b.indexOf(a) >= 0 || a.indexOf(b) >= 0) s += 40;
