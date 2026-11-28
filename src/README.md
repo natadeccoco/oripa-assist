@@ -14,3 +14,4 @@
 - `gas-hanbai.gs` の後半 … 販売値付けの記録（POST nezuke →「オリパ承認履歴」の「販売値付け」タブ）、値付け済みの買取（GET nzdone）、1時間ルールの夜間チェック（POST nzcheck →「値付けチェック」タブ・役員の販売警告グループ）
 - `pc/nezuke_check.ps1` … 雄司のPC（Documents\myca_import）で毎晩22:20・23:50。今日の買取の満額3万円以上を本部へ（タスク MycaNezukeCheck、`install_nezuke_check.bat` で登録）
 - `gas-kaitori.gs` の ksnkr … 《PSA9》もスニダンで調べる（状態ID 23）
+- `../recore-myca.js` … RECORE（宅配買取）→マイカ在庫移し（`npx terser recore-myca.js -c -m -o recore-myca.min.js`）。RECOREのケース画面で押す→マイカ発注管理を開く（データはURLの#ndkrm=）→マイカでもう一度押す→移す先（中野326／横浜325）を選び照合→入荷（仕入先＝初期在庫・仕入値＝RECORE買取単価・税込）を作成して納品（POST /api/store/{id}/stocking → /stocking/{id}/apply）。設置ページ https://natadeccoco.github.io/natadecoco-tools/recore-myca.html
