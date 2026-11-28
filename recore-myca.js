@@ -184,17 +184,18 @@
   }
   function parseTitle(t) {
     var s = nfkc(t);
-    var num = (s.match(/(\d{1,3})\s*\/\s*([A-Za-z]*-?[A-Za-z0-9]+)/) || [])[0] || '';
+    var num = (s.match(/[A-Za-z]{2,6}#\d{1,4}/) || s.match(/(\d{1,3})\s*\/\s*([A-Za-z]*-?[A-Za-z0-9]+)/) || [])[0] || '';
     num = num.replace(/\s/g, '');
     var exp = '';
     var m1 = s.match(/\[([A-Za-z0-9-]+)\]/); if (m1) exp = m1[1];
     var m2 = s.match(/\d{1,3}\/\d{1,3}\/([A-Za-z0-9-]+)\//); if (!exp && m2) exp = m2[1];
     var psa = (s.match(/PSA\s*(\d{1,2})/i) || [])[1] || '';
     var unopened = /未開封/.test(s);
-    var trainer = (s.match(/トレーナーズ【@\d+】|ストレージ[@＠]\d+/) || [])[0] || '';
+    var trainer = (s.match(/(ポケモン\/)?トレーナーズ【@\d+】|ストレージ[@＠]\d+/) || [])[0] || '';
     var quoted = (s.match(/「([^」]+)」/) || [])[1] || '';
     var name = s.replace(/【[^】]*】|\[[^\]]*\]|\{[^}]*\}|\([^)]*\)|（[^）]*）/g, ' ')
-      .replace(/\d{1,3}\s*\/\s*[A-Za-z0-9\/-]+/g, ' ').replace(/PSA\s*\d+/ig, ' ').trim();
+      .replace(/\d{1,3}\s*\/\s*[A-Za-z0-9\/-]+/g, ' ').replace(/[A-Za-z]{2,6}#\d{1,4}/g, ' ').replace(/PSA\s*\d+/ig, ' ')
+      .replace(/LV\.?\s*\d+/ig, ' ').replace(/\b1ED\)?/g, ' ').replace(/\b\d+th\/\d+\b/g, ' ').trim();
     return { num: num, exp: exp, psa: psa, unopened: unopened, trainer: trainer, quoted: quoted, name: name, box: /BOX|ボックス/i.test(s) };
   }
   function score(p, g, pt) {
@@ -205,11 +206,15 @@
     if (pt.psa) s += (nm.indexOf('PSA' + pt.psa) >= 0 ? 30 : -60); else if (/PSA/.test(nm)) s -= 60;
     if (pt.unopened) s += (/未開封/.test(nm) ? 15 : -10); else if (/未開封/.test(nm)) s -= 20;
     if (/海外版/.test(nm)) s -= 30;
+    if (/在庫移動/.test(nm)) s -= 40;
     if (/《BOX状態/.test(nm)) s -= 5;
     var a = norm(pt.name), b = norm(p.item_name || p.display_name || nm);
-    if (a && b.indexOf(a) >= 0) s += 25; else if (a) { var hit = 0; for (var i = 0; i < a.length - 1; i++) if (b.indexOf(a.substr(i, 2)) >= 0) hit++; s += Math.round(20 * hit / Math.max(1, a.length - 1)); }
+    if (a && b) {
+      if (b.indexOf(a) >= 0 || a.indexOf(b) >= 0) s += 40;
+      else { var hit = 0; for (var i = 0; i < a.length - 1; i++) if (b.indexOf(a.substr(i, 2)) >= 0) hit++; var ra = hit / Math.max(1, a.length - 1); s += Math.round(35 * ra); if (ra < 0.3) s -= 30; }
+    }
     if (pt.quoted && b.indexOf(norm(pt.quoted)) >= 0) s += 25;
-    if (pt.trainer && norm(p.item_name || p.display_name) === norm(pt.trainer)) s += 60;
+    if (pt.trainer) { var tn = norm(p.item_name || p.display_name), tw = norm(pt.trainer).replace(/^ポケモン/, ''); if (tn === tw || tn === 'ポケモン' + tw) s += 60; }
     if (condOk(p, g)) s += 20; else s -= 15;
     if (p.is_active) s += 3;
     if (p.stock_number > 0) s += 2;
