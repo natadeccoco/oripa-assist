@@ -6,13 +6,14 @@
  *   BOX     ：カードラッシュの同じ状態の未開封BOXで、シングルの状態A／A-と同じ計算。
  *   値付けのルール（近い方に寄せる）：680円以下は 680・580・400・300・200・100・80・50・30／1万円未満は下2ケタ80／5万円未満は下3ケタ800／5万円以上は千円単位（紙幣だけで払える金額・現金のみ）
  *   今の価格か新しい価格が5万円以上なら、LINE WORKSで役員の承認を取ってから自動でマイカに反映（販売価格の承認と同じ仕組み・同じ履歴）。
- *   5万円未満は「マイカに反映」でその場で反映。 */
+ *   5万円未満は「マイカに反映」でその場で反映。
+ *   反映したら、マイカにつないだラベルプリンターで値札ラベルを印刷（マイカの在庫一覧の「印刷」と同じ仕組み＝マイカの印刷キューに入れる）。 */
 (function () {
   'use strict';
   if (location.hostname !== 'pos.mycalinks.com') { alert('マイカ（pos.mycalinks.com）を開いてから押してください'); return; }
   var old = document.getElementById('ndk-nezuke-host'); if (old) old.remove();
 
-  var VERSION = '2026-11-28 版A';
+  var VERSION = '2026-11-28 版B';
   var GAS = 'https://script.google.com/macros/s/AKfycbwXHuu-X3L0qzJhvaszEIm-1xdeNIqJACQ0uM7mz5Q0hvwfdF9IuQiTKr3qmscNVmnhcQ/exec';
   var FB_URL = 'https://script.google.com/macros/s/AKfycbwl-ZCZ1LyefvSzEGkBEpTFTuFyvW0p-AYye6jBWaLP9t7-bC9_Owfeh4jKScNkFys6Fw/exec';
   var RUSH = 'https://natadecoco-rush.natadecoco-05d.workers.dev/?key=3cea41f2ef3ea5d87917a267&q=';
@@ -174,6 +175,20 @@
       if (c.plan && !c.manual) c.price = c.plan.price;
     }
   }
+  /* ---------- ラベル印刷（マイカの印刷キューを使う） ---------- */
+  function labelPrinter() { // マイカの画面の中にある「ラベルプリンター」の仕組み（在庫一覧の印刷ボタンと同じもの）を探す
+    var nodes = [document.querySelector('main') || document.body.firstElementChild].concat([].slice.call(document.querySelectorAll('body div'), 0, 80));
+    for (var i = 0; i < nodes.length; i++) {
+      var n = nodes[i]; if (!n) continue; var k = Object.keys(n).find(function (x) { return x.indexOf('__reactFiber$') === 0; }); if (!k) continue;
+      for (var f = n[k]; f; f = f.return) { var v = f.memoizedProps && f.memoizedProps.value; if (v && typeof v.pushQueue === 'function') return v; }
+    }
+    return null;
+  }
+  function printLabels(pid, count, stock) {
+    var lp = labelPrinter(); if (!lp) throw new Error('マイカのラベルプリンターが見つかりません（マイカの在庫一覧の画面で開いてください）');
+    for (var i = 0; i < count; i++) lp.pushQueue({ template: 'product', data: pid, meta: { isFirstStock: i === 0 && stock === count, isManual: true } });
+  }
+  function wantLabel() { var v = store('ndk_nezuke_label'); return v == null ? true : !!v; }
   function needApproval(c) { return Math.max(c.price || 0, c.now) >= LINE; }
 
   /* ---------- 画面 ---------- */
@@ -229,7 +244,7 @@
     '<div class="box"><h2>承認の依頼（この店・14日分）</h2><div id="list"><div class="msg">読み込み中…</div></div></div>' +
     '<div class="box rule"><b>値付けのルール</b><br>・680円以下：680・580・400・300・200・100・80・50・30<br>・1万円未満：下2ケタは「80」<br>・5万円未満：下3ケタは「800」<br>・5万円以上：紙幣だけで払える金額（現金のみ）<br>・5万円以上は役員の承認が取れたら自動でマイカに反映</div></div>' +
     '<div class="col"><div class="box"><h2 id="rtitle">販売価格 <small>左で買取を選んでください</small></h2><div id="lines"></div><div id="sum"></div>' +
-    '<div style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap"><button class="b r" id="go" disabled>マイカに反映・承認を依頼</button><button class="b g" id="clear">全部やめる</button></div><div id="result"></div></div></div>' +
+    '<div style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap"><button class="b r" id="go" disabled>マイカに反映・承認を依頼</button><button class="b g" id="clear">全部やめる</button><label style="display:inline-flex;gap:6px;align-items:center;font-weight:700;font-size:13px"><input type="checkbox" id="label"> 反映したらラベルを印刷する</label></div><div id="result"></div></div></div>' +
     '</div></div></div>';
   var $ = function (s) { return R.querySelector(s); };
   $('#close').onclick = function () { clearInterval(S.pollT); host.remove(); };
@@ -238,6 +253,8 @@
   $('#reload').onclick = function () { S.tab === 'buy' ? loadTxs() : search(($('#q') || {}).value || ''); loadList(); };
   $('#fb').onclick = function () { window.open(FB_URL + '?tool=' + encodeURIComponent('販売値付け') + '&store=' + encodeURIComponent(SHORT[S.sid] || ''), '_blank'); };
   $('#go').onclick = submit;
+  $('#label').checked = wantLabel();
+  $('#label').onchange = function () { store('ndk_nezuke_label', this.checked); };
   $('#clear').onclick = function () { S.lines = []; S.tx = null; drawLines(); drawTxs(); $('#result').innerHTML = ''; };
   $('#tbuy').onclick = function () { setTab('buy'); };
   $('#tsearch').onclick = function () { setTab('search'); };
@@ -306,7 +323,7 @@
       if (S.tx !== t) return;
       await Promise.all(carts.slice(k, k + 10).map(async function (c) {
         if (seen[c.product_id]) return; seen[c.product_id] = 1;
-        try { var j = await api('/api/store/' + S.sid + '/product?id=' + c.product_id); var p = ((j && j.products) || [])[0]; if (p) add(p, c.unit_price, true); } catch (e) { }
+        try { var j = await api('/api/store/' + S.sid + '/product?id=' + c.product_id); var p = ((j && j.products) || [])[0]; if (p) add(p, c.unit_price, true, (t.transaction_carts || []).filter(function (x) { return x.product_id === c.product_id; }).reduce(function (a, x) { return a + (x.item_count || 0); }, 0)); } catch (e) { }
       }));
     }
     if (S.tx !== t) return;
@@ -338,11 +355,11 @@
   function pill(k) { return '<span class="pill' + (k.kind === 'PSA' ? ' psa' : k.kind === 'BOX' ? ' box' : k.kind === '未開封' ? ' mikai' : '') + '">' + esc(k.kind + (k.grade || '')) + '</span>'; }
 
   /* ---------- 値付けの行 ---------- */
-  function add(p, buyUnit, quiet) {
+  function add(p, buyUnit, quiet, qty) {
     if (S.lines.some(function (x) { return x.id === p.id; })) return null;
     var k = kindOf(p), cost = Number(buyUnit) || Number(p.average_wholesale_price) || 0;
     var c = { id: p.id, name: p.displayNameWithMeta || p.display_name, condLabel: p.condition_option_display_name || '', kind: k.kind, grade: k.grade || '', cond: condOf(p, k.kind),
-      cost: Math.round(cost), costFrom: buyUnit ? '今回の買取価格' : '平均原価', now: nowPrice(p), stock: p.stock_number || 0, img: p.image_url || '', price: 0, manual: false, loading: true, state: '' };
+      cost: Math.round(cost), costFrom: buyUnit ? '今回の買取価格' : '平均原価', now: nowPrice(p), stock: p.stock_number || 0, qty: Math.max(1, Math.min(Number(qty) || 1, p.stock_number || 1)), img: p.image_url || '', price: 0, manual: false, loading: true, state: '' };
     S.lines.push(c); if (!quiet) $('#result').innerHTML = '';
     return c;
   }
@@ -351,7 +368,7 @@
     var h = '<div class="line" data-line="' + c.id + '"><div class="it">' + (c.img ? '<img src="' + esc(c.img) + '">' : '<span class="noimg"></span>') +
       '<div class="g"><div class="n">' + esc(c.name) + '</div><div class="m">' + pill(c) + (c.condLabel ? esc(c.condLabel) + '　' : '') + '在庫 ' + c.stock + '　今 ' + yen(c.now) + '　原価 ' + (c.cost ? yen(c.cost) + '<small>（' + c.costFrom + '）</small>' : '不明') + '</div></div>' +
       '<button class="b s g" data-del="' + c.id + '">外す</button></div>';
-    if (c.state === 'done') return h + '<div class="st ok">マイカに ' + yen(c.price) + ' で反映しました</div></div>';
+    if (c.state === 'done') return h + '<div class="st ok">マイカに ' + yen(c.price) + ' で反映しました' + (c.printed ? '・ラベル ' + c.printed + '枚を印刷に回しました' : '') + '</div>' + (c.perr ? '<div class="st ng">' + esc(c.perr) + '</div>' : '') + '</div>';
     if (c.state === 'wait') return h + '<div class="st wait">' + yen(c.price) + ' で役員の承認待ち（' + esc(c.req || '') + '）。承認されたら自動でマイカに反映します</div></div>';
     if (c.loading) return h + '<div class="st info">価格を調べています…</div></div>';
     if (c.plan) {
@@ -361,11 +378,13 @@
     }
     if (c.err) h += '<div class="hint">' + esc(c.err) + (c.cost ? '（参考：原価÷0.8＝' + yen(snap(c.cost / 0.8)) + '／原価÷0.7＝' + yen(snap(c.cost / 0.7)) + '）' : '') + '</div>';
     return h + '<div class="row"><span class="lab">販売価格</span><input class="f big" data-price="' + c.id + '" type="text" inputmode="numeric" autocomplete="off" value="' + (c.price || '') + '" placeholder="金額">' +
-      (c.manual ? '<span class="tag wait">手で変更</span>' + (c.plan ? '<button class="b s g" data-reset="' + c.id + '">自動に戻す</button>' : '') : '') + '</div><div data-calc="' + c.id + '"></div></div>';
+      (c.manual ? '<span class="tag wait">手で変更</span>' + (c.plan ? '<button class="b s g" data-reset="' + c.id + '">自動に戻す</button>' : '') : '') +
+      '<span class="lab" style="margin-left:auto">ラベル</span><input class="f" data-qty="' + c.id + '" type="text" inputmode="numeric" value="' + c.qty + '" style="width:56px;text-align:right;display:inline-block">枚</div><div data-calc="' + c.id + '"></div></div>';
   }
   function bindLine(c) {
     var el = R.querySelector('[data-line="' + c.id + '"]'); if (!el) return;
     el.querySelector('[data-del]').onclick = function () { S.lines.splice(S.lines.indexOf(c), 1); drawLines(); };
+    var qi = el.querySelector('[data-qty]'); if (qi) qi.oninput = function () { c.qty = Math.max(0, Math.floor(Number(String(qi.value).normalize('NFKC').replace(/[^0-9]/g, ''))) || 0); };
     var rs = el.querySelector('[data-reset]'); if (rs) rs.onclick = function () { c.manual = false; c.price = c.plan.price; drawLine(c); };
     var inp = el.querySelector('[data-price]');
     if (inp) {
@@ -404,6 +423,10 @@
     var j = await api('/api/store/' + S.sid + '/product?id=' + pid), p = ((j && j.products) || [])[0];
     if (!p || Number(p.specific_sell_price) !== Number(price)) throw new Error('マイカの価格が変わっていません');
   }
+  function label(c) {
+    if (!$('#label').checked || !c.qty) return;
+    try { printLabels(c.id, c.qty, c.stock); c.printed = c.qty; } catch (e) { c.perr = 'ラベルを印刷できませんでした：' + e.message; }
+  }
   function markTx() { if (!S.tx) return; var d = store(doneKey()) || {}; d[S.tx.id] = Date.now(); Object.keys(d).forEach(function (k) { if (Date.now() - d[k] > 14 * 864e5) delete d[k]; }); store(doneKey(), d); }
   async function submit() {
     if (S.busy) return;
@@ -415,7 +438,7 @@
     var msgs = [], ap = t.filter(needApproval), now = t.filter(function (c) { return !needApproval(c); });
     var ok = 0, ng = [];
     for (var i = 0; i < now.length; i++) {
-      try { await putPrice(now[i].id, now[i].price); now[i].state = 'done'; ok++; drawLine(now[i]); } catch (e) { ng.push(now[i].name + '：' + e.message); }
+      try { await putPrice(now[i].id, now[i].price); now[i].state = 'done'; ok++; label(now[i]); drawLine(now[i]); } catch (e) { ng.push(now[i].name + '：' + e.message); }
     }
     if (ok) msgs.push('<div class="st ok">' + ok + '件をマイカに反映しました</div>');
     if (ng.length) msgs.push('<div class="st ng">反映できなかったもの：<br>' + ng.map(esc).join('<br>') + '</div>');
@@ -429,7 +452,7 @@
         var j = await fetch(GAS, { method: 'POST', body: JSON.stringify(body) }).then(function (r) { return r.json(); });
         if (!j.ok) throw new Error(j.error || '送信できませんでした');
         var pend = store('ndk_nezuke_pend') || {};
-        pend[j.id] = { sid: S.sid, at: Date.now(), items: ap.map(function (c) { return { pid: c.id, price: c.price, name: c.name }; }) };
+        pend[j.id] = { sid: S.sid, at: Date.now(), items: ap.map(function (c) { return { pid: c.id, price: c.price, name: c.name, qty: $('#label').checked ? c.qty : 0, stock: c.stock }; }) };
         store('ndk_nezuke_pend', pend);
         ap.forEach(function (c) { c.state = 'wait'; c.req = j.id; drawLine(c); });
         msgs.push('<div class="st wait">LINE WORKSの店舗グループに ' + ap.length + '件の承認を依頼しました（' + esc(j.id) + '）。承認されたら自動でマイカに反映します。<br>※このツールを閉じていた場合は、次に開いたときに反映します。</div>');
@@ -460,10 +483,15 @@
       if (x.status === '差し戻し' || x.status === '取り消し') { delete pend[id]; changed = true; markLines(id, 'back'); continue; }
       if (x.status !== '承認') continue;
       var left = [];
-      for (var i = 0; i < p.items.length; i++) { try { await putPrice(p.items[i].pid, p.items[i].price); } catch (e) { left.push(p.items[i]); } }
+      var perr = '';
+      for (var i = 0; i < p.items.length; i++) {
+        var it = p.items[i];
+        try { await putPrice(it.pid, it.price); } catch (e) { left.push(it); continue; }
+        if (it.qty) { try { printLabels(it.pid, it.qty, it.stock); S.lines.forEach(function (c) { if (c.id === it.pid) c.printed = it.qty; }); } catch (e) { perr = e.message; } }
+      }
       if (left.length) p.items = left; else delete pend[id];
       changed = true; markLines(id, left.length ? '' : 'done');
-      $('#result').innerHTML = left.length ? '<div class="st ng">承認された ' + esc(id) + ' のうち ' + left.length + '件をマイカに反映できませんでした。15秒後にもう一度試します</div>' : '<div class="st ok">承認された ' + esc(id) + ' をマイカに反映しました</div>';
+      $('#result').innerHTML = left.length ? '<div class="st ng">承認された ' + esc(id) + ' のうち ' + left.length + '件をマイカに反映できませんでした。15秒後にもう一度試します</div>' : '<div class="st ok">承認された ' + esc(id) + ' をマイカに反映しました' + (perr ? '（ラベルは印刷できませんでした：' + esc(perr) + '）' : '') + '</div>';
     }
     if (changed) store('ndk_nezuke_pend', pend);
   }
