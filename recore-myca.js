@@ -193,7 +193,8 @@
     var unopened = /未開封/.test(s);
     var trainer = (s.match(/(ポケモン\/)?トレーナーズ【@\d+】|ストレージ[@＠]\d+/) || [])[0] || '';
     var quoted = (s.match(/「([^」]+)」/) || [])[1] || '';
-    var name = s.replace(/【[^】]*】|\[[^\]]*\]|\{[^}]*\}|\([^)]*\)|（[^）]*）/g, ' ')
+    var name = s.replace(/ポケモンカードゲーム|スカーレット\s*&\s*バイオレット|ソード\s*&\s*シールド|サン\s*&\s*ムーン|\bMEGA\b|強化拡張パック|拡張パック|ハイクラスパック|スペシャルパック|グレード別\s*グロス/g, ' ')
+      .replace(/【[^】]*】|\[[^\]]*\]|\{[^}]*\}|\([^)]*\)|（[^）]*）/g, ' ')
       .replace(/\d{1,3}\s*\/\s*[A-Za-z0-9\/-]+/g, ' ').replace(/[A-Za-z]{2,6}#\d{1,4}/g, ' ').replace(/PSA\s*\d+/ig, ' ')
       .replace(/LV\.?\s*\d+/ig, ' ').replace(/\b1ED\)?/g, ' ').replace(/\b\d+th\/\d+\b/g, ' ').trim();
     return { num: num, exp: exp, psa: psa, unopened: unopened, trainer: trainer, quoted: quoted, name: name, box: /BOX|ボックス/i.test(s) };
@@ -216,6 +217,7 @@
     if (pt.quoted && b.indexOf(norm(pt.quoted)) >= 0) s += 25;
     if (pt.trainer) { var tn = norm(p.item_name || p.display_name), tw = norm(pt.trainer).replace(/^ポケモン/, ''); if (tn === tw || tn === 'ポケモン' + tw) s += 60; }
     if (condOk(p, g)) s += 20; else s -= 15;
+    if (pt.box) { if (/BOX|ボックス/i.test(nm) || /ボックス/.test(p.item_category_display_name || '')) s += 15; else s -= 15; }
     if (p.is_active) s += 3;
     if (p.stock_number > 0) s += 2;
     return s;
@@ -230,7 +232,7 @@
     if (!pt.num && !pt.trainer) {
       if (pt.quoted) add(await search(pt.quoted + (pt.box ? ' BOX' : '')));
       if (list.length < 3 && pt.quoted) add(await search(pt.quoted));
-      if (list.length < 3) { var w = pt.name.split(/\s+/).filter(function (x) { return x.length >= 2; }).sort(function (a, b) { return b.length - a.length; })[0]; if (w) add(await search(w)); }
+      if (list.length < 3) { var w = pt.name.split(/\s+/).filter(function (x) { return x.length >= 2 && !/^(BOX|ボックス|未開封|シュリンク付き?)$/i.test(x); }).sort(function (a, b) { return b.length - a.length; })[0]; if (w) add(await search(w)); }
     }
     if (!list.length && pt.name) add(await search(pt.name.slice(0, 12)));
     function isLearned(p) { return learned && learned.full && nfkc(fullName(p)) === nfkc(learned.full) && condOk(p, g); }
