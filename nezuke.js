@@ -13,7 +13,7 @@
   if (location.hostname !== 'pos.mycalinks.com') { alert('マイカ（pos.mycalinks.com）を開いてから押してください'); return; }
   var old = document.getElementById('ndk-nezuke-host'); if (old) old.remove();
 
-  var VERSION = '2026-11-28 版B';
+  var VERSION = '2026-11-28 版C';
   var GAS = 'https://script.google.com/macros/s/AKfycbwXHuu-X3L0qzJhvaszEIm-1xdeNIqJACQ0uM7mz5Q0hvwfdF9IuQiTKr3qmscNVmnhcQ/exec';
   var FB_URL = 'https://script.google.com/macros/s/AKfycbwl-ZCZ1LyefvSzEGkBEpTFTuFyvW0p-AYye6jBWaLP9t7-bC9_Owfeh4jKScNkFys6Fw/exec';
   var RUSH = 'https://natadecoco-rush.natadecoco-05d.workers.dev/?key=3cea41f2ef3ea5d87917a267&q=';
@@ -254,7 +254,7 @@
   $('#fb').onclick = function () { window.open(FB_URL + '?tool=' + encodeURIComponent('販売値付け') + '&store=' + encodeURIComponent(SHORT[S.sid] || ''), '_blank'); };
   $('#go').onclick = submit;
   $('#label').checked = wantLabel();
-  $('#label').onchange = function () { store('ndk_nezuke_label', this.checked); };
+  $('#label').onchange = function () { store('ndk_nezuke_label', this.checked); drawSum(); };
   $('#clear').onclick = function () { S.lines = []; S.tx = null; drawLines(); drawTxs(); $('#result').innerHTML = ''; };
   $('#tbuy').onclick = function () { setTab('buy'); };
   $('#tsearch').onclick = function () { setTab('search'); };
@@ -359,7 +359,7 @@
     if (S.lines.some(function (x) { return x.id === p.id; })) return null;
     var k = kindOf(p), cost = Number(buyUnit) || Number(p.average_wholesale_price) || 0;
     var c = { id: p.id, name: p.displayNameWithMeta || p.display_name, condLabel: p.condition_option_display_name || '', kind: k.kind, grade: k.grade || '', cond: condOf(p, k.kind),
-      cost: Math.round(cost), costFrom: buyUnit ? '今回の買取価格' : '平均原価', now: nowPrice(p), stock: p.stock_number || 0, qty: Math.max(1, Math.min(Number(qty) || 1, p.stock_number || 1)), img: p.image_url || '', price: 0, manual: false, loading: true, state: '' };
+      cost: Math.round(cost), costFrom: buyUnit ? '今回の買取価格' : '平均原価', now: nowPrice(p), stock: p.stock_number || 0, qty: (p.stock_number || 0) > 0 ? Math.max(1, Math.min(Number(qty) || 1, p.stock_number)) : 0, img: p.image_url || '', price: 0, manual: false, loading: true, state: '' };
     S.lines.push(c); if (!quiet) $('#result').innerHTML = '';
     return c;
   }
@@ -368,7 +368,7 @@
     var h = '<div class="line" data-line="' + c.id + '"><div class="it">' + (c.img ? '<img src="' + esc(c.img) + '">' : '<span class="noimg"></span>') +
       '<div class="g"><div class="n">' + esc(c.name) + '</div><div class="m">' + pill(c) + (c.condLabel ? esc(c.condLabel) + '　' : '') + '在庫 ' + c.stock + '　今 ' + yen(c.now) + '　原価 ' + (c.cost ? yen(c.cost) + '<small>（' + c.costFrom + '）</small>' : '不明') + '</div></div>' +
       '<button class="b s g" data-del="' + c.id + '">外す</button></div>';
-    if (c.state === 'done') return h + '<div class="st ok">マイカに ' + yen(c.price) + ' で反映しました' + (c.printed ? '・ラベル ' + c.printed + '枚を印刷に回しました' : '') + '</div>' + (c.perr ? '<div class="st ng">' + esc(c.perr) + '</div>' : '') + '</div>';
+    if (c.state === 'done') return h + '<div class="st ok">' + (c.same ? '価格はそのまま（' + yen(c.price) + '）' : 'マイカに ' + yen(c.price) + ' で反映しました') + (c.printed ? '・ラベル ' + c.printed + '枚を印刷に回しました' : '') + '</div>' + (c.perr ? '<div class="st ng">' + esc(c.perr) + '</div>' : '') + '</div>';
     if (c.state === 'wait') return h + '<div class="st wait">' + yen(c.price) + ' で役員の承認待ち（' + esc(c.req || '') + '）。承認されたら自動でマイカに反映します</div></div>';
     if (c.loading) return h + '<div class="st info">価格を調べています…</div></div>';
     if (c.plan) {
@@ -379,7 +379,7 @@
     if (c.err) h += '<div class="hint">' + esc(c.err) + (c.cost ? '（参考：原価÷0.8＝' + yen(snap(c.cost / 0.8)) + '／原価÷0.7＝' + yen(snap(c.cost / 0.7)) + '）' : '') + '</div>';
     return h + '<div class="row"><span class="lab">販売価格</span><input class="f big" data-price="' + c.id + '" type="text" inputmode="numeric" autocomplete="off" value="' + (c.price || '') + '" placeholder="金額">' +
       (c.manual ? '<span class="tag wait">手で変更</span>' + (c.plan ? '<button class="b s g" data-reset="' + c.id + '">自動に戻す</button>' : '') : '') +
-      '<span class="lab" style="margin-left:auto">ラベル</span><input class="f" data-qty="' + c.id + '" type="text" inputmode="numeric" value="' + c.qty + '" style="width:56px;text-align:right;display:inline-block">枚</div><div data-calc="' + c.id + '"></div></div>';
+      (c.stock > 0 ? '' : '<span class="tag ng" style="margin-left:auto">在庫0のためラベルなし</span>') + '<span class="lab"' + (c.stock > 0 ? ' style="margin-left:auto"' : '') + '>ラベル</span><input class="f" data-qty="' + c.id + '" type="text" inputmode="numeric" value="' + c.qty + '" style="width:56px;text-align:right;display:inline-block">枚</div><div data-calc="' + c.id + '"></div></div>';
   }
   function bindLine(c) {
     var el = R.querySelector('[data-line="' + c.id + '"]'); if (!el) return;
@@ -409,12 +409,15 @@
     el.innerHTML = h;
   }
   function targets() { return S.lines.filter(function (c) { return !c.state && !c.loading && c.price > 0 && c.price !== c.now; }); }
+  // 価格が今と同じカード：マイカは書きかえず、承認もいらない。ラベルだけ印刷する（買い取ったカードには値札が要るため）
+  function sameOnes() { return S.lines.filter(function (c) { return !c.state && !c.loading && c.price > 0 && c.price === c.now && c.qty > 0 && c.stock > 0 && $('#label').checked; }); }
   function drawSum() {
     var t = targets(), ap = t.filter(needApproval), now = t.filter(function (c) { return !needApproval(c); });
     var bad = t.filter(function (c) { return !okPrice(c.price) || (c.cost && c.price < c.cost); }), busy = S.lines.some(function (c) { return c.loading; });
-    $('#sum').innerHTML = S.lines.length ? '<div style="margin-top:10px;font-weight:800">すぐ反映 ' + now.length + '件・承認の依頼 ' + ap.length + '件' +
+    var same = sameOnes();
+    $('#sum').innerHTML = S.lines.length ? '<div style="margin-top:10px;font-weight:800">すぐ反映 ' + now.length + '件・承認の依頼 ' + ap.length + '件' + (same.length ? '・価格そのまま（ラベルだけ） ' + same.length + '件' : '') +
       (busy ? '<span style="color:#777">（調べ中）</span>' : '') + (bad.length ? '<span class="err">（ルールに合わない金額・原価割れ：' + bad.length + '件）</span>' : '') + '</div>' : '';
-    $('#go').disabled = !t.length || !!bad.length || busy || S.busy;
+    $('#go').disabled = (!t.length && !same.length) || !!bad.length || busy || S.busy;
   }
 
   /* ---------- マイカに反映・承認を依頼 ---------- */
@@ -432,7 +435,8 @@
     if (S.busy) return;
     var out = $('#result'), staff = $('#staff').value.trim(), t = targets();
     if (!staff) { out.innerHTML = '<div class="st ng">上の「担当」に名前を入れてください</div>'; return; }
-    if (!t.length) return;
+    var same = sameOnes();
+    if (!t.length && !same.length) return;
     S.staff = staff; try { localStorage.setItem('ndk_hanbai_staff', staff); } catch (e) { }
     S.busy = true; drawSum(); out.innerHTML = '<div class="st wait">送信中…</div>';
     var msgs = [], ap = t.filter(needApproval), now = t.filter(function (c) { return !needApproval(c); });
@@ -440,7 +444,9 @@
     for (var i = 0; i < now.length; i++) {
       try { await putPrice(now[i].id, now[i].price); now[i].state = 'done'; ok++; label(now[i]); drawLine(now[i]); } catch (e) { ng.push(now[i].name + '：' + e.message); }
     }
+    same.forEach(function (c) { c.same = true; c.state = 'done'; label(c); drawLine(c); });
     if (ok) msgs.push('<div class="st ok">' + ok + '件をマイカに反映しました</div>');
+    if (same.length) msgs.push('<div class="st ok">価格が今と同じ ' + same.length + '件は、マイカはそのままでラベルだけ印刷に回しました</div>');
     if (ng.length) msgs.push('<div class="st ng">反映できなかったもの：<br>' + ng.map(esc).join('<br>') + '</div>');
     if (ap.length) {
       try {
