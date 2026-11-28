@@ -234,8 +234,13 @@
     }
     if (!list.length && pt.name) add(await search(pt.name.slice(0, 12)));
     function isLearned(p) { return learned && learned.full && nfkc(fullName(p)) === nfkc(learned.full) && condOk(p, g); }
-    list.forEach(function (p) { p._s = score(p, g, pt); if (isLearned(p)) p._s += 60; });
-    list.sort(function (a, b) { return b._s - a._s; });
+    function rescore() { list.forEach(function (p) { p._s = score(p, g, pt); if (isLearned(p)) p._s += 60; }); list.sort(function (a, b) { return b._s - a._s; }); }
+    rescore();
+    // 型番だけだと候補が多すぎて目当てが漏れることがある → 名前でも探す
+    if ((!list.length || list[0]._s < 90) && pt.num) {
+      var nmKw = pt.name.split(/\s+/).filter(function (x) { return x.length >= 2; }).sort(function (a, b) { return b.length - a.length; })[0];
+      if (nmKw) { add(await search(nmKw)); rescore(); }
+    }
     row.cands = list.slice(0, 25);
     row.pick = row.cands[0] || null;
     var top = row.cands[0], second = row.cands[1];
