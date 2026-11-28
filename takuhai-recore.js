@@ -5,7 +5,7 @@
  * 見積書には一切書き込まない。RECOREへの入力は「入力する」を押したときだけ。 */
 (function () {
   'use strict';
-  var VERSION = '2026-11-15 版B';
+  var VERSION = '2026-11-28 版C';
   var GAS = 'https://script.google.com/macros/s/AKfycbzF8w_dSwEnHnzhNUna2Q3FV9G7-U2X4z4ijguvs3kFLLK61PHc-HUXOGFm3_ZbJraeuQ/exec';
   var FB_URL = 'https://script.google.com/macros/s/AKfycbwl-ZCZ1LyefvSzEGkBEpTFTuFyvW0p-AYye6jBWaLP9t7-bC9_Owfeh4jKScNkFys6Fw/exec';
   var SITE_ITEMS = ['https://natadeccoco.github.io/kaitori-site/data/items.json'];
@@ -31,7 +31,13 @@
       .replace(/[\s　【】\[\]{}()（）「」『』〔〕<>・,、。:：]/g, '')
       .replace(/[‐－―ー−-]/g, '-');
   }
-  function cardNo(s) { var m = nfkc(s).match(/(\d{1,3})\s*\/\s*(\d{1,3})/); return m ? m[1] + '/' + m[2] : ''; }
+  function cardNo(s) { var m = nfkc(s).match(/(\d{1,3})\s*\/\s*(\d{1,3})/); return m ? Number(m[1]) + '/' + Number(m[2]) : ''; }   // 008/076 と 8/76 を同じに扱う
+  function rawNo(s) { var m = nfkc(s).match(/(\d{1,3})\s*\/\s*(\d{1,3})/); return m ? m[1] + '/' + m[2] : ''; }
+  /* 検索用のカード名：カッコの中・PSA・番号・弾の記号を除く */
+  function cleanName(s) {
+    return nfkc(s).replace(/[\(（\[【{][^)）\]】}]*[\)）\]】}]/g, ' ').replace(/PSA\s*\d{1,2}/ig, ' ').replace(/鑑定(品|済)?/g, ' ')
+      .replace(/(\d{1,3})\s*\/\s*(\d{1,3})/g, ' ').replace(/グレード別\s*グロス|グロス/g, ' ').replace(/\s+/g, ' ').trim();
+  }
   function psaOf(s) { var m = nfkc(s).match(/PSA\s*(\d{1,2})/i); return m ? Number(m[1]) : 0; }
   function baseName(s) {
     return norm(nfkc(s).replace(/(\d{1,3})\s*\/\s*(\d{1,3})/g, '').replace(/PSA\s*\d{1,2}/ig, '').replace(/鑑定(品|済)?/g, '').replace(/[\(（][^)）]*[\)）]/g, ''));
@@ -100,12 +106,20 @@
     return j;
   }
   var searchCache = {};
-  async function search(kw) {
+  /* RECOREの商品検索。pages ページまで（1ページ30件）めくる */
+  async function search(kw, pages) {
     kw = nfkc(kw).replace(/\s+/g, ' ').trim();
+    pages = pages || 1;
     if (!kw) return [];
-    if (searchCache[kw]) return searchCache[kw];
-    var r = await R.get('/products?keyword=' + encodeURIComponent(kw) + '&limit=30&page=1&statuses=ACTIVE');
-    return (searchCache[kw] = list(r));
+    var ck = kw + '#' + pages;
+    if (searchCache[ck]) return searchCache[ck];
+    var all = [];
+    for (var pg = 1; pg <= pages; pg++) {
+      var l = list(await R.get('/products?keyword=' + encodeURIComponent(kw) + '&limit=30&page=' + pg + '&statuses=ACTIVE'));
+      all = all.concat(l);
+      if (l.length < 30) break;
+    }
+    return (searchCache[ck] = all);
   }
   async function loadCase() {
     S.cs = (await R.get('/bad_cases/' + S.caseId)).data;
@@ -128,37 +142,43 @@
 
   /* ---------- 照合 ---------- */
   async function matchRow(row) {
-    var name = row.name, no = cardNo(name), psa = psaOf(name), base = baseName(name);
-    var kws = [name];
-    if (no) kws.push(no);
-    var toks = nfkc(name).replace(/(\d{1,3})\s*\/\s*(\d{1,3})/g, ' ').split(/[\s　]+/).filter(function (t) { return t.length >= 2; });
-    toks.sort(function (a, b) { return b.length - a.length; });
-    if (toks[0] && toks[0] !== name) kws.push(toks[0]);
-    var at = nfkc(name).match(/@\s*\d+/); if (at) kws.push(at[0].replace(/\s/g, ''));
+    var name = row.name, no = cardNo(name), rno = rawNo(name), psa = psaOf(name), base = baseName(name), cn = cleanName(name);
+    var at = nfkc(name).match(/@\s*\d+/);
+    // 検索する言葉（上から順に。見つかった候補は全部まとめて、あとで絞り込む）
+    var kws = [];
+    if (cn && rno) kws.push([cn + ' ' + rno, 1]);
+    kws.push([name, 1]);
+    if (cn && cn !== name) kws.push([cn, 3]);
+    if (rno) kws.push([rno, 5]);
+    if (no && no !== rno) kws.push([no, 5]);
+    if (at) kws.push([at[0].replace(/\s/g, ''), 1]);
     var seen = {}, cands = [];
     for (var i = 0; i < kws.length; i++) {
-      var l = await search(kws[i]);
+      var l = await search(kws[i][0], kws[i][1]);
       l.forEach(function (p) { if (!seen[p.id]) { seen[p.id] = 1; cands.push(p); } });
-      if (i === 0 && cands.length && !no) break;
     }
     cands = cands.filter(function (p) {
       var t = nfkc(p.title);
       var isPsa = /PSA|鑑定/.test(t);
       if (psa) { if (!new RegExp('PSA\\s*' + psa + '(?!\\d)', 'i').test(t)) return false; }
       else if (isPsa) return false;
-      if (no && cardNo(t) !== no) return false;
       return true;
     });
     cands.forEach(function (p) {
-      var bt = baseName(p.title);
-      p._score = (base && (bt.indexOf(base) >= 0 || base.indexOf(bt) >= 0)) ? 2 : 0;
-      if (norm(p.title) === norm(name)) p._score = 3;
+      var bt = baseName(p.title), tno = cardNo(p.title), sc = 0;
+      var nameHit = base && bt && (bt.indexOf(base) >= 0 || base.indexOf(bt) >= 0);
+      if (nameHit) sc += 2;
+      if (no) { if (tno === no) sc += 2; else if (tno) sc -= 3; }   // 番号が違うカードは下げる
+      if (norm(p.title) === norm(name)) sc += 2;
+      p._score = sc;
+      p._ok = no ? (tno === no && nameHit) : nameHit;   // 名前も番号も合う＝確実
     });
+    cands = cands.filter(function (p) { return p._score > 0; });
     cands.sort(function (a, b) { return b._score - a._score; });
-    var strong = cands.filter(function (p) { return p._score >= 2; });
-    row.cands = cands.slice(0, 8);
-    if (strong.length === 1 || (strong.length > 1 && strong[0]._score === 3 && strong[1]._score < 3)) { row.pick = String(strong[0].id); row.how = 'auto'; }
-    else if (cands.length) { row.pick = String((strong[0] || cands[0]).id); row.how = 'choose'; }
+    var sure = cands.filter(function (p) { return p._ok; });
+    row.cands = cands.slice(0, 10);
+    if (sure.length === 1 || (sure.length > 1 && sure[0]._score > sure[1]._score)) { row.pick = String(sure[0].id); row.how = 'auto'; }
+    else if (cands.length) { row.pick = String(cands[0].id); row.how = 'choose'; }
     else { row.pick = 'new'; row.how = 'new'; }
     row.psa = psa; row.cno = no;
   }
@@ -167,7 +187,7 @@
   async function findImage(row) {
     var items = await siteItems();
     var no = row.cno, base = baseName(row.name);
-    var hits = items.filter(function (it) { return it.img && (!no || it.no === no); });
+    var hits = items.filter(function (it) { return it.img && (!no || cardNo(it.no) === no); });
     var best = null, score = -1;
     hits.forEach(function (it) {
       var b = baseName(it.name), sc = 0;
@@ -226,7 +246,7 @@
     var n = nfkc(row.name).replace(/\s+/g, ' ').trim();
     if (!row.psa) return n;
     var b = n.replace(/PSA\s*\d+/ig, '').replace(/鑑定(品|済)?/g, '').replace(/(\d{1,3})\s*\/\s*(\d{1,3})/g, '').replace(/\s+/g, ' ').trim();
-    return '〔PSA' + row.psa + '鑑定済〕' + b + (row.cno ? '{' + row.cno + '}' : '');
+    return '〔PSA' + row.psa + '鑑定済〕' + b + (rawNo(row.name) ? '{' + rawNo(row.name) + '}' : '');
   }
   async function createProduct(row) {
     var imgs = [];
@@ -264,12 +284,14 @@
     '.bd{padding:14px 16px;overflow:auto}.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px}' +
     'select,input{font:inherit;padding:6px 8px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;color:#1d1d22}' +
     'table{width:100%;border-collapse:collapse;font-size:13px}th,td{border-bottom:1px solid #eef0f3;padding:6px;text-align:left;vertical-align:middle}th{background:#f8fafc;position:sticky;top:0;z-index:1}' +
-    'td.n{text-align:right;white-space:nowrap}.pick{max-width:420px;width:100%}' +
+    'td.n{text-align:right;white-space:nowrap}.pick{max-width:380px;width:calc(100% - 80px)}' +
     '.chip{display:inline-block;border-radius:999px;padding:1px 9px;font-size:12px;font-weight:700;white-space:nowrap}' +
     '.ok{background:#dcfce7;color:#166534}.ch{background:#fef3c7;color:#92400e}.nw{background:#dbeafe;color:#1e40af}.sk{background:#f1f5f9;color:#64748b}.ng{background:#fee2e2;color:#991b1b}' +
     '.msg{padding:10px 12px;border-radius:10px;margin:8px 0}.msg.e{background:#fee2e2;color:#991b1b}.msg.i{background:#f1f5f9}.msg.s{background:#dcfce7;color:#166534}' +
     '.ft{display:flex;gap:10px;align-items:center;padding:12px 16px;border-top:1px solid #eef0f3;background:#fafafa}.tot{font-weight:700}' +
     'img.th{width:34px;height:46px;object-fit:contain;background:#f1f5f9;border-radius:4px}.mut{color:#64748b;font-size:12px}' +
+    'button.sbtn{margin-left:6px;padding:5px 10px;font-size:12px;background:#eef2ff;color:#3730a3}.sbox{background:#f8fafc;border:1px solid #c7d2fe;border-radius:10px;padding:10px}' +
+    '.sr{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:5px 2px;border-bottom:1px solid #eef0f3}.sr button{padding:4px 10px;font-size:12px;white-space:nowrap}tr.srow td{border-bottom:2px solid #c7d2fe}' +
     '</style><div class="bg"></div><div class="pn">' +
     '<div class="hd"><b>見積書からRECOREに入力</b><span class="v">' + VERSION + '</span><span class="sp"></span><button id="fb" class="fbb">意見を送る</button><button id="close">閉じる ×</button></div>' +
     '<div class="bd" id="bd"></div><div class="ft" id="ft"></div></div>';
@@ -358,7 +380,27 @@
     if (r.pick === 'skip') return '<span class="chip sk">入力しない</span>';
     if (r.pick === 'new') return '<span class="chip nw">🆕 新規登録</span>';
     if (r.how === 'auto') return '<span class="chip ok">✅ 一致</span>';
+    if (r.how === 'manual') return '<span class="chip ok">🔍 検索で選択</span>';
     return '<span class="chip ch">⚠️ 確認</span>';
+  }
+  /* ---------- 手で検索（候補に正しいカードが無いとき） ---------- */
+  function searchRow(i) {
+    var q = S.srch;
+    var res = q.res == null ? '' : (q.res.length ? q.res.map(function (p, k) {
+      return '<div class="sr"><span>' + esc(p.title) + ' <span class="mut">（' + esc(p.code) + (p.category ? '・' + esc(p.category.name) : '') + '）</span></span><button class="g spick" data-k="' + k + '">これにする</button></div>';
+    }).join('') : '<div class="mut">見つかりませんでした。言葉を短くする（例：カード名だけ／番号だけ）か、ひらがな・カタカナを変えて試してください。</div>');
+    return '<tr class="srow"><td></td><td colspan="7"><div class="sbox">' +
+      '<div class="row" style="margin:0 0 6px"><input id="sq" value="' + esc(q.q) + '" style="flex:1;min-width:260px" placeholder="カード名・番号（例：ミュウex 129/103）"><button class="g" id="sgo">検索</button><button id="sx">閉じる</button></div>' +
+      '<div class="mut" style="margin-bottom:4px">カード名だけ・番号だけでも探せます。PSA は「PSA10 ミュウex」のように入れてください。</div>' +
+      (q.busy ? '<div class="mut">検索中…</div>' : res) + '</div></td></tr>';
+  }
+  async function runSearch() {
+    var q = S.srch; if (!q) return;
+    q.q = ($('#sq') && $('#sq').value.trim()) || q.q;
+    q.busy = true; render();
+    try { q.res = (await search(q.q, 3)).slice(0, 60); } catch (e) { q.res = []; }
+    q.busy = false; render();
+    var el = $('#sq'); if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); }
   }
   function render() {
     var total = 0, n = 0;
@@ -372,12 +414,14 @@
           return '<option value="' + p.id + '"' + (String(r.pick) === String(p.id) ? ' selected' : '') + '>' + esc(p.title) + '（' + esc(p.code) + '）</option>';
         }).join('') +
           '<option value="new"' + (r.pick === 'new' ? ' selected' : '') + '>🆕 新規登録：' + esc(newTitle(r)) + '</option>' +
-          '<option value="skip"' + (r.pick === 'skip' ? ' selected' : '') + '>入力しない</option></select>';
+          '<option value="skip"' + (r.pick === 'skip' ? ' selected' : '') + '>入力しない</option></select>' +
+          '<button class="sbtn" data-i="' + i + '" title="RECOREの商品を自分で検索する">🔍 検索</button>';
       }
       var gsel = r.skip ? '' : '<select class="gr" data-i="' + i + '">' + GRADES.map(function (g) { return '<option value="' + g[0] + '"' + (r.grade === g[0] ? ' selected' : '') + '>' + g[1] + '</option>'; }).join('') + '</select>';
       return '<tr><td class="mut">' + esc(r.no) + '</td><td>' + esc(r.name) + (r.note ? '<div class="mut">備考：' + esc(r.note) + '</div>' : '') + '</td>' +
         '<td class="n">' + (r.applied != null && Number(r.applied) !== Number(r.price) ? '<div class="mut" style="text-decoration:line-through">' + yen(r.applied) + '</div>' : '') + yen(r.price) + '</td><td class="n">' + esc(r.qty == null ? '—' : r.qty) + '</td><td>' + esc(r.state || '') + ' ' + gsel + '</td>' +
-        '<td>' + status(r) + '</td><td>' + pick + '</td><td data-img="' + i + '">' + (r.pick === 'new' ? (r.imgUrl ? '<img class="th" src="' + esc(r.imgUrl) + '">' : '<span class="mut">…</span>') : '') + '</td></tr>';
+        '<td>' + status(r) + '</td><td>' + pick + '</td><td data-img="' + i + '">' + (r.pick === 'new' ? (r.imgUrl ? '<img class="th" src="' + esc(r.imgUrl) + '">' : '<span class="mut">…</span>') : '') + '</td></tr>' +
+        (S.srch && S.srch.i === i ? searchRow(i) : '');
     }).join('');
     var nc = nameCheck(S.tab.title);
     var ncHtml = nc.level === 'ok'
@@ -406,6 +450,25 @@
       s.onfocus = function () { S.rows[this.dataset.i].checked = true; };
     });
     root.querySelectorAll('select.gr').forEach(function (s) { s.onchange = function () { S.rows[this.dataset.i].grade = Number(this.value); }; });
+    root.querySelectorAll('button.sbtn').forEach(function (b) {
+      b.onclick = function () {
+        var i = Number(this.dataset.i), r = S.rows[i];
+        if (S.srch && S.srch.i === i) { S.srch = null; render(); return; }
+        S.srch = { i: i, q: (cleanName(r.name) + ' ' + rawNo(r.name)).trim(), res: null };
+        runSearch();
+      };
+    });
+    if ($('#sgo')) $('#sgo').onclick = runSearch;
+    if ($('#sq')) $('#sq').onkeydown = function (e) { if (e.key === 'Enter') { e.preventDefault(); runSearch(); } };
+    if ($('#sx')) $('#sx').onclick = function () { S.srch = null; render(); };
+    root.querySelectorAll('button.spick').forEach(function (b) {
+      b.onclick = function () {
+        var r = S.rows[S.srch.i], p = S.srch.res[Number(this.dataset.k)];
+        r.cands = [p].concat((r.cands || []).filter(function (c) { return String(c.id) !== String(p.id); }));
+        r.pick = String(p.id); r.how = 'manual'; r.checked = true;
+        S.srch = null; render();
+      };
+    });
     $('#apply').onclick = function () {
       if (nameCheck(S.tab.title).level !== 'ok' && S.ncOk !== S.tab.title) return;
       if (S.rows.some(function (r) { return r.skip === '査定金額が空欄'; })) return;
