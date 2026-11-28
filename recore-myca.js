@@ -60,7 +60,7 @@
     '<div class="hd"><b>RECORE → マイカ 在庫移し</b><span class="v">' + VERSION + '</span><span class="sp"></span><button id="fb" class="fbb">意見を送る</button><button id="close">閉じる ×</button></div>' +
     '<div class="bd" id="bd"></div><div class="ft" id="ft"></div></div>';
   var $ = function (q) { return root.querySelector(q); };
-  var S = { busy: false };
+  var S = { busy: false }; window.__ndkRm = S;
   $('#close').onclick = function () { if (!S.busy) host.remove(); };
   $('#fb').onclick = function () { window.open(FB_URL + '?tool=' + encodeURIComponent(FB_TOOL) + '&store=' + encodeURIComponent(S.storeName || '中野'), '_blank'); };
   function body(h) { $('#bd').innerHTML = h; }
@@ -83,15 +83,16 @@
     body('<div class="msg i">ケースを読み込んでいます…</div>');
     var cs;
     try { cs = (await R.get('/bad_cases/' + m[1])).data; } catch (e) { return fail('ケースを読み込めませんでした：' + errText(e)); }
-    var goods = (cs.goods || []).filter(function (g) { return !g.is_canceled; });
+    function f(o, a, b) { return o == null ? undefined : (o[a] !== undefined ? o[a] : o[b]); }   // RECOREの画面側はキャメルケースで返すことがある
+    var goods = (cs.goods || []).filter(function (g) { return !f(g, 'is_canceled', 'isCanceled'); });
     if (!goods.length) return fail('このケースには（不成約以外の）買取商品がありません。');
     var data = {
       v: 1, caseId: cs.id, code: cs.code, total: cs.summary && cs.summary.total, status: cs.status,
-      stockedAt: cs.stocked_at || null,
+      stockedAt: f(cs, 'stocked_at', 'stockedAt') || null,
       goods: goods.map(function (g) {
         return {
           t: (g.product && g.product.title) || '', pc: (g.product && g.product.code) || '', cat: (g.product && g.product.category && g.product.category.name) || '',
-          gr: (g.grade && g.grade.name) || '', q: Number(g.quantity) || 0, u: Number(g.unit_price) || 0, nt: [g.condition_note, g.note].filter(Boolean).join(' ')
+          gr: (g.grade && g.grade.name) || '', q: Number(g.quantity) || 0, u: Number(f(g, 'unit_price', 'unitPrice')) || 0, nt: [f(g, 'condition_note', 'conditionNote'), g.note].filter(Boolean).join(' ')
         };
       })
     };
@@ -208,6 +209,7 @@
     var a = norm(pt.name), b = norm(p.item_name || p.display_name || nm);
     if (a && b.indexOf(a) >= 0) s += 25; else if (a) { var hit = 0; for (var i = 0; i < a.length - 1; i++) if (b.indexOf(a.substr(i, 2)) >= 0) hit++; s += Math.round(20 * hit / Math.max(1, a.length - 1)); }
     if (pt.quoted && b.indexOf(norm(pt.quoted)) >= 0) s += 25;
+    if (pt.trainer && norm(p.item_name || p.display_name) === norm(pt.trainer)) s += 60;
     if (condOk(p, g)) s += 20; else s -= 15;
     if (p.is_active) s += 3;
     if (p.stock_number > 0) s += 2;
@@ -233,7 +235,7 @@
     row.pick = row.cands[0] || null;
     var top = row.cands[0], second = row.cands[1];
     if (!top) row.st = 'ng';
-    else if (isLearned(top) || (top._s >= 90 && (!second || top._s - second._s >= 15) && condOk(top, g))) row.st = 'ok';
+    else if (isLearned(top) || (top._s >= 75 && (!second || top._s - second._s >= 15) && condOk(top, g))) row.st = 'ok';
     else row.st = 'ch';
   }
 
