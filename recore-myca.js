@@ -154,7 +154,11 @@
   async function search(kw) {
     kw = nfkc(kw).trim(); if (!kw) return [];
     var key = S.sid + '|' + kw; if (cache[key]) return cache[key];
-    var j = await api('GET', '/store/' + S.sid + '/product?display_name=' + encodeURIComponent(kw) + '&take=60');
+    var ctl = new AbortController(), tm = setTimeout(function () { ctl.abort(); }, 12000), j;
+    try {
+      var r = await fetch('/api/store/' + S.sid + '/product?display_name=' + encodeURIComponent(kw) + '&take=60', { credentials: 'include', signal: ctl.signal });
+      j = r.ok ? await r.json() : { products: [] };
+    } catch (e) { j = { products: [] }; } finally { clearTimeout(tm); }
     return (cache[key] = (j.products || []).filter(function (p) { return !p.deleted; }));
   }
 
@@ -170,7 +174,8 @@
     if (/新品/.test(gr)) return { card: '状態A', other: '新品' };
     return { card: '状態A', other: '中古' };
   }
-  function condName(p) { var c = S.cond[p.condition_option_id]; return c ? c.name : ''; }
+  function condName(p) { if (p.condition_option_display_name) return p.condition_option_display_name; var c = S.cond[p.condition_option_id]; return c ? c.name : ''; }
+  function fullName(p) { return p.displayNameWithMeta || p.display_name || ''; }
   function condOk(p, g) {
     var n = condName(p); if (!n || n === '状態なし') return true;
     var w = condWanted(g);
@@ -192,14 +197,15 @@
     return { num: num, exp: exp, psa: psa, unopened: unopened, trainer: trainer, quoted: quoted, name: name, box: /BOX|ボックス/i.test(s) };
   }
   function score(p, g, pt) {
-    var nm = nfkc(p.display_name), n = norm(nm), s = 0;
-    if (pt.num && nm.replace(/\s/g, '').indexOf(pt.num) >= 0) s += 40;
-    if (pt.exp && n.indexOf(norm(pt.exp)) >= 0) s += 25;
+    var nm = nfkc(fullName(p)), n = norm(nm), s = 0;
+    var cn = nfkc(p.item_cardnumber || '').replace(/\s/g, '').toLowerCase();
+    if (pt.num) { var pn = pt.num.toLowerCase(); if (cn && cn === pn) s += 45; else if (cn && (cn.indexOf(pn) === 0 || pn.indexOf(cn) === 0)) s += 35; else if (nm.replace(/\s/g, '').toLowerCase().indexOf(pn) >= 0) s += 40; else s -= 20; }
+    if (pt.exp) { var pe = norm(pt.exp); if (norm(p.item_expansion || '') === pe) s += 25; else if (n.indexOf(pe) >= 0) s += 20; else s -= 10; }
     if (pt.psa) s += (nm.indexOf('PSA' + pt.psa) >= 0 ? 30 : -60); else if (/PSA/.test(nm)) s -= 60;
     if (pt.unopened) s += (/未開封/.test(nm) ? 15 : -10); else if (/未開封/.test(nm)) s -= 20;
     if (/海外版/.test(nm)) s -= 30;
     if (/《BOX状態/.test(nm)) s -= 5;
-    var a = norm(pt.name), b = n;
+    var a = norm(pt.name), b = norm(p.item_name || p.display_name || nm);
     if (a && b.indexOf(a) >= 0) s += 25; else if (a) { var hit = 0; for (var i = 0; i < a.length - 1; i++) if (b.indexOf(a.substr(i, 2)) >= 0) hit++; s += Math.round(20 * hit / Math.max(1, a.length - 1)); }
     if (pt.quoted && b.indexOf(norm(pt.quoted)) >= 0) s += 25;
     if (condOk(p, g)) s += 20; else s -= 15;
@@ -210,23 +216,24 @@
   async function matchRow(row) {
     var g = row.g, pt = parseTitle(g.t), list = [], seen = {};
     function add(arr) { arr.forEach(function (p) { if (!seen[p.id]) { seen[p.id] = 1; list.push(p); } }); }
-    var learned = lsGet(LS_MAP, {})[g.pc];
-    if (learned) add(await search(learned));
+    var learned = lsGet(LS_MAP, {})[g.pc];   // {kw, full}
+    if (learned && learned.kw) add(await search(learned.kw));
     if (pt.trainer) add(await search(pt.trainer));
-    if (pt.num) add(await search(pt.num));
+    if (pt.num) add(await search(pt.num.replace(/-.*$/, '')));
     if (!pt.num && !pt.trainer) {
       if (pt.quoted) add(await search(pt.quoted + (pt.box ? ' BOX' : '')));
       if (list.length < 3 && pt.quoted) add(await search(pt.quoted));
       if (list.length < 3) { var w = pt.name.split(/\s+/).filter(function (x) { return x.length >= 2; }).sort(function (a, b) { return b.length - a.length; })[0]; if (w) add(await search(w)); }
     }
     if (!list.length && pt.name) add(await search(pt.name.slice(0, 12)));
-    list.forEach(function (p) { p._s = score(p, g, pt); if (learned && nfkc(p.display_name) === nfkc(learned) && condOk(p, g)) p._s += 60; });
+    function isLearned(p) { return learned && learned.full && nfkc(fullName(p)) === nfkc(learned.full) && condOk(p, g); }
+    list.forEach(function (p) { p._s = score(p, g, pt); if (isLearned(p)) p._s += 60; });
     list.sort(function (a, b) { return b._s - a._s; });
     row.cands = list.slice(0, 25);
     row.pick = row.cands[0] || null;
     var top = row.cands[0], second = row.cands[1];
     if (!top) row.st = 'ng';
-    else if ((learned && nfkc(top.display_name) === nfkc(learned) && condOk(top, g)) || (top._s >= 90 && (!second || top._s - second._s >= 15) && condOk(top, g))) row.st = 'ok';
+    else if (isLearned(top) || (top._s >= 90 && (!second || top._s - second._s >= 15) && condOk(top, g))) row.st = 'ok';
     else row.st = 'ch';
   }
 
@@ -244,7 +251,7 @@
     drawTable();
   }
 
-  function label(p) { return p.display_name + (condName(p) ? '［' + condName(p) + '］' : '') + (p.is_active ? '' : '（非表示）') + '　在庫' + (p.stock_number || 0); }
+  function label(p) { return fullName(p) + (condName(p) ? '［' + condName(p) + '］' : '') + (p.is_active ? '' : '（非表示）') + '　在庫' + (p.stock_number || 0); }
   function chip(r) {
     if (!r.use) return '<span class="chip sk">移さない</span>';
     if (!r.pick) return '<span class="chip ng">❌ 見つからない</span>';
@@ -345,7 +352,7 @@
         stocking_products: det.stocking_products.map(function (p) { return { id: p.id, actual_item_count: p.planned_item_count }; })
       });
       // 照合を覚える・移したケースを記録
-      var lm = lsGet(LS_MAP, {}); use.forEach(function (r) { if (r.g.pc && !/トレーナーズ|ストレージ/.test(r.g.t)) lm[r.g.pc] = r.pick.display_name; }); lsSet(LS_MAP, lm);
+      var lm = lsGet(LS_MAP, {}); use.forEach(function (r) { if (r.g.pc && !/トレーナーズ|ストレージ/.test(r.g.t)) lm[r.g.pc] = { kw: r.pick.item_cardnumber ? String(r.pick.item_cardnumber).replace(/-.*$/, '') : (r.pick.item_name || r.pick.display_name), full: fullName(r.pick) }; }); lsSet(LS_MAP, lm);
       var dn = lsGet(LS_DONE, {}); dn[S.data.code] = { id: sid, store: S.storeName, at: new Date().toLocaleString('ja-JP') }; lsSet(LS_DONE, dn);
       try { sessionStorage.removeItem('ndk_rm_data'); } catch (e) { }
       S.busy = false;
