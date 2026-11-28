@@ -3,7 +3,8 @@
  *   シングル：町田店の「値付けお助けツール」のやり方（原価とカードラッシュ同状態の価格から①〜④の候補）。
  *             ①から順に、ラッシュ同状態の価格以下になる最初の候補を使う。どれもラッシュより高ければ最後の候補（原価÷0.8＝粗利20%）。
  *   PSA10   ：スニダンの最安出品と直近の取引の高い方。粗利10%に届かなければ引き上げ。取れないときはラッシュの同じ鑑定品で上と同じ計算。
- *   BOX     ：カードラッシュの同じ状態の未開封BOXで、シングルの状態A／A-と同じ計算。
+ *   BOX・未開封品は出さない（雄司さんの判断 11/28）。
+ *   シングルで販売価格（今か新しい価格）が1万円以上なら、スニダンのPSA10の最安出品・直近の取引も参考に出す。
  *   値付けのルール（近い方に寄せる）：680円以下は 680・580・400・300・200・100・80・50・30／1万円未満は下2ケタ80／5万円未満は下3ケタ800／5万円以上は千円単位（紙幣だけで払える金額・現金のみ）
  *   今の価格か新しい価格が5万円以上なら、LINE WORKSで役員の承認を取ってから自動でマイカに反映（販売価格の承認と同じ仕組み・同じ履歴）。
  *   5万円未満は「マイカに反映」でその場で反映。
@@ -13,7 +14,7 @@
   if (location.hostname !== 'pos.mycalinks.com') { alert('マイカ（pos.mycalinks.com）を開いてから押してください'); return; }
   var old = document.getElementById('ndk-nezuke-host'); if (old) old.remove();
 
-  var VERSION = '2026-11-28 版C';
+  var VERSION = '2026-11-28 版D';
   var GAS = 'https://script.google.com/macros/s/AKfycbwXHuu-X3L0qzJhvaszEIm-1xdeNIqJACQ0uM7mz5Q0hvwfdF9IuQiTKr3qmscNVmnhcQ/exec';
   var FB_URL = 'https://script.google.com/macros/s/AKfycbwl-ZCZ1LyefvSzEGkBEpTFTuFyvW0p-AYye6jBWaLP9t7-bC9_Owfeh4jKScNkFys6Fw/exec';
   var RUSH = 'https://natadecoco-rush.natadecoco-05d.workers.dev/?key=3cea41f2ef3ea5d87917a267&q=';
@@ -141,6 +142,20 @@
     return { why: 'ラッシュに' + (cond === 'A' ? '未開封BOX' : '状態' + cond + 'のBOX') + 'がありません' };
   }
 
+  /* ---------- スニダン（PSA10）：まとめて本部のシステムに聞く ---------- */
+  var snkQ = [], snkT = null;
+  function snkr(name) { // name に《PSA10》が入っていること
+    return new Promise(function (res) { snkQ.push({ n: name, res: res }); clearTimeout(snkT); snkT = setTimeout(flushSnk, 300); });
+  }
+  async function flushSnk() {
+    while (snkQ.length) {
+      var b = snkQ.splice(0, 10);
+      try { var j = await gas({ action: 'ksnkr', n: JSON.stringify(b.map(function (x) { return x.n; })) }); b.forEach(function (x, i) { x.res((j.r || [])[i] || { why: '見つかりません' }); }); }
+      catch (e) { b.forEach(function (x) { x.res({ why: e.message }); }); }
+    }
+  }
+  function snkText(k) { return k && (k.min || k.price) ? '最安出品 ' + (k.min ? yen(k.min) : 'なし') + '／直近の取引 ' + (k.price ? yen(k.price) + (k.date ? '（' + k.date + '）' : '') : 'なし') : ((k && k.why) || '見つかりません'); }
+
   /* ---------- 価格を決める ---------- */
   async function price(c) {
     c.loading = true; c.err = ''; c.plan = null; c.ref = null; c.snk = null;
@@ -153,7 +168,7 @@
         c.plan = machida(c.cost, c.ref.price, /^[BCD]/.test(c.cond)); c.how = '町田方式' + c.plan.use.k;
       } else if (c.kind === 'PSA') {
         if (c.grade === '10') {
-          try { var j = await gas({ action: 'ksnkr', n: JSON.stringify([c.name]) }); c.snk = (j.r || [])[0] || null; } catch (e) { c.snk = { why: e.message }; }
+          c.snk = await snkr(c.name);
           var low = Number(c.snk && c.snk.min) || 0, last = Number(c.snk && c.snk.price) || 0, mk = Math.max(low, last);
           if (mk) {
             var fl = Math.ceil(c.cost / (1 - PSA_MIN)), p = snap(mk); while (p < fl) p = nextUp(p);
@@ -174,6 +189,10 @@
       c.loading = false;
       if (c.plan && !c.manual) c.price = c.plan.price;
     }
+    if (c.kind === 'シングル' && Math.max(c.price || 0, c.now) >= 10000 && model(c.name)) { // 販売1万円以上のシングル：PSA10の相場も参考に出す
+      c.psaLoading = true; if (S.lines.indexOf(c) >= 0) drawLine(c);
+      c.psa = await snkr('《PSA10》' + c.name); c.psaLoading = false;
+    }
   }
   /* ---------- ラベル印刷（マイカの印刷キューを使う） ---------- */
   function labelPrinter() { // マイカの画面の中にある「ラベルプリンター」の仕組み（在庫一覧の印刷ボタンと同じもの）を探す
@@ -189,6 +208,7 @@
     for (var i = 0; i < count; i++) lp.pushQueue({ template: 'product', data: pid, meta: { isFirstStock: i === 0 && stock === count, isManual: true } });
   }
   function wantLabel() { var v = store('ndk_nezuke_label'); return v == null ? true : !!v; }
+  function lineNeed(c) { return !c.state && !c.loading && c.price > 0 && c.price !== c.now && needApproval(c); } // 承認が必要な行（薄い黄色）
   function needApproval(c) { return Math.max(c.price || 0, c.now) >= LINE; }
 
   /* ---------- 画面 ---------- */
@@ -223,7 +243,8 @@
     'button.b.r{background:#c8102e}button.b.g{background:#fff;color:#1d1d22;border:1.5px solid #d6d2c8}button.b.s{font-size:12px;padding:5px 10px;border-radius:8px}' +
     'button.b[disabled]{opacity:.45;cursor:default}' +
     '.line{border-top:1px solid #d6d2c8;padding:10px 0}.line:first-child{border-top:0;padding-top:0}' +
-    '.cd{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0}.cd span{font-size:12px;border:1px solid #d6d2c8;border-radius:8px;padding:2px 8px;color:#555}.cd span.use{border-color:#c8102e;color:#c8102e;font-weight:800;background:#fff7f8}' +
+    '.cd{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0}.cd button{all:unset;cursor:pointer;font-size:13px;border:1.5px solid #d6d2c8;border-radius:8px;padding:4px 10px;color:#555;background:#fff}.cd button:hover{border-color:#1d1d22}.cd button.use{border-color:#c8102e;color:#c8102e;font-weight:800;background:#fff7f8}' +
+    '.line.need{background:#fff8d6;border-radius:10px;padding:10px 10px;margin:4px -10px;border-top-color:transparent}.ref{font-size:12px;color:#2952a3;margin-top:4px}.nl{flex:none;font-size:12px;font-weight:700;display:inline-flex;gap:4px;align-items:center;cursor:pointer;white-space:nowrap}' +
     '.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:6px}.row .lab{font-weight:800;font-size:13px}' +
     '.msg{padding:18px;text-align:center;color:#777}.err{color:#c8102e;font-weight:700}' +
     '.st{padding:8px 12px;border-radius:10px;font-weight:800;margin:6px 0;font-size:13px}.st.wait{background:#fff4c2;color:#5c4300}.st.ok{background:#e3f4e6;color:#15803d}.st.ng{background:#fff0f2;color:#c8102e}.st.info{background:#eef3ff;color:#1e3a8a}' +
@@ -316,7 +337,7 @@
     $('#rtitle').innerHTML = '販売価格 <small>受付' + esc(t.reception_number || '') + '（' + hm(t.finished_at) + '・買取 ' + yen(t.total_price) + '）</small>';
     $('#lines').innerHTML = '<div class="msg">カードを読み込んでいます…</div>';
     // 【@100】のようなまとめ買い（ポケモン/トレーナーズ）は振替して売るので、値付けの対象にしない
-    var bulk = function (c) { return /【@|ポケモン\/トレーナーズ/.test(String(c.product__displayNameWithMeta || c.product_name || '')); };
+    var bulk = function (c) { return /【@|ポケモン\/トレーナーズ/.test(String(c.product__displayNameWithMeta || c.product_name || '')) || c.product_category_name === 'ボックス'; }; // BOX・未開封品も出さない
     var carts = (t.transaction_carts || []).filter(function (c) { return c.product_id && !bulk(c); }), seen = {};
     S.skipped = (t.transaction_carts || []).filter(bulk).length;
     for (var k = 0; k < carts.length; k += 10) {
@@ -329,7 +350,7 @@
     if (S.tx !== t) return;
     S.lines.sort(function (a, b) { return b.cost - a.cost; });
     drawLines(); S.lines.forEach(run);
-    if (S.skipped) $('#result').innerHTML = '<div class="hint">【@○○】のまとめ買い（' + S.skipped + '件）は振替して売るので、ここでは値付けしません</div>';
+    if (S.skipped) $('#result').innerHTML = '<div class="hint">【@○○】のまとめ買いとBOX・未開封品（' + S.skipped + '件）は、ここでは値付けしません</div>';
     if (!S.lines.length) $('#lines').innerHTML = '<div class="msg">この買取には値付けするカードがありません</div>';
   }
 
@@ -340,7 +361,7 @@
     $('#res').innerHTML = '<div class="msg">検索中…</div>';
     try {
       var j = await api('/api/store/' + S.sid + '/product?is_active=true&stock_number_gte=1&take=40&skip=0&display_name=' + encodeURIComponent(v));
-      var rs = (j && j.products) || [];
+      var rs = ((j && j.products) || []).filter(function (p) { var k = kindOf(p).kind; return k !== 'BOX' && k !== '未開封'; });
       if (!rs.length) { $('#res').innerHTML = '<div class="msg">在庫のある商品が見つかりませんでした</div>'; return; }
       $('#res').innerHTML = rs.map(function (p, i) {
         var k = kindOf(p);
@@ -365,17 +386,20 @@
   }
   async function run(c) { await price(c); if (S.lines.indexOf(c) >= 0) drawLine(c); }
   function lineHtml(c) {
-    var h = '<div class="line" data-line="' + c.id + '"><div class="it">' + (c.img ? '<img src="' + esc(c.img) + '">' : '<span class="noimg"></span>') +
+    var h = '<div class="line' + (lineNeed(c) ? ' need' : '') + '" data-line="' + c.id + '"><div class="it">' + (c.img ? '<img src="' + esc(c.img) + '">' : '<span class="noimg"></span>') +
       '<div class="g"><div class="n">' + esc(c.name) + '</div><div class="m">' + pill(c) + (c.condLabel ? esc(c.condLabel) + '　' : '') + '在庫 ' + c.stock + '　今 ' + yen(c.now) + '　原価 ' + (c.cost ? yen(c.cost) + '<small>（' + c.costFrom + '）</small>' : '不明') + '</div></div>' +
-      '<button class="b s g" data-del="' + c.id + '">外す</button></div>';
+      '<label class="nl"><input type="checkbox" data-nl="' + c.id + '"' + (c.nolabel ? ' checked' : '') + '> ラベルを印刷しない</label></div>';
     if (c.state === 'done') return h + '<div class="st ok">' + (c.same ? '価格はそのまま（' + yen(c.price) + '）' : 'マイカに ' + yen(c.price) + ' で反映しました') + (c.printed ? '・ラベル ' + c.printed + '枚を印刷に回しました' : '') + '</div>' + (c.perr ? '<div class="st ng">' + esc(c.perr) + '</div>' : '') + '</div>';
     if (c.state === 'wait') return h + '<div class="st wait">' + yen(c.price) + ' で役員の承認待ち（' + esc(c.req || '') + '）。承認されたら自動でマイカに反映します</div></div>';
     if (c.loading) return h + '<div class="st info">価格を調べています…</div></div>';
     if (c.plan) {
-      h += '<div class="cd">' + c.plan.list.map(function (x) { return '<span class="' + (x.use ? 'use' : '') + '" title="' + esc(x.why) + '">' + x.k + ' ' + yen(x.p) + '</span>'; }).join('') + '</div>';
+      h += '<div class="cd">' + c.plan.list.map(function (x, i) { return '<button type="button" class="' + (x.p === c.price ? 'use' : '') + '" data-chip="' + i + '" title="' + esc(x.why) + '">' + x.k + ' ' + yen(x.p) + '</button>'; }).join('') + '</div>';
       h += '<div class="m" style="font-size:12px;color:#555">' + (c.ref && c.ref.price ? 'ラッシュ' + (c.kind === 'PSA' ? '' : '状態') + esc(c.ref.use) + '：' + yen(c.ref.price) + (c.ref.so ? '（売切）' : '') + '　<a href="' + esc(c.ref.url) + '" target="_blank">ラッシュで見る</a>　' : '') +
-        (c.snk && c.snk.url ? '<a href="' + esc(c.snk.url) + '" target="_blank">スニダン売買履歴</a>　' : '') + '使った候補：' + esc(c.plan.list.filter(function (x) { return x.use; })[0].why) + '</div>';
+        '使った候補：' + esc(c.plan.list.filter(function (x) { return x.use; })[0].why) + '</div>';
     }
+    if (c.kind === 'PSA' && c.snk) h += '<div class="ref">スニダン PSA' + esc(c.grade) + '：' + esc(snkText(c.snk)) + (c.snk.url ? '　<a href="' + esc(c.snk.url) + '" target="_blank">売買履歴</a>' : '') + '</div>';
+    if (c.psaLoading) h += '<div class="ref">スニダン PSA10：調べています…</div>';
+    else if (c.psa) h += '<div class="ref">参考 スニダン PSA10：' + esc(snkText(c.psa)) + (c.psa.url ? '　<a href="' + esc(c.psa.url) + '" target="_blank">売買履歴</a>' : '') + '</div>';
     if (c.err) h += '<div class="hint">' + esc(c.err) + (c.cost ? '（参考：原価÷0.8＝' + yen(snap(c.cost / 0.8)) + '／原価÷0.7＝' + yen(snap(c.cost / 0.7)) + '）' : '') + '</div>';
     return h + '<div class="row"><span class="lab">販売価格</span><input class="f big" data-price="' + c.id + '" type="text" inputmode="numeric" autocomplete="off" value="' + (c.price || '') + '" placeholder="金額">' +
       (c.manual ? '<span class="tag wait">手で変更</span>' + (c.plan ? '<button class="b s g" data-reset="' + c.id + '">自動に戻す</button>' : '') : '') +
@@ -383,7 +407,8 @@
   }
   function bindLine(c) {
     var el = R.querySelector('[data-line="' + c.id + '"]'); if (!el) return;
-    el.querySelector('[data-del]').onclick = function () { S.lines.splice(S.lines.indexOf(c), 1); drawLines(); };
+    var nl = el.querySelector('[data-nl]'); if (nl) nl.onchange = function () { c.nolabel = nl.checked; drawSum(); };
+    el.querySelectorAll('[data-chip]').forEach(function (b) { b.onclick = function () { var x = c.plan.list[Number(b.dataset.chip)]; c.price = x.p; c.manual = !x.use; drawLine(c); }; });
     var qi = el.querySelector('[data-qty]'); if (qi) qi.oninput = function () { c.qty = Math.max(0, Math.floor(Number(String(qi.value).normalize('NFKC').replace(/[^0-9]/g, ''))) || 0); };
     var rs = el.querySelector('[data-reset]'); if (rs) rs.onclick = function () { c.manual = false; c.price = c.plan.price; drawLine(c); };
     var inp = el.querySelector('[data-price]');
@@ -402,6 +427,7 @@
   function drawCalc(c) {
     var el = R.querySelector('[data-calc="' + c.id + '"]'); if (!el) return;
     if (!c.price) { el.innerHTML = ''; return; }
+    var ln = R.querySelector('[data-line="' + c.id + '"]'); if (ln) ln.classList.toggle('need', lineNeed(c));
     var m = marginOf(c.price, c.cost), h = '<div class="m" style="font-size:13px;margin-top:4px">粗利 <b>' + (c.cost ? yen(c.price - c.cost) + '（' + pct(m) + '）' : '原価が不明です') + '</b>' +
       (c.price >= LINE ? '　<span class="pill cash">現金のみ</span>' : '') + (needApproval(c) ? '　<span class="tag wait">役員の承認が必要</span>' : '') + (c.price === c.now ? '　<span class="tag ok">今の価格と同じ</span>' : '') + '</div>';
     if (!okPrice(c.price)) h += '<div class="st ng">値付けのルールに合わない金額です（近い金額：' + yen(snap(c.price)) + '）</div>';
@@ -410,7 +436,7 @@
   }
   function targets() { return S.lines.filter(function (c) { return !c.state && !c.loading && c.price > 0 && c.price !== c.now; }); }
   // 価格が今と同じカード：マイカは書きかえず、承認もいらない。ラベルだけ印刷する（買い取ったカードには値札が要るため）
-  function sameOnes() { return S.lines.filter(function (c) { return !c.state && !c.loading && c.price > 0 && c.price === c.now && c.qty > 0 && c.stock > 0 && $('#label').checked; }); }
+  function sameOnes() { return S.lines.filter(function (c) { return !c.state && !c.loading && c.price > 0 && c.price === c.now && c.qty > 0 && c.stock > 0 && !c.nolabel && $('#label').checked; }); }
   function drawSum() {
     var t = targets(), ap = t.filter(needApproval), now = t.filter(function (c) { return !needApproval(c); });
     var bad = t.filter(function (c) { return !okPrice(c.price) || (c.cost && c.price < c.cost); }), busy = S.lines.some(function (c) { return c.loading; });
@@ -427,7 +453,7 @@
     if (!p || Number(p.specific_sell_price) !== Number(price)) throw new Error('マイカの価格が変わっていません');
   }
   function label(c) {
-    if (!$('#label').checked || !c.qty) return;
+    if (!$('#label').checked || !c.qty || c.nolabel || c.stock <= 0) return;
     try { printLabels(c.id, c.qty, c.stock); c.printed = c.qty; } catch (e) { c.perr = 'ラベルを印刷できませんでした：' + e.message; }
   }
   function markTx() { if (!S.tx) return; var d = store(doneKey()) || {}; d[S.tx.id] = Date.now(); Object.keys(d).forEach(function (k) { if (Date.now() - d[k] > 14 * 864e5) delete d[k]; }); store(doneKey(), d); }
@@ -458,7 +484,7 @@
         var j = await fetch(GAS, { method: 'POST', body: JSON.stringify(body) }).then(function (r) { return r.json(); });
         if (!j.ok) throw new Error(j.error || '送信できませんでした');
         var pend = store('ndk_nezuke_pend') || {};
-        pend[j.id] = { sid: S.sid, at: Date.now(), items: ap.map(function (c) { return { pid: c.id, price: c.price, name: c.name, qty: $('#label').checked ? c.qty : 0, stock: c.stock }; }) };
+        pend[j.id] = { sid: S.sid, at: Date.now(), items: ap.map(function (c) { return { pid: c.id, price: c.price, name: c.name, qty: $('#label').checked && !c.nolabel && c.stock > 0 ? c.qty : 0, stock: c.stock }; }) };
         store('ndk_nezuke_pend', pend);
         ap.forEach(function (c) { c.state = 'wait'; c.req = j.id; drawLine(c); });
         msgs.push('<div class="st wait">LINE WORKSの店舗グループに ' + ap.length + '件の承認を依頼しました（' + esc(j.id) + '）。承認されたら自動でマイカに反映します。<br>※このツールを閉じていた場合は、次に開いたときに反映します。</div>');
