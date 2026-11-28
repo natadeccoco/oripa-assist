@@ -14,7 +14,7 @@
   if (location.hostname !== 'pos.mycalinks.com') { alert('マイカ（pos.mycalinks.com）を開いてから押してください'); return; }
   var old = document.getElementById('ndk-nezuke-host'); if (old) old.remove();
 
-  var VERSION = '2026-11-28 版D';
+  var VERSION = '2026-11-28 版E';
   var GAS = 'https://script.google.com/macros/s/AKfycbwXHuu-X3L0qzJhvaszEIm-1xdeNIqJACQ0uM7mz5Q0hvwfdF9IuQiTKr3qmscNVmnhcQ/exec';
   var FB_URL = 'https://script.google.com/macros/s/AKfycbwl-ZCZ1LyefvSzEGkBEpTFTuFyvW0p-AYye6jBWaLP9t7-bC9_Owfeh4jKScNkFys6Fw/exec';
   var RUSH = 'https://natadecoco-rush.natadecoco-05d.workers.dev/?key=3cea41f2ef3ea5d87917a267&q=';
@@ -394,8 +394,12 @@
     if (c.loading) return h + '<div class="st info">価格を調べています…</div></div>';
     if (c.plan) {
       h += '<div class="cd">' + c.plan.list.map(function (x, i) { return '<button type="button" class="' + (x.p === c.price ? 'use' : '') + '" data-chip="' + i + '" title="' + esc(x.why) + '">' + x.k + ' ' + yen(x.p) + '</button>'; }).join('') + '</div>';
-      h += '<div class="m" style="font-size:12px;color:#555">' + (c.ref && c.ref.price ? 'ラッシュ' + (c.kind === 'PSA' ? '' : '状態') + esc(c.ref.use) + '：' + yen(c.ref.price) + (c.ref.so ? '（売切）' : '') + '　<a href="' + esc(c.ref.url) + '" target="_blank">ラッシュで見る</a>　' : '') +
+      h += '<div class="m" style="font-size:12px;color:#555">' + (c.ref && c.ref.price ? '<span style="display:inline-block;background:' + ({ A: '#4ade80', 'A-': '#facc15', B: '#f87171', C: '#60a5fa', D: '#c084fc' }[c.ref.use] || '#d4d4d8') + ';color:#111;font-weight:700;font-size:14px;padding:2px 8px;border-radius:6px;margin-right:4px">ラッシュ' + (c.kind === 'PSA' ? '' : '状態') + esc(c.ref.use) + '：' + yen(c.ref.price) + '</span>' + (c.ref.so ? '（売切）' : '') + '　<a href="' + esc(c.ref.url) + '" target="_blank">ラッシュで見る</a>　' : '') +
         '使った候補：' + esc(c.plan.list.filter(function (x) { return x.use; })[0].why) + '</div>';
+      if (c.ref && c.ref.price && c.price) {
+        var gap = Math.floor((1 - c.price / c.ref.price) * 10 + 1e-9) * 10;
+        if (gap >= 30) h += '<div class="st wait" style="margin-top:6px;font-weight:700">⚠ ラッシュ価格と' + gap + '%以上の差があります。</div>';
+      }
     }
     if (c.kind === 'PSA' && c.snk) h += '<div class="ref">スニダン PSA' + esc(c.grade) + '：' + esc(snkText(c.snk)) + (c.snk.url ? '　<a href="' + esc(c.snk.url) + '" target="_blank">売買履歴</a>' : '') + '</div>';
     if (c.psaLoading) h += '<div class="ref">スニダン PSA10：調べています…</div>';
@@ -414,7 +418,7 @@
     var inp = el.querySelector('[data-price]');
     if (inp) {
       inp.oninput = function () { c.price = Math.floor(Number(String(inp.value).normalize('NFKC').replace(/[,，円\s]/g, ''))) || 0; c.manual = !c.plan || c.price !== c.plan.price; drawCalc(c); drawSum(); };
-      inp.onblur = function () { var was = !!el.querySelector('.tag.wait'); if (was !== c.manual) drawLine(c); };
+      inp.onblur = function () { drawLine(c); }; // 手で入れた金額でも、ラッシュとの差の注意を出し直す
       drawCalc(c);
     }
   }
