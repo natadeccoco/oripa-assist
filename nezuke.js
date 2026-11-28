@@ -295,10 +295,13 @@
   }
   async function openTx(id) {
     var t = S.txs.find(function (x) { return x.id === id; }); if (!t) return;
-    S.tx = t; S.lines = []; $('#result').innerHTML = ''; drawTxs();
+    S.tx = t; S.lines = []; S.skipped = 0; $('#result').innerHTML = ''; drawTxs();
     $('#rtitle').innerHTML = '販売価格 <small>受付' + esc(t.reception_number || '') + '（' + hm(t.finished_at) + '・買取 ' + yen(t.total_price) + '）</small>';
     $('#lines').innerHTML = '<div class="msg">カードを読み込んでいます…</div>';
-    var carts = (t.transaction_carts || []).filter(function (c) { return c.product_id; }), seen = {};
+    // 【@100】のようなまとめ買い（ポケモン/トレーナーズ）は振替して売るので、値付けの対象にしない
+    var bulk = function (c) { return /【@|ポケモン\/トレーナーズ/.test(String(c.product__displayNameWithMeta || c.product_name || '')); };
+    var carts = (t.transaction_carts || []).filter(function (c) { return c.product_id && !bulk(c); }), seen = {};
+    S.skipped = (t.transaction_carts || []).filter(bulk).length;
     for (var k = 0; k < carts.length; k += 10) {
       if (S.tx !== t) return;
       await Promise.all(carts.slice(k, k + 10).map(async function (c) {
@@ -309,6 +312,8 @@
     if (S.tx !== t) return;
     S.lines.sort(function (a, b) { return b.cost - a.cost; });
     drawLines(); S.lines.forEach(run);
+    if (S.skipped) $('#result').innerHTML = '<div class="hint">【@○○】のまとめ買い（' + S.skipped + '件）は振替して売るので、ここでは値付けしません</div>';
+    if (!S.lines.length) $('#lines').innerHTML = '<div class="msg">この買取には値付けするカードがありません</div>';
   }
 
   /* ---------- 在庫から探す ---------- */
