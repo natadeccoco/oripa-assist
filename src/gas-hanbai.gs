@@ -90,7 +90,88 @@ function hanbaiCallback(ev, data) {
     rows.forEach(function (r) { sh.getRange(r + 1, 18, 1, 3).setValues([[st, name, at]]); });
     var list = rows.map(function (r) { return '・' + vs[r][6] + (st === '承認' ? '：' + hbYen(vs[r][10]) : ''); }).join('\n');
     if (ch) kSplit(st === '承認'
-      ? '✅ 販売価格を承認しました（依頼番号 ' + m[2] + '・' + rows.length + '枚・' + name + '）\nマイカでこの価格に変更してください。\n' + list
+      ? '✅ 販売価格を承認しました（依頼番号 ' + m[2] + '・' + rows.length + '枚・' + name + '）\n' + (/販売値付けツール/.test(String(v[16])) ? '販売値付けツールが自動でマイカに反映し、ラベルも印刷します（ツールを閉じているときは、次に開いたときに反映）。手で変更しないでください。' : 'マイカでこの価格に変更してください。') + '\n' + list
       : '↩️ 販売価格を差し戻しました（依頼番号 ' + m[2] + '・' + rows.length + '枚・' + name + '）\nマイカの価格は変更しないでください。直す点をこのトークで伝えてください。\n' + list).forEach(function (x) { send(ch, { type: 'text', text: x }); });
   } finally { lock.releaseLock(); }
+}
+
+/* =====================================================================
+ * 販売値付け（2026-11-28）  ※このファイル（販売価格.gs）の続き
+ *   POST {action:'nezuke', store, staff, tx, rec, at, lines:[…]} … 値付けツールの記録（1枚1行）を「販売値付け」タブへ
+ *   GET  ?action=nzdone&store=… … その店で値付けした買取（直近14日）：{ tx: 最後の記録日時 }
+ *   POST {action:'nzcheck', key, lines:[{store, tx, rec, at, pid, name, full, cnt}], dry} … 雄司のPCが毎晩送る今日の買取（満額3万円以上）
+ *        → 1時間以内に値付けしていないものを、役員の「販売警告」グループに知らせる（同じものは1回だけ）
+ * ===================================================================== */
+var NZ_COLS = ['記録日時', '店舗', '担当', '買取ID', '受付番号', '買取日時', 'マイカ商品ID', '商品', '種類', '状態', '原価', '満額', '前の価格', '新しい価格', '粗利率', '決め方', '手で変更', 'ラッシュ', 'ラッシュ価格', '結果', '承認番号', 'ラベル枚数'];
+var NZ_CHECK_COLS = ['キー', '店舗', '買取日時', '受付番号', '買取ID', 'マイカ商品ID', '商品', '満額', '枚数', '判定', '値付けした日時', '遅れ（分）', '記録日時'];
+var NZ_LIMIT_MIN = 60, NZ_FULL = 30000;
+function nzSheet(name, cols) {
+  var ss = SpreadsheetApp.openById(prop('SHEET_ID')), sh = ss.getSheetByName(name);
+  if (!sh) { sh = ss.insertSheet(name); sh.appendRow(cols); sh.setFrozenRows(1); }
+  return sh;
+}
+function nezukeGet(p) {
+  try {
+    if (p.action === 'nzdone') {
+      var sh = nzSheet('販売値付け', NZ_COLS), n = sh.getLastRow(), out = {}, since = Date.now() - 14 * 864e5;
+      if (n >= 2) {
+        var v = sh.getRange(Math.max(2, n - 3000), 1, Math.min(n - 1, 3000), 4).getValues();
+        v.forEach(function (w) { var t = new Date(w[0]).getTime(); if (t >= since && (!p.store || w[1] === p.store) && w[3]) out[String(w[3])] = new Date(w[0]).toISOString(); });
+      }
+      return json({ ok: true, txs: out });
+    }
+    return json({ ok: false, error: '不明な操作です' });
+  } catch (e) { return json({ ok: false, error: String(e.message || e) }); }
+}
+function nezukePost(d) {
+  if (d.action === 'nzcheck') return nzCheck(d);
+  var lines = (d.lines || []).filter(function (x) { return x && x.pid; });
+  if (!lines.length) return json({ ok: true, written: 0 });
+  var now = new Date(), rows = lines.map(function (x) {
+    var price = Number(x.price) || 0, cost = Number(x.cost) || 0;
+    return [now, d.store || '', d.staff || '', String(x.tx || d.tx || ''), String(x.rec || d.rec || ''), (x.at || d.at) ? new Date(x.at || d.at) : '', String(x.pid), x.name || '', x.kind || '', x.cond || '',
+      cost, Number(x.full) || '', Number(x.now) || 0, price, price > 0 && cost > 0 ? (price - cost) / price : '', x.how || '', x.manual ? '手で変更' : '', x.ref || '', Number(x.refPrice) || '', x.result || '', x.req || '', Number(x.labels) || 0];
+  });
+  var lock = LockService.getScriptLock(); lock.waitLock(20000);
+  try { var sh = nzSheet('販売値付け', NZ_COLS); sh.getRange(sh.getLastRow() + 1, 1, rows.length, NZ_COLS.length).setValues(rows); }
+  finally { lock.releaseLock(); }
+  return json({ ok: true, written: rows.length });
+}
+function nzCheck(d) {
+  if (!P.getProperty('LOSS_KEY') || d.key !== P.getProperty('LOSS_KEY')) return json({ ok: false, error: 'key' });
+  var now = Date.now(), news = [], lock = LockService.getScriptLock(); lock.waitLock(30000);
+  try {
+    // 値付けの記録：買取ID＋商品ID → いちばん早い記録日時
+    var lg = nzSheet('販売値付け', NZ_COLS), n = lg.getLastRow(), first = {};
+    if (n >= 2) lg.getRange(Math.max(2, n - 5000), 1, Math.min(n - 1, 5000), 7).getValues().forEach(function (w) {
+      var k = String(w[3]) + '-' + String(w[6]), t = new Date(w[0]).getTime(); if (!first[k] || t < first[k]) first[k] = t;
+    });
+    var ck = nzSheet('値付けチェック', NZ_CHECK_COLS), cv = ck.getDataRange().getValues(), seen = {};
+    for (var i = 1; i < cv.length; i++) seen[String(cv[i][0])] = true;
+    var rows = [];
+    (d.lines || []).forEach(function (l) {
+      if ((Number(l.full) || 0) < NZ_FULL) return;
+      var at = new Date(l.at).getTime(); if (!at || now - at < NZ_LIMIT_MIN * 60e3) return; // まだ1時間たっていないものは次の回に
+      var key = String(l.tx) + '-' + String(l.pid); if (seen[key]) return; seen[key] = true;
+      var t = first[key], late = t ? Math.round((t - at) / 60e3) : null;
+      if (t && late <= NZ_LIMIT_MIN) return; // 1時間以内に値付けした → 記録しない
+      var judge = t ? '遅れ' : '未値付け';
+      news.push({ l: l, judge: judge, late: late });
+      rows.push([key, l.store, new Date(l.at), l.rec || '', String(l.tx), String(l.pid), l.name || '', Number(l.full) || 0, Number(l.cnt) || 0, judge, t ? new Date(t) : '', late == null ? '' : late, new Date()]);
+    });
+    if (rows.length && !d.dry) ck.getRange(ck.getLastRow() + 1, 1, rows.length, NZ_CHECK_COLS.length).setValues(rows);
+  } finally { lock.releaseLock(); }
+  if (news.length && !d.dry) {
+    var t = '⏰【値付け遅れ】満額3万円以上なのに、買取から1時間以内に販売値付けツールで値付けしていないカードが ' + news.length + '枚\n', by = {};
+    news.forEach(function (x) { (by[x.l.store] = by[x.l.store] || []).push(x); });
+    Object.keys(by).forEach(function (s) {
+      t += '\n■ ' + s + '店';
+      by[s].forEach(function (x) {
+        t += '\n・' + Utilities.formatDate(new Date(x.l.at), 'Asia/Tokyo', 'M/d HH:mm') + '　受付' + (x.l.rec || '-') + '　' + x.l.name + (Number(x.l.cnt) > 1 ? ' ×' + x.l.cnt : '') +
+          '\n　満額 ' + hbYen(x.l.full) + '　' + (x.judge === '遅れ' ? '値付けまで ' + x.late + '分' : 'まだ値付けしていません');
+      });
+    });
+    kSplit(t).forEach(function (x) { send(swChannel(), { type: 'text', text: x }); });
+  }
+  return json({ ok: true, warned: news.length, items: d.dry ? news : undefined });
 }

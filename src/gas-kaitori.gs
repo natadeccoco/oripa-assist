@@ -88,7 +88,7 @@ function kaitoriGet(p) {
     if (p.action === 'kstaff') return json(kStaff());
     if (p.action === 'ksnkr') { // 査定表の画像用：PSA10カードのスニダン直近の取引価格（最大6枚）
       var ns = JSON.parse(p.n || '[]').slice(0, 12);
-      return json({ ok: true, r: ns.map(function (n) { try { return kIsPsa10(n) ? kSnkrPsa10(n) : null; } catch (e) { return { price: 0, err: 1, why: '取得失敗（スニダンが混んでいる等）' }; } }) });
+      return json({ ok: true, r: ns.map(function (n) { try { var g = kPsaGrade(n); return g ? kSnkrPsa10(n, g) : null; } catch (e) { return { price: 0, err: 1, why: '取得失敗（スニダンが混んでいる等）' }; } }) });
     }
     if (p.action === 'krushq') { try { return json({ ok: true, items: kRushFetch(String(p.q || '').slice(0, 100)).map(function (x) { return x.nm + '|' + x.set + '|' + x.price; }) }); } catch (e) { return json({ ok: false, e: String(e) }); } } // 確認用：中継が返す一覧そのもの
     if (p.action === 'krush') { // シングルの状態B・C・D：カードラッシュの同じ状態の販売価格（画面・査定表の画像用）
@@ -430,6 +430,7 @@ draw();
 
 /* ---------- スニダン：PSA10の直近の売買価格（売買履歴ページのいちばん上） ---------- */
 function kIsPsa10(n) { return /PSA\s*10/i.test(String(n || '')); }
+function kPsaGrade(n) { var m = String(n || '').match(/PSA\s*(10|9)(?!\d)/i); return m ? Number(m[1]) : 0; } // 2026-11-28 販売値付け：PSA9もスニダンで調べる
 function kSnkrModel(n) { // 商品名の（sv2a 203/165 SAR）から「sv2a」「203」「165」。sm2+ のような記号入りも読む
   var m = String(n || '').normalize('NFKC').match(/([A-Za-z][A-Za-z0-9\-\+]*)\s+(\d{1,3})\/(\d{1,3}|[A-Za-z\-]+)/);
   return m ? { set: m[1], no: m[2], tot: m[3] } : null;
@@ -446,10 +447,11 @@ function kSnkrFetch(u) { // 一時的なエラー（混雑など）は1回だけ
     throw new Error('スニダン ' + code);
   }
 }
-function kSnkrPsa10(n) {
+function kSnkrPsa10(n, grade) { // grade：10（既定）か 9。スニダンの状態ID 22＝PSA10／23＝PSA9
+  grade = grade === 9 ? 9 : 10; var cid = grade === 9 ? 23 : 22;
   var md = kSnkrModel(n); if (!md) return { price: 0, why: '型番がわかりません' };
   var mir = /ミラー|mirror/i.test(String(n)); // ミラーかどうか（同じ型番でノーマルとミラーが別の商品になっている）
-  var key = 'snk6_' + (md.set + '_' + md.no + '_' + md.tot + (mir ? '_m' : '')).toLowerCase(), c = CacheService.getScriptCache(), hit = c.get(key);
+  var key = 'snk6_' + (md.set + '_' + md.no + '_' + md.tot + (mir ? '_m' : '') + (grade === 9 ? '_g9' : '')).toLowerCase(), c = CacheService.getScriptCache(), hit = c.get(key);
   if (hit) return JSON.parse(hit);
   var no3 = ('00' + md.no).slice(-3), setN = md.set.replace(/-/g, '').toLowerCase(), out = { price: 0, why: 'スニダンに見つかりません' };
   var tag = '[' + (md.set + md.no).toLowerCase().replace(/\s+/g, ''), tagR = '[' + (md.no + md.set).toLowerCase() + ']', cname = kSnkrCardName(n);
@@ -475,10 +477,10 @@ function kSnkrPsa10(n) {
   var pick = hits.filter(function (h) { return h.mir === mir; })[0] || hits[0];
   if (pick) {
     var url = 'https://snkrdunk.com/apparels/' + pick.id; // 売買履歴が見られるPSA10の出品ページ（なければ商品ページ）
-    try { var pu = JSON.parse(kSnkrFetch('https://snkrdunk.com/v1/apparels/' + pick.id + '/used?perPage=1&conditionIds=22')); var pi = (pu.apparelUsedItems || [])[0]; if (pi && pi.id) url += '/used/' + pi.id; } catch (e) { }
-    var j = JSON.parse(kSnkrFetch('https://snkrdunk.com/v1/apparels/' + pick.id + '/sales-history?page=1&per_page=5&condition_id=22')); // 22＝PSA10
+    try { var pu = JSON.parse(kSnkrFetch('https://snkrdunk.com/v1/apparels/' + pick.id + '/used?perPage=1&conditionIds=' + cid + '')); var pi = (pu.apparelUsedItems || [])[0]; if (pi && pi.id) url += '/used/' + pi.id; } catch (e) { }
+    var j = JSON.parse(kSnkrFetch('https://snkrdunk.com/v1/apparels/' + pick.id + '/sales-history?page=1&per_page=5&condition_id=' + cid + '')); // 22＝PSA10
     var rows = (j.history || []).map(function (x) { return { date: x.date, price: Number(x.price) || 0 }; });
-    out = rows.length ? { price: rows[0].price, date: rows[0].date, recent: rows, min: j.minPrice || 0, url: url, id: pick.id, img: pick.img, snm: pick.nm } : { price: 0, why: 'PSA10の取引がまだありません', min: j.minPrice || 0, url: url, img: pick.img, snm: pick.nm };
+    out = rows.length ? { price: rows[0].price, date: rows[0].date, recent: rows, min: j.minPrice || 0, url: url, id: pick.id, img: pick.img, snm: pick.nm } : { price: 0, why: 'PSA' + grade + 'の取引がまだありません', min: j.minPrice || 0, url: url, img: pick.img, snm: pick.nm };
   }
   try { c.put(key, JSON.stringify(out), 3 * 3600); } catch (e) { }
   return out;
